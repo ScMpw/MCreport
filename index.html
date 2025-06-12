@@ -2,40 +2,35 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Stakeholder Report (Jira + MCW, Per-Epic, Improved)</title>
+  <title>Stakeholder Report (Jira + MCW, MCW-style Visualisation)</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <style>
     body { font-family: Arial, sans-serif; margin: 30px; background: #f9f9f9; }
     h1 { font-size: 1.6em; }
-    .input-row { margin-bottom: 1em; }
-    table { border-collapse: collapse; background: #fff; }
-    th, td { border: 1px solid #ccc; padding: 6px 10px; }
-    th { background: #f0f0f0; }
-    .storymap { display: flex; gap: 30px; margin-bottom: 2em;}
+    .btn { background: #6366f1; color: #fff; border: none; border-radius: 6px; padding: 7px 15px; cursor: pointer; margin-right: 8px;}
+    .btn:disabled { background: #aaa; }
+    .section-title { font-size: 1.2em; margin-bottom: .2em; }
     .storymap-epic { background: #fff; border-radius: 10px; box-shadow: 0 0 4px #ddd; padding: 1em; min-width: 180px;}
     .story-badge { display: block; border-radius: 6px; padding: 2px 6px; margin: 2px 0; }
     .story-done { background: #bbf7d0; }
     .story-indev { background: #fde68a; }
     .story-open { background: #f1f5f9; }
-    .btn { background: #6366f1; color: #fff; border: none; border-radius: 6px; padding: 7px 15px; cursor: pointer; margin-right: 8px;}
-    .btn:disabled { background: #aaa; }
     .summary-box { background: #fff; border-radius: 12px; box-shadow: 0 0 8px #eee; padding: 1em; margin-bottom: 2em;}
-    .pdf-area { background: #fff; padding: 20px; border-radius: 16px; }
-    .tip { font-size: 0.92em; color: #555; }
     .risk-high { color: #e11d48; font-weight: bold; }
     .risk-low { color: #10b981; font-weight: bold; }
-    .section-title { font-size: 1.2em; margin-bottom: .2em; }
-    .story-badge input { width: 60px; }
-    .editarr { width: 60px; }
     .targetSprintBox { margin: 1em 0 1em 0; }
     .targetSprintBox label { margin-right: .5em; }
+    table { border-collapse: collapse; background: #fff; }
+    th, td { border: 1px solid #ccc; padding: 6px 10px; }
+    th { background: #f0f0f0; }
+    .editarr { width: 60px; }
     @media print { .no-print { display: none !important; } }
   </style>
 </head>
 <body>
-  <h1>Stakeholder Report Generator (Jira + MCW Simulation, per Epic)</h1>
+  <h1>Stakeholder Report Generator (Jira + MCW Probability Curve)</h1>
   <div class="input-row">
     <label>Jira Domain: <input id="jiraDomain" value="aldi-sued.atlassian.net" size="30"></label>
     <label>Board Number: <input id="boardNum" value="" size="6"></label>
@@ -87,7 +82,6 @@
         const data = await resp.json();
         if (data.values && data.values.length) {
           sprints = data.values;
-          // Build a list of all closed sprints sorted by endDate ascending
           closedSprintsSorted = data.values
             .filter(s => s.state === "closed" && s.endDate)
             .sort((a,b) => new Date(a.endDate) - new Date(b.endDate));
@@ -102,8 +96,7 @@
     function populateSprintDropdown() {
       const sel = document.getElementById('sprintSelect');
       sel.innerHTML = '';
-      // Sort by startDate, show most recent first
-      sprints.sort((a,b) => new Date(b.startDate||0) - new Date(a.startDate||0));
+      sprints.sort((a,b) => new Date(a.startDate||0) - new Date(b.startDate||0));
       sprints.forEach(sprint => {
         const opt = document.createElement('option');
         opt.value = sprint.id;
@@ -119,15 +112,12 @@
       selectedSprintName = document.getElementById('sprintSelect').selectedOptions[0].textContent;
       if (!selectedSprintId) return alert("Select a sprint.");
 
-      // Get last 6 closed sprints BEFORE the selected sprint (or including if it's closed)
       let currentSprintObj = sprints.find(s => String(s.id) === String(selectedSprintId));
       let currEndDate = currentSprintObj && currentSprintObj.endDate ? new Date(currentSprintObj.endDate) : new Date();
-      // Build array of sprints whose endDate is <= currEndDate
       let velocityClosedSprints = closedSprintsSorted
         .filter(s => new Date(s.endDate) <= currEndDate)
-        .slice(-6); // last 6 in time before/including this one
+        .slice(-6);
 
-      // Always include the selected sprint for story table/etc.
       let sprintIdsToFetch = velocityClosedSprints.map(s=>s.id);
       if (!sprintIdsToFetch.includes(Number(selectedSprintId))) {
         sprintIdsToFetch.push(Number(selectedSprintId));
@@ -148,11 +138,9 @@
         }
       }
 
-      // Parse issues
       let velocityArrRaw = [];
       let epicMap = {};
-      stories = []; // stories in selected sprint only
-      // Build velocity array from closed sprints only, oldest to newest
+      stories = [];
       for (let i = 0; i < velocityClosedSprints.length; i++) {
         let sid = velocityClosedSprints[i].id;
         let batch = allIssues.find(b => Number(b.sprint) === Number(sid));
@@ -169,7 +157,6 @@
         velocityArrRaw.push(pointsDone);
       }
 
-      // For the selected sprint only, collect all issues for display/backlog
       let selectedBatch = allIssues.find(b => Number(b.sprint) === Number(selectedSprintId));
       if (selectedBatch) {
         for (let issue of selectedBatch.issues) {
@@ -208,12 +195,11 @@
         }
       }
       epicStoryMap = epicMap;
-      velocityArr = velocityArrRaw; // already oldest to newest
+      velocityArr = velocityArrRaw;
       editableData = stories.map(s => ({ ...s }));
       showImportArea();
     }
 
-    // ---- DISPLAY IMPORT/EDIT AREA ----
     function showImportArea() {
       let vhtml = velocityArr.map((v, i) =>
         `<input class="editarr" type="number" min="0" value="${v}" onchange="editVelocity(this,${i})">`).join(', ');
@@ -226,7 +212,6 @@
       velocityArr[idx] = Number(inp.value) || 0;
     }
 
-    // ---- STORY MAP ----
     function buildStoryMap(epicKey) {
       let byEpic = epicStoryMap[epicKey] || [];
       let html = `<div class="storymap-epic"><h4>${epicKey}</h4>`;
@@ -242,7 +227,6 @@
       return html;
     }
 
-    // ---- EDITABLE TABLE ----
     function buildStoryTable() {
       const container = document.getElementById('storyTableWrap');
       let html = `<table><thead>
@@ -278,7 +262,7 @@
       editableData[idx].points = Number(input.value) || 1;
     }
 
-    // ---- MONTE CARLO SIMULATION (MCW-style, per-epic, with threshold/target) ----
+    // ---- MCW SIMULATION with Probability Cone ----
     function runAllEpicSimulations() {
       let velocity = velocityArr.filter(v => v>0);
       const resultsArea = document.getElementById('epicSimResults');
@@ -286,97 +270,81 @@
       resultsArea.innerHTML = '';
       Object.keys(epicStoryMap).forEach((epicKey, epicIdx) => {
         const epicStories = epicStoryMap[epicKey];
-        // Only stories not done/closed
         const notDone = epicStories.filter(s =>
           !(s.status.toLowerCase().includes("done") || s.status.toLowerCase().includes("closed"))
         );
         const backlog = notDone.reduce((sum, s) => sum + Number(s.points), 0);
-        if (backlog === 0) return; // skip epics that are already done
+        if (backlog === 0) return;
 
-        // Monte Carlo for this epic
-        const mcResult = mcwSimulate(backlog, velocity, 10000);
+        // MCW: Run MC simulation
+        const mcRuns = [];
+        for (let i=0; i<10000; i++) {
+          let b = backlog, s=0;
+          while (b>0 && s<100) {
+            let v = velocity[Math.floor(Math.random()*velocity.length)];
+            if (v<1) v=1;
+            b -= v; s++;
+          }
+          mcRuns.push(s);
+        }
+        mcRuns.sort((a,b)=>a-b);
 
-        // What average velocity is needed to finish in targetSprints?
+        // Probability grid (MCW cone)
+        const probGrid = [];
+        for(let p=0;p<=100;p+=5) probGrid.push(p);
+        const yValues = probGrid.map(pct => {
+          const idx = Math.floor((pct/100)*(mcRuns.length-1));
+          return mcRuns[idx];
+        });
+
+        // Table of percentiles (same grid as chart)
+        let probTable = `<table><tr>${probGrid.map(x=>`<th>${x}%</th>`).join('')}</tr>
+        <tr>${yValues.map(x=>`<td>${x}</td>`).join('')}</tr></table>`;
+
         const neededVelocity = Math.ceil(backlog / targetSprints);
-
-        // Draw results and chart for this epic
+        const percentile75 = mcRuns[Math.floor(0.75*mcRuns.length)];
         let html = `
           <div class="summary-box">
             <h3>Epic: ${epicKey} (${epicStories[0]?.epicSummary || ''})</h3>
             <b>Remaining stories:</b> ${notDone.length} | <b>Backlog (points):</b> ${backlog}<br>
             ${buildStoryMap(epicKey)}
             <ul>
-              <li>Median (50% conf): ${mcResult.percentiles[50]} sprints</li>
-              <li>75% confidence: ${mcResult.percentiles[75]} sprints</li>
-              <li>90% confidence: ${mcResult.percentiles[90]} sprints</li>
-              <li>95% confidence: ${mcResult.percentiles[95]} sprints</li>
+              <li>Median (50% conf): ${mcRuns[Math.floor(0.5*mcRuns.length)]} sprints</li>
+              <li>75% confidence: ${percentile75} sprints</li>
+              <li>90% confidence: ${mcRuns[Math.floor(0.9*mcRuns.length)]} sprints</li>
+              <li>95% confidence: ${mcRuns[Math.floor(0.95*mcRuns.length)]} sprints</li>
             </ul>
-            <span class="${mcResult.percentiles[75]>targetSprints?'risk-high':'risk-low'}">
+            <span class="${percentile75>targetSprints?'risk-high':'risk-low'}">
               ${
-                mcResult.percentiles[75]<=targetSprints
+                percentile75<=targetSprints
                   ? `Good: Likely deliverable within <b>${targetSprints}</b> sprints.`
                   : `Warning: At 75% confidence, NOT likely deliverable in <b>${targetSprints}</b> sprints.<br>
                     <b>Required average velocity:</b> <u>${neededVelocity} points/sprint</u> to deliver in ${targetSprints} sprints.`
               }
             </span>
-            <canvas id="mcChart${epicIdx}" width="420" height="170"></canvas>
+            <div style="width:100%; max-width:550px"><canvas id="mcChart${epicIdx}" height="170"></canvas></div>
+            <div style="margin-top:1em;"><b>Probability Table:</b> ${probTable}</div>
           </div>
         `;
         resultsArea.innerHTML += html;
-
-        // Draw chart
-        setTimeout(()=>drawEpicChart(`mcChart${epicIdx}`, mcResult.dist), 0);
+        setTimeout(()=>drawMCWCone(`mcChart${epicIdx}`, probGrid, yValues, epicKey),0);
       });
     }
 
-    // ---- MCW SIMULATION ----
-    function mcwSimulate(backlog, velocityArr, numRuns) {
-      let outcomes = [];
-      for (let i=0; i<numRuns; i++) {
-        let backlogLeft = backlog;
-        let sprints = 0;
-        while (backlogLeft > 0 && sprints<100) {
-          let v = velocityArr[Math.floor(Math.random()*velocityArr.length)];
-          if (v < 1) v = 1;
-          backlogLeft -= v;
-          sprints++;
-        }
-        outcomes.push(sprints);
-      }
-      outcomes.sort((a,b)=>a-b);
-      function perc(p) {
-        let idx = Math.floor(numRuns * (p/100));
-        return outcomes[idx];
-      }
-      // Histogram for chart
-      let dist = {};
-      for (let s of outcomes) dist[s] = (dist[s]||0)+1;
-      return {
-        percentiles: {
-          50: perc(50),
-          75: perc(75),
-          90: perc(90),
-          95: perc(95)
-        },
-        dist
-      };
-    }
-
-    function drawEpicChart(canvasId, dist) {
+    // MCW-style cumulative probability line chart
+    function drawMCWCone(canvasId, probGrid, yValues, label) {
       const ctx = document.getElementById(canvasId).getContext('2d');
-      const labels = Object.keys(dist).sort((a,b)=>a-b);
-      const data = labels.map(k=>dist[k]);
       new Chart(ctx, {
-        type: 'bar',
+        type: 'line',
         data: {
-          labels: labels,
-          datasets: [{ label: 'Runs', data }]
+          labels: probGrid,
+          datasets: [{ label, data: yValues, fill:false, borderColor: '#6366f1', tension:0.2 }]
         },
         options: {
           plugins: { legend: { display: false } },
           scales: {
-            x: { title: { display: true, text: 'Sprints to completion' }},
-            y: { title: { display: true, text: 'Simulations' }, ticks: { precision:0 } }
+            x: { title: { display: true, text: 'Probability (%)' }, min: 0, max: 100 },
+            y: { title: { display: true, text: 'Sprints Needed' }, beginAtZero: true }
           }
         }
       });
