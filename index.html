@@ -2,86 +2,84 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Stakeholder Report (All Epics, True Monte Carlo, Epic Status)</title>
+  <title>Stakeholder PI Status Report – MCW with Allocation</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
   <style>
-    body { font-family: Arial, sans-serif; margin: 30px; background: #f7f7f8; }
-    h1 { font-size: 1.6em; }
-    .btn { background: #6366f1; color: #fff; border: none; border-radius: 6px; padding: 7px 15px; cursor: pointer; margin-right: 8px;}
+    body { background: #f7f8fa; font-family: 'Inter', Arial, sans-serif; margin: 0; padding: 0; }
+    .main { max-width: 950px; margin: 30px auto 40px auto; background: #fff; border-radius: 18px; box-shadow: 0 2px 12px #d1d5db70; padding: 36px 32px; }
+    h1 { font-size: 2.3em; margin:0 0 0.7em 0; font-weight: 600; }
+    h2 { font-size: 1.3em; margin-top:2em; }
+    .btn { background: #6366f1; color: #fff; border: none; border-radius: 6px; padding: 7px 18px; cursor: pointer; font-size:1em; margin: 0 10px 8px 0;}
     .btn:disabled { background: #aaa; }
-    .section-title { font-size: 1.2em; margin-bottom: .2em; }
-    .epic-summary { background: #fff; border-radius: 12px; box-shadow: 0 2px 8px #eee; padding: 1em; margin-bottom: 2em;}
-    .epic-title { font-size: 1.18em; font-weight: bold; }
-    .epic-breakdown { margin: 0.2em 0 1em 0; font-size: 1em;}
-    .risk-high { color: #e11d48; font-weight: bold; }
-    .risk-low { color: #10b981; font-weight: bold; }
-    .toggle-details { background: #d1d5db; color: #222; border: none; border-radius: 4px; cursor: pointer; font-size: 0.95em; margin-top: 10px; margin-bottom: 10px; padding: 3px 11px;}
-    .toggle-details.open { background: #a5b4fc; color: #222;}
-    .story-table, .change-table { border-collapse: collapse; background: #fff; margin-bottom: 1em;}
-    .story-table th, .story-table td, .change-table th, .change-table td { border: 1px solid #ddd; padding: 6px 10px; font-size: 0.96em;}
-    .story-table th, .change-table th { background: #f0f0f0; }
-    .summary-list { list-style: disc inside; margin: .5em 0 0 0;}
-    .editarr { width: 60px; }
-    .legend-block { margin-bottom: 2em; }
-    .legend-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 4px; }
-    .status-done { background: #34d399; }
-    .status-progress { background: #facc15; }
-    .status-open { background: #dbeafe; }
-    .status-new { background: #a5b4fc; }
-    .status-removed { background: #fca5a5; }
-    .scope-growth { color: #be123c; font-weight: bold;}
-    .scope-shrink { color: #166534; font-weight: bold;}
-    @media print { .no-print { display: none !important; } }
+    .sprint-row label { margin-right: 1.2em; }
+    .section-title { font-size: 1.1em; font-weight: 600; margin: 1.7em 0 0.5em 0; }
+    .epic-summary-block { margin:2em 0 2.5em 0; border-radius:14px; background: #f3f4f6; box-shadow: 0 1px 6px #e0e7ef70; padding: 24px 24px 18px 24px; }
+    .epic-header { font-size: 1.15em; font-weight: 600; color: #374151; }
+    .allocation-bar { height: 18px; border-radius: 8px; background: #6366f1; display:inline-block; vertical-align:middle;}
+    .prob-table { border-collapse:collapse; margin:12px 0 18px 0;}
+    .prob-table th, .prob-table td { border:1px solid #e5e7eb; font-size:0.98em; padding:4px 11px;}
+    .prob-table th { background:#e0e7ef;}
+    .info-grid { display:grid; grid-template-columns:1.7fr 1.3fr; gap:1.5em; }
+    .change-block { font-size: 0.99em; }
+    .status-pill { display:inline-block; min-width:64px; font-size:0.96em; border-radius:12px; padding:1.5px 13px; margin-right:6px; margin-bottom:3px;}
+    .pill-done { background:#c7f9cc; color:#086d46; }
+    .pill-prog { background:#ffe066; color:#947600;}
+    .pill-open { background:#cfe2ff; color:#184e98;}
+    .pill-other { background:#ddd; color:#444;}
+    .warn { color:#e11d48; font-weight: 600;}
+    .success { color:#059669; font-weight:600;}
+    .allocation-row {margin-bottom: 12px;}
+    .alloc-label {display:inline-block; min-width: 80px;}
+    .editarr { width: 50px;}
+    .pdf-cover { font-size:2.1em; text-align:center; margin-top:80px; color:#6366f1;}
+    .pdf-sub { font-size:1.1em; color:#374151; text-align:center; margin-top:20px;}
+    .pdf-section-title { font-size:1.15em; font-weight:600; margin-top:25px;}
+    @media (max-width: 800px) {
+      .main {padding:14px;}
+      .info-grid {grid-template-columns:1fr;}
+    }
   </style>
 </head>
 <body>
-  <h1>Stakeholder Report Generator (All Epics, True Monte Carlo, Epic Status)</h1>
-  <div class="legend-block">
-    <b>Legend:</b>
-    <span class="legend-dot status-done"></span>Done&nbsp;
-    <span class="legend-dot status-progress"></span>In Progress&nbsp;
-    <span class="legend-dot status-open"></span>Ready/Open&nbsp;
-    <span class="legend-dot status-new"></span>New Story&nbsp;
-    <span class="legend-dot status-removed"></span>Removed Story
-  </div>
-  <div>
-    <label>Jira Domain: <input id="jiraDomain" value="aldi-sued.atlassian.net" size="30"></label>
-    <label>Board Number: <input id="boardNum" value="" size="6"></label>
-    <button class="btn" onclick="fetchSprints()">Fetch Sprints</button>
-    <span class="tip">Login to Jira, enable your CORS plugin if needed.</span>
-  </div>
-  <div id="sprintRow" style="display:none;">
-    <label>Sprint:
-      <select id="sprintSelect"></select>
-    </label>
-    <button class="btn" onclick="mainFetchAll()">Fetch All Data & Generate Report</button>
-  </div>
+  <div class="main">
+    <h1>Stakeholder PI Status Report (Monte Carlo, Resource Allocation)</h1>
+    <div>
+      <label>Jira Domain: <input id="jiraDomain" value="aldi-sued.atlassian.net" size="28"></label>
+      <label>Board Number: <input id="boardNum" size="5"></label>
+      <button class="btn" onclick="fetchSprints()">Fetch Sprints</button>
+    </div>
+    <div class="sprint-row" id="sprintRow" style="display:none; margin:1.1em 0;">
+      <label>Sprint:
+        <select id="sprintSelect"></select>
+      </label>
+      <button class="btn" onclick="fetchAll()">Load Data</button>
+    </div>
 
-  <div id="importArea" style="display:none;">
-    <div class="section-title">Velocity History (editable, last 6 closed sprints):</div>
-    <div id="velocityWrap"></div>
-    <div class="section-title" style="margin-top: 1em;">Target sprints for delivery (affects forecast):</div>
-    <input id="targetSprintsInput" type="number" min="1" max="20" value="4" style="width:60px">
-    <button class="btn" onclick="runAllEpicSimulations()">Run Simulations</button>
-    <button class="btn" onclick="exportPDF()">Download PDF Report</button>
-    <hr>
-    <div id="epicSimResults"></div>
+    <div id="configSection" style="display:none;">
+      <div class="section-title">Velocity History (editable, last 6 closed sprints):</div>
+      <div id="velocityWrap"></div>
+      <div style="margin:0.9em 0 1.6em 0;">
+        <label>Target Sprints for Delivery:
+          <input id="targetSprintsInput" type="number" min="1" max="20" value="4" style="width:60px">
+        </label>
+        <button class="btn" onclick="renderEpicSummary()">Update Report</button>
+        <button class="btn" onclick="exportPDF()">Download PDF Report</button>
+      </div>
+      <div id="epicSummary"></div>
+    </div>
   </div>
-
   <script>
-    // Globals
     let jiraDomain = '', boardNum = '', sprints = [], closedSprintsSorted = [];
-    let allEpics = {};
-    let epicStories = {};
-    let epicStoriesBaseline = {};
+    let allEpics = {}, epicStories = {}, epicStoriesBaseline = {};
     let velocityArr = [];
-    let selectedSprintId = '', selectedSprintName = '';
-    let baselineSprintId = '';
-    let baselineIsFirstPI = false;
+    let selectedSprintId = '', selectedSprintName = '', targetSprints = 4;
+    let baselineSprintId = '', baselineIsFirstPI = false;
+    let epicAllocations = {}, epicBacklogs = {}, epicRequiredAlloc = {};
+    let epicForecastResults = {};
 
-    // ---- FETCH SPRINTS ----
+    // --- SPRINT FETCH & SELECTION ---
     async function fetchSprints() {
       jiraDomain = document.getElementById('jiraDomain').value.trim();
       boardNum = document.getElementById('boardNum').value.trim();
@@ -115,13 +113,12 @@
       document.getElementById('sprintRow').style.display = '';
     }
 
-    // ---- MAIN FETCH ALL ----
-    async function mainFetchAll() {
+    // --- MAIN DATA FETCH (Epics/Stories/Velocity) ---
+    async function fetchAll() {
       selectedSprintId = document.getElementById('sprintSelect').value;
       selectedSprintName = document.getElementById('sprintSelect').selectedOptions[0].textContent;
       if (!selectedSprintId) return alert("Select a sprint.");
-
-      // 1. Identify baseline: first closed sprint in PI, or previous closed sprint
+      // 1. Baseline (first closed in PI or previous closed)
       let currSprintObj = sprints.find(s => String(s.id) === String(selectedSprintId));
       let allPIClosed = closedSprintsSorted.filter(s =>
         s.name.includes(currSprintObj.name.split(' ')[0])
@@ -131,8 +128,7 @@
       let baselineIdx = currIdx > 0 ? currIdx - 1 : 0;
       baselineIsFirstPI = (closedSprintsSorted[baselineIdx].id === firstPISprint.id);
       baselineSprintId = closedSprintsSorted[baselineIdx].id;
-
-      // 2. Fetch all stories in selected sprint, find all involved epics
+      // 2. Find all epics in selected sprint
       let jql = encodeURIComponent(`sprint = ${selectedSprintId} ORDER BY key`);
       let url = `https://${jiraDomain}/rest/api/3/search?jql=${jql}&fields=summary,parent,customfield_10002,customfield_10005,customfield_12600,status,issuetype&maxResults=500`;
       let epicKeysSet = new Set();
@@ -150,8 +146,7 @@
           }
         }
       } catch (e) { alert("Error fetching stories for selected sprint"); return; }
-
-      // 3. For each epic, fetch all stories for that epic (not just those in sprints)
+      // 3. For each epic, fetch all stories
       epicStories = {};
       await Promise.all(Array.from(epicKeysSet).map(async epicKey => {
         let eq = encodeURIComponent(`"Epic Link" = ${epicKey}`);
@@ -169,12 +164,9 @@
             resolved: story.fields.resolutiondate,
             sprint: (story.fields.customfield_10005||[]).map(s=>s.name).join(', '),
           }));
-        } catch (e) {
-          epicStories[epicKey] = [];
-        }
+        } catch (e) { epicStories[epicKey] = []; }
       }));
-
-      // 4. Fetch for baseline sprint (for change detection)
+      // 4. Baseline stories for change detection
       epicStoriesBaseline = {};
       await Promise.all(Array.from(epicKeysSet).map(async epicKey => {
         let eq = encodeURIComponent(`"Epic Link" = ${epicKey}`);
@@ -184,7 +176,6 @@
           const data = await resp.json();
           epicStoriesBaseline[epicKey] = data.issues
             .filter(story => {
-              // Story is considered "in" the baseline if created <= baseline sprint end
               let created = new Date(story.fields.created);
               let baseSprint = closedSprintsSorted.find(s=>s.id==baselineSprintId);
               return created <= new Date(baseSprint.endDate);
@@ -199,12 +190,9 @@
               resolved: story.fields.resolutiondate,
               sprint: (story.fields.customfield_10005||[]).map(s=>s.name).join(', '),
             }));
-        } catch (e) {
-          epicStoriesBaseline[epicKey] = [];
-        }
+        } catch (e) { epicStoriesBaseline[epicKey] = []; }
       }));
-
-      // 5. Velocity for last 6 closed sprints
+      // 5. Velocity last 6 closed sprints
       velocityArr = [];
       let last6Closed = closedSprintsSorted.slice(-6);
       for (let sprint of last6Closed) {
@@ -226,215 +214,302 @@
           velocityArr.push(pts);
         } catch (e) { velocityArr.push(0);}
       }
-      showImportArea();
+      document.getElementById('configSection').style.display = '';
+      renderVelocityInputs();
+      renderEpicSummary();
     }
 
-    function showImportArea() {
+    // --- VELOCITY INPUTS ---
+    function renderVelocityInputs() {
       let vhtml = velocityArr.map((v, i) =>
         `<input class="editarr" type="number" min="0" value="${v}" onchange="editVelocity(this,${i})">`).join(', ');
       document.getElementById('velocityWrap').innerHTML = vhtml;
-      document.getElementById('importArea').style.display = '';
-      document.getElementById('epicSimResults').innerHTML = '';
     }
     function editVelocity(inp, idx) { velocityArr[idx] = Number(inp.value) || 0; }
 
-    // ---- MCW SIMULATION & UI ----
-    function runAllEpicSimulations() {
-      let velocity = velocityArr.filter(v => v>0);
-      const targetSprints = Number(document.getElementById('targetSprintsInput').value) || 4;
-      const resultsArea = document.getElementById('epicSimResults');
-      resultsArea.innerHTML = '';
-
-      Object.keys(epicStories).forEach((epicKey, idx) => {
-        const allStories = epicStories[epicKey];
-        if (!allStories || !allStories.length) return;
-
-        // Status mapping
-        const statusGroup = s => {
-          s = (s||"").toLowerCase();
-          if (s.includes("done") || s.includes("closed")) return "Done";
-          if (s.includes("progress") || s.includes("development")) return "In Progress";
-          if (s === "ready" || s === "open") return "Ready/Open";
-          return "Other";
-        };
-
-        // Breakdown & MC backlog
-        let ptsDone = 0, ptsIndev = 0, ptsOpen = 0, ptsOther = 0;
-        let done = [], indev = [], open = [], other = [];
-        allStories.forEach(story => {
-          let grp = statusGroup(story.status);
-          if (grp === "Done") { ptsDone += story.points; done.push(story);}
-          else if (grp === "In Progress") { ptsIndev += story.points; indev.push(story);}
-          else if (grp === "Ready/Open") { ptsOpen += story.points; open.push(story);}
-          else { ptsOther += story.points; other.push(story);}
-        });
-        const totalEstimate = ptsDone + ptsIndev + ptsOpen + ptsOther;
-        const backlog = ptsIndev + ptsOpen + ptsOther;
-
-        // Monte Carlo: only remaining stories (not done)
-        const backlogStories = allStories.filter(story => statusGroup(story.status) !== "Done");
-        let backlogPts = backlogStories.reduce((sum, s) => sum + s.points, 0);
-
-        // MCW: Run MC simulation
-        const mcRuns = [];
-        for (let i=0; i<10000; i++) {
+    // --- MAIN REPORT RENDER ---
+    function renderEpicSummary() {
+      targetSprints = Number(document.getElementById('targetSprintsInput').value) || 4;
+      let velocity = velocityArr.filter(v=>v>0);
+      if (velocity.length<3) {
+        document.getElementById('epicSummary').innerHTML = '<div class="warn">Please set at least 3 recent velocity values.</div>';
+        return;
+      }
+      // --- Resource Allocation Calculation ---
+      // For each epic, backlog = sum of non-done stories' points. Total backlog = sum across all epics.
+      epicBacklogs = {};
+      let totalBacklog = 0;
+      Object.keys(epicStories).forEach(epicKey => {
+        let stories = epicStories[epicKey]||[];
+        let backlog = stories.filter(st => !isDone(st.status)).reduce((a,b)=>a+b.points,0);
+        epicBacklogs[epicKey] = backlog;
+        totalBacklog += backlog;
+      });
+      epicAllocations = {};
+      Object.keys(epicStories).forEach(epicKey => {
+        epicAllocations[epicKey] = totalBacklog ? Math.round(100*epicBacklogs[epicKey]/totalBacklog) : 0;
+      });
+      // --- Epic Forecast, Required Allocation Calculation ---
+      epicForecastResults = {};
+      epicRequiredAlloc = {};
+      Object.keys(epicStories).forEach(epicKey => {
+        let stories = epicStories[epicKey]||[];
+        let backlogPts = epicBacklogs[epicKey];
+        let alloc = epicAllocations[epicKey];
+        // Simulate forecast for this epic with its allocation share
+        let allocVels = velocity.map(v=>v*alloc/100);
+        let mcRuns = [];
+        for (let i=0; i<8000; i++) {
           let b = backlogPts, s=0;
           while (b>0 && s<100) {
-            let v = velocity[Math.floor(Math.random()*velocity.length)];
+            let v = allocVels[Math.floor(Math.random()*allocVels.length)];
             if (v<1) v=1;
             b -= v; s++;
           }
           mcRuns.push(s);
         }
         mcRuns.sort((a,b)=>a-b);
+        epicForecastResults[epicKey] = mcRuns;
 
-        // Probability grid (MCW cone)
-        const probGrid = [];
-        for(let p=0;p<=100;p+=5) probGrid.push(p);
-        const yValues = probGrid.map(pct => {
-          const idx = Math.floor((pct/100)*(mcRuns.length-1));
-          return mcRuns[idx];
+        // Find required allocation to finish in target sprints at 75%/95% confidence
+        let allocNeeded = { "75": null, "95": null };
+        for (let pct=1;pct<=100;pct++) {
+          let testVels = velocity.map(v=>v*pct/100);
+          let runs = [];
+          for (let i=0;i<6000;i++) {
+            let b=backlogPts,s=0;
+            while (b>0 && s<100) { let v=testVels[Math.floor(Math.random()*testVels.length)]; if(v<1)v=1; b-=v; s++; }
+            runs.push(s);
+          }
+          runs.sort((a,b)=>a-b);
+          if (!allocNeeded["75"] && runs[Math.floor(0.75*runs.length)] <= targetSprints) allocNeeded["75"] = pct;
+          if (!allocNeeded["95"] && runs[Math.floor(0.95*runs.length)] <= targetSprints) allocNeeded["95"] = pct;
+          if (allocNeeded["75"] && allocNeeded["95"]) break;
+        }
+        epicRequiredAlloc[epicKey] = allocNeeded;
+      });
+
+      // --- HTML Summary ---
+      let totalAlloc = Object.values(epicAllocations).reduce((a,b)=>a+b,0);
+      let allocWarn = '';
+      if (totalAlloc < 99) allocWarn = `<span class="warn">Warning: Not all team capacity is assigned to listed epics (${totalAlloc}% total).</span>`;
+      else if (totalAlloc > 101) allocWarn = `<span class="warn">Warning: Allocations exceed 100% of capacity! (${totalAlloc}%)</span>`;
+      else allocWarn = `<span class="success">Team allocation: ${totalAlloc}%</span>`;
+      let html = `<div class="allocation-row">${allocWarn}</div>`;
+      // --- Per-Epic Block ---
+      Object.keys(epicStories).forEach((epicKey, idx) => {
+        let stories = epicStories[epicKey];
+        if (!stories || !stories.length) return;
+        let statusCounts = {done:0,prog:0,open:0,other:0};
+        let ptsDone=0, ptsProg=0, ptsOpen=0, ptsOther=0;
+        stories.forEach(story => {
+          let sgrp = statusGroup(story.status);
+          if (sgrp==='Done') { statusCounts.done++; ptsDone+=story.points;}
+          else if (sgrp==='In Progress') { statusCounts.prog++; ptsProg+=story.points;}
+          else if (sgrp==='Ready/Open') { statusCounts.open++; ptsOpen+=story.points;}
+          else { statusCounts.other++; ptsOther+=story.points;}
         });
-        const neededVelocity = Math.ceil(backlogPts / targetSprints);
-        const percentile75 = mcRuns[Math.floor(0.75*mcRuns.length)];
+        let totalEstimate = ptsDone+ptsProg+ptsOpen+ptsOther;
+        let backlog = ptsProg+ptsOpen+ptsOther;
+        let alloc = epicAllocations[epicKey];
+        let required = epicRequiredAlloc[epicKey];
+        let mc = epicForecastResults[epicKey];
+        // Probabilities
+        let probRows = [[50,mc[Math.floor(0.5*mc.length)]],[75,mc[Math.floor(0.75*mc.length)]],[95,mc[Math.floor(0.95*mc.length)]]];
 
-        // --- Epic Change Detection ---
+        // Change Table
         let baseStories = (epicStoriesBaseline[epicKey]||[]);
         let baseKeys = new Set(baseStories.map(s=>s.key));
-        let currKeys = new Set(allStories.map(s=>s.key));
-        // New stories since baseline
-        let newStories = allStories.filter(s=>!baseKeys.has(s.key));
-        // Removed stories since baseline
+        let currKeys = new Set(stories.map(s=>s.key));
+        let newStories = stories.filter(s=>!baseKeys.has(s.key));
         let removedStories = baseStories.filter(s=>!currKeys.has(s.key));
-        // Points done since baseline
         let baseDone = baseStories.filter(s=>statusGroup(s.status)==="Done").map(s=>s.points).reduce((a,b)=>a+b,0);
         let doneSince = ptsDone - baseDone;
         let estimateBaseline = baseStories.map(s=>s.points).reduce((a,b)=>a+b,0);
         let deltaEstimate = totalEstimate - estimateBaseline;
 
-        // --- UI BLOCK ---
-        let html = `
-          <div class="epic-summary">
-            <div class="epic-title">${epicKey}: ${allEpics[epicKey]||""}</div>
-            <div class="epic-breakdown">
-              <b>Total Estimate:</b> ${totalEstimate} SP
-              &nbsp; | &nbsp;<span class="legend-dot status-done"></span> Done: ${ptsDone}
-              &nbsp; | &nbsp;<span class="legend-dot status-progress"></span> In Progress: ${ptsIndev}
-              &nbsp; | &nbsp;<span class="legend-dot status-open"></span> Ready/Open: ${ptsOpen+ptsOther}
-              &nbsp; | &nbsp;<b>Remaining:</b> ${backlog} SP
-            </div>
-            <div style="margin-bottom:8px;">
-              <b>Monte Carlo Forecast:</b><br>
-              <div style="width:100%; max-width:550px"><canvas id="mcChart${idx}" height="150"></canvas></div>
-              <small>Horizontal axis: Probability (%). Vertical: Sprints needed.</small>
-              <br>
-              <b>Probability Table:</b> <table class="change-table" style="display:inline-block;margin-left:1em;">
-                <tr><th>Confidence</th><th>Sprints Needed</th></tr>
-                <tr><td>50%</td><td>${mcRuns[Math.floor(0.5*mcRuns.length)]}</td></tr>
-                <tr><td>75%</td><td>${mcRuns[Math.floor(0.75*mcRuns.length)]}</td></tr>
-                <tr><td>95%</td><td>${mcRuns[Math.floor(0.95*mcRuns.length)]}</td></tr>
-              </table>
-              <br>
-              <span class="${percentile75 > targetSprints ? 'risk-high' : 'risk-low'}">
-                ${percentile75 > targetSprints ?
-                  `At 75% confidence, cannot deliver in <b>${targetSprints}</b> sprints.<br>
-                  <b>Required average velocity:</b> <u>${neededVelocity} points/sprint</u> to deliver in ${targetSprints} sprints.`
+        html += `
+        <div class="epic-summary-block">
+          <div class="epic-header">${epicKey}: ${allEpics[epicKey]||''}</div>
+          <div style="margin-top:4px;margin-bottom:10px;">
+            <span class="status-pill pill-done">${ptsDone} Done</span>
+            <span class="status-pill pill-prog">${ptsProg} In Progress</span>
+            <span class="status-pill pill-open">${ptsOpen+ptsOther} Open</span>
+            &nbsp; <b>Total:</b> ${totalEstimate} SP &nbsp; | &nbsp; <b>Backlog:</b> ${backlog} SP
+          </div>
+          <div class="info-grid">
+            <div>
+              <div style="margin-bottom:4px;">
+                <b>Team allocation for this epic:</b> 
+                <span style="font-size:1.1em;font-weight:600;">${alloc}%</span>
+                <div class="allocation-bar" style="width:${2*alloc}px"></div>
+              </div>
+              <div>
+                <table class="prob-table">
+                  <tr><th>Confidence</th><th>Sprints Needed</th></tr>
+                  ${probRows.map(r=>`<tr><td>${r[0]}%</td><td>${r[1]}</td></tr>`).join('')}
+                </table>
+              </div>
+              <div style="margin-bottom:8px;">
+                <b>Required allocation to finish in ${targetSprints} sprints:</b>
+                <ul style="margin:3px 0 0 0;padding-left:1.3em;">
+                  <li>75% confidence: ${required["75"] ? required["75"]+"%" : '<span class="warn">Over 100%</span>'}</li>
+                  <li>95% confidence: ${required["95"] ? required["95"]+"%" : '<span class="warn">Over 100%</span>'}</li>
+                </ul>
+              </div>
+              <div style="font-size:0.99em;">
+                ${probRows[1][1] > targetSprints ?
+                  `<span class="warn">At 75% confidence, this epic is <b>not likely</b> to finish in ${targetSprints} sprints.<br>
+                  More allocation or velocity needed.</span>`
                   :
-                  `At 75% confidence, likely deliverable within <b>${targetSprints}</b> sprints.<br>
-                  Current avg. velocity is sufficient.`
+                  `<span class="success">On track to finish in ${targetSprints} sprints at 75% confidence.</span>`
                 }
-              </span>
+              </div>
             </div>
-            <button class="toggle-details" onclick="toggleDetails(this,'details${idx}')">Show Details</button>
-            <div id="details${idx}" style="display:none;">
-              <div style="margin-top:1em;"><b>All Stories in Epic:</b></div>
-              <table class="story-table">
-                <tr>
-                  <th>Key</th><th>Summary</th><th>Status</th><th>Points</th><th>Responsible Team</th><th>Created</th><th>Resolved</th><th>Sprint(s)</th>
-                </tr>
-                ${allStories.map(story=>`
-                  <tr>
-                    <td>${story.key}</td>
-                    <td>${story.summary}</td>
-                    <td>
-                      <span class="legend-dot ${statusClass(statusGroup(story.status))}"></span>
-                      ${story.status||''}
-                    </td>
-                    <td>${story.points}</td>
-                    <td>${story.team}</td>
-                    <td>${story.created?story.created.substr(0,10):""}</td>
-                    <td>${story.resolved?story.resolved.substr(0,10):""}</td>
-                    <td>${story.sprint}</td>
-                  </tr>
-                `).join('')}
-              </table>
-              <div><b>Change Table (vs ${baselineIsFirstPI ? "PI start" : "last sprint"}):</b></div>
-              <table class="change-table">
-                <tr><th>Change Type</th><th>Count</th><th>Points</th></tr>
-                <tr><td>Points Done since baseline</td><td>${doneSince}</td><td></td></tr>
-                <tr><td><span class="legend-dot status-new"></span>New Stories</td><td>${newStories.length}</td><td>${newStories.reduce((a,b)=>a+b.points,0)}</td></tr>
-                <tr><td><span class="legend-dot status-removed"></span>Removed Stories</td><td>${removedStories.length}</td><td>${removedStories.reduce((a,b)=>a+b.points,0)}</td></tr>
-                <tr>
-                  <td>Scope Change</td>
-                  <td colspan="2">${deltaEstimate===0 ? "No change"
-                      : (deltaEstimate>0?'<span class="scope-growth">Scope increased (+'
-                        +deltaEstimate+')</span>':'<span class="scope-shrink">Scope reduced ('+deltaEstimate+')</span>')}</td>
-                </tr>
-              </table>
+            <div>
+              <div class="pdf-section-title" style="margin-top:0;">Changes since ${baselineIsFirstPI ? "PI start" : "last sprint"}:</div>
+              <div class="change-block">
+                <ul>
+                  <li>Story points completed: <b>${doneSince}</b></li>
+                  <li>New stories: <b>${newStories.length}</b> (${newStories.reduce((a,b)=>a+b.points,0)} SP)</li>
+                  <li>Removed stories: <b>${removedStories.length}</b> (${removedStories.reduce((a,b)=>a+b.points,0)} SP)</li>
+                  <li>
+                    Scope change: ${
+                      deltaEstimate===0 ? "No change"
+                      : (deltaEstimate>0?'<span class="warn">Increased (+'
+                        +deltaEstimate+')</span>':'<span class="success">Reduced ('+deltaEstimate+')</span>')
+                    }
+                  </li>
+                </ul>
+              </div>
             </div>
           </div>
+        </div>
         `;
-        resultsArea.innerHTML += html;
-        setTimeout(()=>drawMCWCone(`mcChart${idx}`, probGrid, yValues, epicKey),0);
       });
-    }
-    function statusClass(group) {
-      if (group === "Done") return "status-done";
-      if (group === "In Progress") return "status-progress";
-      if (group === "Ready/Open") return "status-open";
-      return "";
-    }
-    function toggleDetails(btn, id) {
-      let el = document.getElementById(id);
-      if (el.style.display === "none") { el.style.display = ""; btn.classList.add("open"); btn.textContent="Hide Details"; }
-      else { el.style.display = "none"; btn.classList.remove("open"); btn.textContent="Show Details"; }
-    }
-    function drawMCWCone(canvasId, probGrid, yValues, label) {
-      const ctx = document.getElementById(canvasId).getContext('2d');
-      new Chart(ctx, {
-        type: 'line',
-        data: {
-          labels: probGrid,
-          datasets: [{ label, data: yValues, fill:false, borderColor: '#6366f1', tension:0.2 }]
-        },
-        options: {
-          plugins: { legend: { display: false } },
-          scales: {
-            x: { title: { display: true, text: 'Probability (%)' }, min: 0, max: 100 },
-            y: { title: { display: true, text: 'Sprints Needed' }, beginAtZero: true }
-          }
-        }
-      });
+      document.getElementById('epicSummary').innerHTML = html;
     }
 
-    // ---- PDF EXPORT ----
-    async function exportPDF() {
-      const area = document.getElementById('importArea');
-      area.style.background = '#fff';
-      window.scrollTo(0,0);
-      const canvas = await html2canvas(area, {scale:2});
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new window.jspdf.jsPDF({
-        orientation: 'portrait',
-        unit: 'pt',
-        format: 'a4'
+    function isDone(status) {
+      status = (status||'').toLowerCase();
+      return status.includes("done") || status.includes("closed");
+    }
+    function statusGroup(s) {
+      s = (s||"").toLowerCase();
+      if (s.includes("done") || s.includes("closed")) return "Done";
+      if (s.includes("progress") || s.includes("development")) return "In Progress";
+      if (s === "ready" || s === "open") return "Ready/Open";
+      return "Other";
+    }
+
+    // --- PDF EXPORT (CLEAN SUMMARY ONLY) ---
+    function exportPDF() {
+      // 1. Create a new jsPDF document
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF({ unit:'pt', format:'a4' });
+      let y = 38;
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(23);
+      pdf.text("Stakeholder PI Status Report", 45, y); y+=22;
+      pdf.setFont('helvetica','normal');
+      pdf.setFontSize(12);
+      pdf.text(`Generated: ${new Date().toLocaleString()}`, 45, y); y+=13;
+      pdf.text(`Board: ${boardNum}   |   Sprint: ${selectedSprintName||''}`, 45, y); y+=23;
+
+      // Velocity history
+      pdf.setFont('helvetica','bold');
+      pdf.setFontSize(14);
+      pdf.text("Velocity history (last 6 sprints):", 45, y); y+=15;
+      pdf.setFont('helvetica','normal');
+      pdf.setFontSize(11);
+      pdf.text(velocityArr.join(", "), 45, y); y+=18;
+      pdf.setLineWidth(0.3);
+      pdf.line(45, y, 530, y); y+=8;
+
+      // Allocation warning
+      let totalAlloc = Object.values(epicAllocations).reduce((a,b)=>a+b,0);
+      let allocWarn = '';
+      if (totalAlloc < 99) allocWarn = `Warning: Not all team capacity assigned (${totalAlloc}% total)`;
+      else if (totalAlloc > 101) allocWarn = `Warning: Allocations exceed 100% (${totalAlloc}%)`;
+      else allocWarn = `Team allocation: ${totalAlloc}%`;
+      pdf.setFont('helvetica','normal');
+      pdf.setTextColor(totalAlloc>101?225:16, totalAlloc>101?29:153, totalAlloc>101?72:105);
+      pdf.text(allocWarn, 45, y); y+=18;
+      pdf.setTextColor(51,51,51);
+
+      // --- Per-epic block ---
+      Object.keys(epicStories).forEach((epicKey, idx) => {
+        let stories = epicStories[epicKey];
+        if (!stories || !stories.length) return;
+        let ptsDone=0, ptsProg=0, ptsOpen=0, ptsOther=0;
+        stories.forEach(story => {
+          let sgrp = statusGroup(story.status);
+          if (sgrp==='Done') { ptsDone+=story.points;}
+          else if (sgrp==='In Progress') { ptsProg+=story.points;}
+          else if (sgrp==='Ready/Open') { ptsOpen+=story.points;}
+          else { ptsOther+=story.points;}
+        });
+        let totalEstimate = ptsDone+ptsProg+ptsOpen+ptsOther;
+        let backlog = ptsProg+ptsOpen+ptsOther;
+        let alloc = epicAllocations[epicKey];
+        let required = epicRequiredAlloc[epicKey];
+        let mc = epicForecastResults[epicKey];
+        // Probabilities
+        let probRows = [[50,mc[Math.floor(0.5*mc.length)]],[75,mc[Math.floor(0.75*mc.length)]],[95,mc[Math.floor(0.95*mc.length)]]];
+
+        // Change Table
+        let baseStories = (epicStoriesBaseline[epicKey]||[]);
+        let baseKeys = new Set(baseStories.map(s=>s.key));
+        let currKeys = new Set(stories.map(s=>s.key));
+        let newStories = stories.filter(s=>!baseKeys.has(s.key));
+        let removedStories = baseStories.filter(s=>!currKeys.has(s.key));
+        let baseDone = baseStories.filter(s=>statusGroup(s.status)==="Done").map(s=>s.points).reduce((a,b)=>a+b,0);
+        let doneSince = ptsDone - baseDone;
+        let estimateBaseline = baseStories.map(s=>s.points).reduce((a,b)=>a+b,0);
+        let deltaEstimate = totalEstimate - estimateBaseline;
+
+        // Section title
+        y+=12;
+        if (y>760) { pdf.addPage(); y=38;}
+        pdf.setFont('helvetica','bold');
+        pdf.setFontSize(13.5);
+        pdf.text(`${epicKey}: ${allEpics[epicKey]||''}`, 45, y); y+=13;
+        pdf.setFont('helvetica','normal');
+        pdf.setFontSize(11);
+
+        // Table
+        pdf.text(`Done: ${ptsDone}    In Progress: ${ptsProg}    Open: ${ptsOpen+ptsOther}    Total: ${totalEstimate} SP    Backlog: ${backlog} SP`, 45, y); y+=15;
+        pdf.text(`Team allocation: ${alloc}%   |   Required for ${targetSprints} sprints: 75% conf: ${required["75"]?required["75"]+"%":"Over 100%"}  / 95% conf: ${required["95"]?required["95"]+"%":"Over 100%"}`, 45, y); y+=13;
+        pdf.text(`Probability forecast (sprints needed):`, 45, y); y+=12;
+        probRows.forEach(r=>{
+          pdf.text(`${r[0]}%: ${r[1]} sprints`, 70, y); y+=11;
+        });
+        y+=2;
+        pdf.text((probRows[1][1] > targetSprints ?
+          "At 75% confidence: NOT likely to finish in "+targetSprints+" sprints. More allocation/velocity needed."
+          :
+          "On track to finish in "+targetSprints+" sprints at 75% confidence."
+        ), 45, y); y+=13;
+
+        // Change table
+        pdf.setFont('helvetica','bold');
+        pdf.text("Changes since "+(baselineIsFirstPI ? "PI start" : "last sprint")+":", 45, y); y+=12;
+        pdf.setFont('helvetica','normal');
+        pdf.text([
+          `Story points completed: ${doneSince}`,
+          `New stories: ${newStories.length} (${newStories.reduce((a,b)=>a+b.points,0)} SP)`,
+          `Removed stories: ${removedStories.length} (${removedStories.reduce((a,b)=>a+b.points,0)} SP)`,
+          `Scope change: ${
+            deltaEstimate===0 ? "No change"
+            : (deltaEstimate>0?'Increased (+'
+              +deltaEstimate+')':'Reduced ('+deltaEstimate+')')
+          }`
+        ].join("    "), 55, y); y+=16;
+
+        pdf.setLineWidth(0.2); pdf.line(45, y, 530, y); y+=8;
       });
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const imgWidth = pageWidth - 40;
-      const ratio = imgWidth / canvas.width;
-      const imgHeight = canvas.height * ratio;
-      pdf.addImage(imgData, 'PNG', 20, 20, imgWidth, imgHeight);
-      pdf.save(`Stakeholder_Report_${selectedSprintName||''}.pdf`);
+
+      pdf.save(`Stakeholder_StatusReport_${selectedSprintName||''}.pdf`);
     }
   </script>
 </body>
