@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>MCW Stakeholder Report - Jira Integration</title>
+  <title>Stakeholder Report (Jira + MCW)</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <style>
@@ -38,7 +38,7 @@
     <label>Jira Domain: <input id="jiraDomain" value="aldi-sued.atlassian.net" size="30"></label>
     <label>Board Number: <input id="boardNum" value="" size="6"></label>
     <button class="btn" onclick="fetchSprints()">Fetch Sprints</button>
-    <span class="tip">Login to Jira, enable your CORS plugin.</span>
+    <span class="tip">Login to Jira, enable your CORS plugin if needed.</span>
   </div>
   <div class="input-row" id="sprintRow" style="display:none;">
     <label>Sprint:
@@ -83,7 +83,7 @@
       jiraDomain = document.getElementById('jiraDomain').value.trim();
       boardNum = document.getElementById('boardNum').value.trim();
       if (!jiraDomain || !boardNum) return alert("Enter Jira domain and board number.");
-      const url = `https://${jiraDomain}/rest/agile/1.0/board/${boardNum}/sprint?state=closed`;
+      const url = `https://${jiraDomain}/rest/agile/1.0/board/${boardNum}/sprint?state=active,closed,future`;
       try {
         const resp = await fetch(url, { credentials: "include" });
         const data = await resp.json();
@@ -100,10 +100,12 @@
     function populateSprintDropdown() {
       const sel = document.getElementById('sprintSelect');
       sel.innerHTML = '';
+      // Sort by startDate, show current/active first
+      sprints.sort((a,b) => new Date(b.startDate||0) - new Date(a.startDate||0));
       sprints.forEach(sprint => {
         const opt = document.createElement('option');
         opt.value = sprint.id;
-        opt.textContent = sprint.name;
+        opt.textContent = (sprint.state === "active" ? "🟢 " : "") + sprint.name;
         sel.appendChild(opt);
       });
       document.getElementById('sprintRow').style.display = '';
@@ -121,8 +123,9 @@
 
       let allIssues = [];
       for (let sid of sprintIds) {
-        const jql = encodeURIComponent(`sprint = ${sid} ORDER BY "Epic Link", status, key`);
-        const url = `https://${jiraDomain}/rest/api/3/search?jql=${jql}&fields=summary,status,customfield_10008,customfield_10006,customfield_10104,epic&maxResults=200`;
+        // Use expanded fields for parent/epic info!
+        const jql = encodeURIComponent(`sprint = ${sid} ORDER BY key`);
+        const url = `https://${jiraDomain}/rest/api/3/search?jql=${jql}&fields=summary,status,parent,customfield_10002,customfield_12600,customfield_10005&expand=parent.fields&maxResults=200`;
         try {
           const resp = await fetch(url, { credentials: "include" });
           const data = await resp.json();
@@ -133,7 +136,7 @@
           alert("Failed to fetch issues for sprint " + sid);
         }
       }
-      // Now, parse issues into stories
+      // Parse issues
       let velocityArrRaw = [];
       let epicMap = {};
       stories = []; // stories in selected sprint only
@@ -142,9 +145,9 @@
         for (let issue of batch.issues) {
           let type = issue.fields.issuetype && issue.fields.issuetype.name;
           if (type === "Epic") continue; // ignore for velocity
-          let pts = Number(issue.fields['customfield_10006']) || 1;
+          let pts = Number(issue.fields.customfield_10002) || 1;
           let status = issue.fields.status && issue.fields.status.name;
-          if (status === "Done") pointsDone += pts;
+          if (status && status.toLowerCase().includes("done") || status.toLowerCase().includes("closed")) pointsDone += pts;
         }
         velocityArrRaw.push(pointsDone);
         // For selected sprint only, collect all issues for display/backlog
@@ -152,24 +155,35 @@
           for (let issue of batch.issues) {
             let type = issue.fields.issuetype && issue.fields.issuetype.name;
             if (type === "Epic") continue;
-            let epic = issue.fields['customfield_10008'] || "No Epic";
-            if (!epicMap[epic]) epicMap[epic] = [];
+            let parent = issue.fields.parent;
+            let isEpic = parent && parent.fields && parent.fields.issuetype && parent.fields.issuetype.name === "Epic";
+            let epicKey = isEpic ? parent.key : "No Epic";
+            let epicSummary = isEpic ? parent.fields.summary : "";
+            let sprintsArr = issue.fields.customfield_10005 || [];
+            let currentSprint = (sprintsArr.find(s => s.state === "active") || sprintsArr[sprintsArr.length-1] || {}).name || "None";
+            let responsibleTeams = (issue.fields.customfield_12600 || []).join(', ');
             let status = issue.fields.status && issue.fields.status.name;
-            epicMap[epic].push({
+            let pts = Number(issue.fields.customfield_10002) || 1;
+            if (!epicMap[epicKey]) epicMap[epicKey] = [];
+            epicMap[epicKey].push({
               key: issue.key,
               summary: issue.fields.summary,
               status: status,
-              epic: epic,
-              team: issue.fields['customfield_10104'] || "",
-              points: Number(issue.fields['customfield_10006']) || 1
+              epic: epicKey,
+              epicSummary: epicSummary,
+              team: responsibleTeams,
+              sprint: currentSprint,
+              points: pts
             });
             stories.push({
               key: issue.key,
               summary: issue.fields.summary,
               status: status,
-              epic: epic,
-              team: issue.fields['customfield_10104'] || "",
-              points: Number(issue.fields['customfield_10006']) || 1
+              epic: epicKey,
+              epicSummary: epicSummary,
+              team: responsibleTeams,
+              sprint: currentSprint,
+              points: pts
             });
           }
         }
@@ -187,7 +201,7 @@
         `<input class="editarr" type="number" min="0" value="${v}" onchange="editVelocity(this,${i})">`).join(', ');
       document.getElementById('velocityWrap').innerHTML = vhtml;
       // Backlog: sum of points for not-done stories
-      let backlog = editableData.filter(s => s.status !== "Done")
+      let backlog = editableData.filter(s => !s.status.toLowerCase().includes("done") && !s.status.toLowerCase().includes("closed"))
         .reduce((a,b) => a+Number(b.points), 0);
       document.getElementById('backlogInput').value = backlog;
       // Table
@@ -216,7 +230,11 @@
       for (let epic in byEpic) {
         html += `<div class="storymap-epic"><h4>${epic}</h4>`;
         for (let story of byEpic[epic]) {
-          let c = story.status === "Done" ? "story-done" : story.status === "In Progress" ? "story-indev" : "story-open";
+          let c = story.status.toLowerCase().includes("done") || story.status.toLowerCase().includes("closed")
+            ? "story-done"
+            : story.status.toLowerCase().includes("progress") || story.status.toLowerCase().includes("development")
+              ? "story-indev"
+              : "story-open";
           html += `<span class="story-badge ${c}">${story.key}: ${story.summary}</span>`;
         }
         html += `</div>`;
@@ -228,7 +246,7 @@
     function buildStoryTable() {
       const container = document.getElementById('storyTableWrap');
       let html = `<table><thead>
-        <tr><th>Epic</th><th>Story Key</th><th>Summary</th><th>Status</th><th>Team</th><th>Points</th></tr>
+        <tr><th>Epic</th><th>Story Key</th><th>Summary</th><th>Status</th><th>Team</th><th>Sprint</th><th>Points</th></tr>
         </thead><tbody>`;
       for (let i = 0; i < editableData.length; i++) {
         const s = editableData[i];
@@ -238,12 +256,13 @@
           <td>${s.summary}</td>
           <td>
             <select data-idx="${i}" onchange="editStatus(this)">
-              <option${s.status==='Done'?' selected':''}>Done</option>
-              <option${s.status==='In Progress'?' selected':''}>In Progress</option>
-              <option${s.status==='To Do'?' selected':''}>To Do</option>
+              <option${s.status.toLowerCase().includes('done')||s.status.toLowerCase().includes('closed')?' selected':''}>Done</option>
+              <option${s.status.toLowerCase().includes('progress')||s.status.toLowerCase().includes('development')?' selected':''}>In Progress</option>
+              <option${!(s.status.toLowerCase().includes('done')||s.status.toLowerCase().includes('closed')||s.status.toLowerCase().includes('progress')||s.status.toLowerCase().includes('development'))?' selected':''}>To Do</option>
             </select>
           </td>
           <td>${s.team}</td>
+          <td>${s.sprint}</td>
           <td><input type="number" min="1" style="width:40px" value="${s.points}" data-idx="${i}" onchange="editPoints(this)"></td>
         </tr>`;
       }
