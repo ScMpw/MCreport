@@ -89,21 +89,26 @@
       boardNum = document.getElementById('boardNum').value.trim();
       if (!jiraDomain || !boardNum) return alert("Enter Jira domain and board number.");
       // Fetch only recent 20 sprints:
-      const url = `https://${jiraDomain}/rest/agile/1.0/board/${boardNum}/sprint?state=active,closed,future&maxResults=20`;
+     const url = `https://${jiraDomain}/rest/agile/1.0/board/${boardNum}/sprint?state=active,closed&maxResults=100`;
       try {
         const resp = await fetch(url, { credentials: "include" });
         const data = await resp.json();
         if (data.values && data.values.length) {
-          sprints = data.values;
-          closedSprintsSorted = data.values.filter(s => s.state === "closed" && s.endDate)
-            .sort((a,b) => new Date(a.endDate) - new Date(b.endDate));
+          // Most recent closed sprints first
+          let closed = data.values.filter(s => s.state === "closed" && s.endDate)
+            .sort((a, b) => new Date(b.endDate) - new Date(a.endDate));
+          let active = data.values.filter(s => s.state === "active");
+          let recent = active.concat(closed).slice(0, 20);
+          sprints = recent;
+          closedSprintsSorted = closed;
           populateSprintDropdown();
         } else {
           alert("No sprints found for this board.");
         }
-      } catch (e) {
-        alert("Failed to fetch sprints. CORS? Are you logged into Jira?");
-      }
+} catch (e) {
+  alert("Failed to fetch sprints. CORS? Are you logged into Jira?");
+}
+
     }
     function populateSprintDropdown() {
       const sel = document.getElementById('sprintSelect');
