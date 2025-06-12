@@ -133,7 +133,7 @@
     const sel = document.getElementById('sprintSelect');
     sel.innerHTML = '';
     // Sort by startDate descending (most recent at top)
-    sprints.sort((a,b) => new Date(b.startDate||0) - new Date(a.startDate||0));
+    sprints.sort((a,b) => new Date(a.startDate||0) - new Date(b.startDate||0));
     sprints.forEach(sprint => {
       const opt = document.createElement('option');
       opt.value = sprint.id;
@@ -142,23 +142,9 @@
       sel.appendChild(opt);
     });
     document.getElementById('sprintRow').style.display = '';
-  }
-
     }
 
-    function populateSprintDropdown() {
-      const sel = document.getElementById('sprintSelect');
-      sel.innerHTML = '';
-      sprints.sort((a,b) => new Date(a.startDate||0) - new Date(b.startDate||0));
-      sprints.forEach(sprint => {
-        const opt = document.createElement('option');
-        opt.value = sprint.id;
-        opt.textContent = (sprint.state === "active" ? "🟢 " : "") + sprint.name;
-        sel.appendChild(opt);
-      });
-      document.getElementById('sprintRow').style.display = '';
-    }
-
+    
     // --- MAIN DATA FETCH (Epics/Stories/Velocity) ---
     async function fetchAll() {
       selectedSprintId = document.getElementById('sprintSelect').value;
