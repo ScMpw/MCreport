@@ -2,74 +2,84 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Stakeholder Report (Jira + MCW, MCW-style Visualisation)</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <title>Stakeholder Report (All Epics, True Monte Carlo, Epic Status)</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <style>
-    body { font-family: Arial, sans-serif; margin: 30px; background: #f9f9f9; }
+    body { font-family: Arial, sans-serif; margin: 30px; background: #f7f7f8; }
     h1 { font-size: 1.6em; }
     .btn { background: #6366f1; color: #fff; border: none; border-radius: 6px; padding: 7px 15px; cursor: pointer; margin-right: 8px;}
     .btn:disabled { background: #aaa; }
     .section-title { font-size: 1.2em; margin-bottom: .2em; }
-    .storymap-epic { background: #fff; border-radius: 10px; box-shadow: 0 0 4px #ddd; padding: 1em; min-width: 180px;}
-    .story-badge { display: block; border-radius: 6px; padding: 2px 6px; margin: 2px 0; }
-    .story-done { background: #bbf7d0; }
-    .story-indev { background: #fde68a; }
-    .story-open { background: #f1f5f9; }
-    .summary-box { background: #fff; border-radius: 12px; box-shadow: 0 0 8px #eee; padding: 1em; margin-bottom: 2em;}
+    .epic-summary { background: #fff; border-radius: 12px; box-shadow: 0 2px 8px #eee; padding: 1em; margin-bottom: 2em;}
+    .epic-title { font-size: 1.18em; font-weight: bold; }
+    .epic-breakdown { margin: 0.2em 0 1em 0; font-size: 1em;}
     .risk-high { color: #e11d48; font-weight: bold; }
     .risk-low { color: #10b981; font-weight: bold; }
-    .targetSprintBox { margin: 1em 0 1em 0; }
-    .targetSprintBox label { margin-right: .5em; }
-    table { border-collapse: collapse; background: #fff; }
-    th, td { border: 1px solid #ccc; padding: 6px 10px; }
-    th { background: #f0f0f0; }
+    .toggle-details { background: #d1d5db; color: #222; border: none; border-radius: 4px; cursor: pointer; font-size: 0.95em; margin-top: 10px; margin-bottom: 10px; padding: 3px 11px;}
+    .toggle-details.open { background: #a5b4fc; color: #222;}
+    .story-table, .change-table { border-collapse: collapse; background: #fff; margin-bottom: 1em;}
+    .story-table th, .story-table td, .change-table th, .change-table td { border: 1px solid #ddd; padding: 6px 10px; font-size: 0.96em;}
+    .story-table th, .change-table th { background: #f0f0f0; }
+    .summary-list { list-style: disc inside; margin: .5em 0 0 0;}
     .editarr { width: 60px; }
+    .legend-block { margin-bottom: 2em; }
+    .legend-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 4px; }
+    .status-done { background: #34d399; }
+    .status-progress { background: #facc15; }
+    .status-open { background: #dbeafe; }
+    .status-new { background: #a5b4fc; }
+    .status-removed { background: #fca5a5; }
+    .scope-growth { color: #be123c; font-weight: bold;}
+    .scope-shrink { color: #166534; font-weight: bold;}
     @media print { .no-print { display: none !important; } }
   </style>
 </head>
 <body>
-  <h1>Stakeholder Report Generator (Jira + MCW Probability Curve)</h1>
-  <div class="input-row">
+  <h1>Stakeholder Report Generator (All Epics, True Monte Carlo, Epic Status)</h1>
+  <div class="legend-block">
+    <b>Legend:</b>
+    <span class="legend-dot status-done"></span>Done&nbsp;
+    <span class="legend-dot status-progress"></span>In Progress&nbsp;
+    <span class="legend-dot status-open"></span>Ready/Open&nbsp;
+    <span class="legend-dot status-new"></span>New Story&nbsp;
+    <span class="legend-dot status-removed"></span>Removed Story
+  </div>
+  <div>
     <label>Jira Domain: <input id="jiraDomain" value="aldi-sued.atlassian.net" size="30"></label>
     <label>Board Number: <input id="boardNum" value="" size="6"></label>
     <button class="btn" onclick="fetchSprints()">Fetch Sprints</button>
     <span class="tip">Login to Jira, enable your CORS plugin if needed.</span>
   </div>
-  <div class="input-row" id="sprintRow" style="display:none;">
+  <div id="sprintRow" style="display:none;">
     <label>Sprint:
       <select id="sprintSelect"></select>
     </label>
-    <button class="btn" onclick="fetchIssues()">Fetch Issues</button>
+    <button class="btn" onclick="mainFetchAll()">Fetch All Data & Generate Report</button>
   </div>
 
   <div id="importArea" style="display:none;">
     <div class="section-title">Velocity History (editable, last 6 closed sprints):</div>
     <div id="velocityWrap"></div>
-    <div class="targetSprintBox">
-      <label>Target sprints to finish (for forecast):</label>
-      <input id="targetSprintsInput" type="number" min="1" max="20" value="4" style="width:60px">
-      <button class="btn" onclick="runAllEpicSimulations()">Run Simulations</button>
-      <button class="btn" onclick="exportPDF()">Download PDF Report</button>
-    </div>
+    <div class="section-title" style="margin-top: 1em;">Target sprints for delivery (affects forecast):</div>
+    <input id="targetSprintsInput" type="number" min="1" max="20" value="4" style="width:60px">
+    <button class="btn" onclick="runAllEpicSimulations()">Run Simulations</button>
+    <button class="btn" onclick="exportPDF()">Download PDF Report</button>
     <hr>
-    <div class="section-title">Epic Story Maps & Monte Carlo Forecasts</div>
     <div id="epicSimResults"></div>
-    <hr>
-    <div class="section-title">Editable Story Table</div>
-    <div id="storyTableWrap"></div>
   </div>
 
   <script>
     // Globals
-    let jiraDomain = '', boardNum = '', sprints = [];
-    let stories = [], epicStoryMap = {};
+    let jiraDomain = '', boardNum = '', sprints = [], closedSprintsSorted = [];
+    let allEpics = {};
+    let epicStories = {};
+    let epicStoriesBaseline = {};
     let velocityArr = [];
-    let selectedSprintId = '';
-    let selectedSprintName = '';
-    let editableData = [];
-    let closedSprintsSorted = [];
+    let selectedSprintId = '', selectedSprintName = '';
+    let baselineSprintId = '';
+    let baselineIsFirstPI = false;
 
     // ---- FETCH SPRINTS ----
     async function fetchSprints() {
@@ -82,8 +92,7 @@
         const data = await resp.json();
         if (data.values && data.values.length) {
           sprints = data.values;
-          closedSprintsSorted = data.values
-            .filter(s => s.state === "closed" && s.endDate)
+          closedSprintsSorted = data.values.filter(s => s.state === "closed" && s.endDate)
             .sort((a,b) => new Date(a.endDate) - new Date(b.endDate));
           populateSprintDropdown();
         } else {
@@ -106,97 +115,117 @@
       document.getElementById('sprintRow').style.display = '';
     }
 
-    // ---- FETCH ISSUES ----
-    async function fetchIssues() {
+    // ---- MAIN FETCH ALL ----
+    async function mainFetchAll() {
       selectedSprintId = document.getElementById('sprintSelect').value;
       selectedSprintName = document.getElementById('sprintSelect').selectedOptions[0].textContent;
       if (!selectedSprintId) return alert("Select a sprint.");
 
-      let currentSprintObj = sprints.find(s => String(s.id) === String(selectedSprintId));
-      let currEndDate = currentSprintObj && currentSprintObj.endDate ? new Date(currentSprintObj.endDate) : new Date();
-      let velocityClosedSprints = closedSprintsSorted
-        .filter(s => new Date(s.endDate) <= currEndDate)
-        .slice(-6);
+      // 1. Identify baseline: first closed sprint in PI, or previous closed sprint
+      let currSprintObj = sprints.find(s => String(s.id) === String(selectedSprintId));
+      let allPIClosed = closedSprintsSorted.filter(s =>
+        s.name.includes(currSprintObj.name.split(' ')[0])
+      );
+      let firstPISprint = allPIClosed[0];
+      let currIdx = closedSprintsSorted.findIndex(s => String(s.id) === String(selectedSprintId));
+      let baselineIdx = currIdx > 0 ? currIdx - 1 : 0;
+      baselineIsFirstPI = (closedSprintsSorted[baselineIdx].id === firstPISprint.id);
+      baselineSprintId = closedSprintsSorted[baselineIdx].id;
 
-      let sprintIdsToFetch = velocityClosedSprints.map(s=>s.id);
-      if (!sprintIdsToFetch.includes(Number(selectedSprintId))) {
-        sprintIdsToFetch.push(Number(selectedSprintId));
-      }
+      // 2. Fetch all stories in selected sprint, find all involved epics
+      let jql = encodeURIComponent(`sprint = ${selectedSprintId} ORDER BY key`);
+      let url = `https://${jiraDomain}/rest/api/3/search?jql=${jql}&fields=summary,parent,customfield_10002,customfield_10005,customfield_12600,status,issuetype&maxResults=500`;
+      let epicKeysSet = new Set();
+      try {
+        const resp = await fetch(url, { credentials: "include" });
+        const data = await resp.json();
+        if (data.issues && data.issues.length) {
+          for (let issue of data.issues) {
+            if (issue.fields.issuetype && issue.fields.issuetype.name === "Epic") continue;
+            let parent = issue.fields.parent;
+            if (parent && parent.fields && parent.fields.issuetype && parent.fields.issuetype.name === "Epic") {
+              epicKeysSet.add(parent.key);
+              allEpics[parent.key] = parent.fields.summary;
+            }
+          }
+        }
+      } catch (e) { alert("Error fetching stories for selected sprint"); return; }
 
-      let allIssues = [];
-      for (let sid of sprintIdsToFetch) {
-        const jql = encodeURIComponent(`sprint = ${sid} ORDER BY key`);
-        const url = `https://${jiraDomain}/rest/api/3/search?jql=${jql}&fields=summary,status,parent,customfield_10002,customfield_12600,customfield_10005,issuetype&expand=parent.fields&maxResults=200`;
+      // 3. For each epic, fetch all stories for that epic (not just those in sprints)
+      epicStories = {};
+      await Promise.all(Array.from(epicKeysSet).map(async epicKey => {
+        let eq = encodeURIComponent(`"Epic Link" = ${epicKey}`);
+        let urlEpic = `https://${jiraDomain}/rest/api/3/search?jql=${eq}&fields=summary,status,customfield_10002,customfield_12600,created,resolutiondate,issuetype,customfield_10005&maxResults=500`;
         try {
-          const resp = await fetch(url, { credentials: "include" });
+          const resp = await fetch(urlEpic, { credentials: "include" });
           const data = await resp.json();
-          if (data.issues && data.issues.length) {
-            allIssues.push({sprint: sid, issues: data.issues});
-          }
+          epicStories[epicKey] = data.issues.map(story => ({
+            key: story.key,
+            summary: story.fields.summary,
+            status: story.fields.status && story.fields.status.name,
+            points: Number(story.fields.customfield_10002) || 0,
+            team: (story.fields.customfield_12600 || []).join(', '),
+            created: story.fields.created,
+            resolved: story.fields.resolutiondate,
+            sprint: (story.fields.customfield_10005||[]).map(s=>s.name).join(', '),
+          }));
         } catch (e) {
-          alert("Failed to fetch issues for sprint " + sid);
+          epicStories[epicKey] = [];
         }
-      }
+      }));
 
-      let velocityArrRaw = [];
-      let epicMap = {};
-      stories = [];
-      for (let i = 0; i < velocityClosedSprints.length; i++) {
-        let sid = velocityClosedSprints[i].id;
-        let batch = allIssues.find(b => Number(b.sprint) === Number(sid));
-        let pointsDone = 0;
-        if (batch) {
-          for (let issue of batch.issues) {
-            let typeObj = issue.fields.issuetype;
-            if (typeObj && (typeObj.subtask || typeObj.name === "Epic")) continue;
-            let pts = Number(issue.fields.customfield_10002) || 1;
-            let status = issue.fields.status && issue.fields.status.name;
-            if (status && (status.toLowerCase().includes("done") || status.toLowerCase().includes("closed"))) pointsDone += pts;
+      // 4. Fetch for baseline sprint (for change detection)
+      epicStoriesBaseline = {};
+      await Promise.all(Array.from(epicKeysSet).map(async epicKey => {
+        let eq = encodeURIComponent(`"Epic Link" = ${epicKey}`);
+        let urlEpic = `https://${jiraDomain}/rest/api/3/search?jql=${eq}&fields=summary,status,customfield_10002,customfield_12600,created,resolutiondate,issuetype,customfield_10005&maxResults=500`;
+        try {
+          const resp = await fetch(urlEpic, { credentials: "include" });
+          const data = await resp.json();
+          epicStoriesBaseline[epicKey] = data.issues
+            .filter(story => {
+              // Story is considered "in" the baseline if created <= baseline sprint end
+              let created = new Date(story.fields.created);
+              let baseSprint = closedSprintsSorted.find(s=>s.id==baselineSprintId);
+              return created <= new Date(baseSprint.endDate);
+            })
+            .map(story => ({
+              key: story.key,
+              summary: story.fields.summary,
+              status: story.fields.status && story.fields.status.name,
+              points: Number(story.fields.customfield_10002) || 0,
+              team: (story.fields.customfield_12600 || []).join(', '),
+              created: story.fields.created,
+              resolved: story.fields.resolutiondate,
+              sprint: (story.fields.customfield_10005||[]).map(s=>s.name).join(', '),
+            }));
+        } catch (e) {
+          epicStoriesBaseline[epicKey] = [];
+        }
+      }));
+
+      // 5. Velocity for last 6 closed sprints
+      velocityArr = [];
+      let last6Closed = closedSprintsSorted.slice(-6);
+      for (let sprint of last6Closed) {
+        let jqlV = encodeURIComponent(`sprint = ${sprint.id}`);
+        let urlV = `https://${jiraDomain}/rest/api/3/search?jql=${jqlV}&fields=status,customfield_10002,issuetype&maxResults=500`;
+        try {
+          const resp = await fetch(urlV, { credentials: "include" });
+          const data = await resp.json();
+          let pts = 0;
+          if (data.issues && data.issues.length) {
+            for (let issue of data.issues) {
+              if (issue.fields.issuetype && issue.fields.issuetype.name === "Epic") continue;
+              let status = issue.fields.status && issue.fields.status.name;
+              if (status && (status.toLowerCase().includes("done") || status.toLowerCase().includes("closed"))) {
+                pts += Number(issue.fields.customfield_10002) || 0;
+              }
+            }
           }
-        }
-        velocityArrRaw.push(pointsDone);
+          velocityArr.push(pts);
+        } catch (e) { velocityArr.push(0);}
       }
-
-      let selectedBatch = allIssues.find(b => Number(b.sprint) === Number(selectedSprintId));
-      if (selectedBatch) {
-        for (let issue of selectedBatch.issues) {
-          let typeObj = issue.fields.issuetype;
-          if (typeObj && (typeObj.subtask || typeObj.name === "Epic")) continue;
-          let parent = issue.fields.parent;
-          let isEpic = parent && parent.fields && parent.fields.issuetype && parent.fields.issuetype.name === "Epic";
-          let epicKey = isEpic ? parent.key : "No Epic";
-          let epicSummary = isEpic ? parent.fields.summary : "";
-          let sprintsArr = issue.fields.customfield_10005 || [];
-          let currentSprint = (sprintsArr.find(s => s.state === "active") || sprintsArr[sprintsArr.length-1] || {}).name || "None";
-          let responsibleTeams = (issue.fields.customfield_12600 || []).join(', ');
-          let status = issue.fields.status && issue.fields.status.name;
-          let pts = Number(issue.fields.customfield_10002) || 1;
-          if (!epicMap[epicKey]) epicMap[epicKey] = [];
-          epicMap[epicKey].push({
-            key: issue.key,
-            summary: issue.fields.summary,
-            status: status,
-            epic: epicKey,
-            epicSummary: epicSummary,
-            team: responsibleTeams,
-            sprint: currentSprint,
-            points: pts
-          });
-          stories.push({
-            key: issue.key,
-            summary: issue.fields.summary,
-            status: status,
-            epic: epicKey,
-            epicSummary: epicSummary,
-            team: responsibleTeams,
-            sprint: currentSprint,
-            points: pts
-          });
-        }
-      }
-      epicStoryMap = epicMap;
-      velocityArr = velocityArrRaw;
-      editableData = stories.map(s => ({ ...s }));
       showImportArea();
     }
 
@@ -204,82 +233,52 @@
       let vhtml = velocityArr.map((v, i) =>
         `<input class="editarr" type="number" min="0" value="${v}" onchange="editVelocity(this,${i})">`).join(', ');
       document.getElementById('velocityWrap').innerHTML = vhtml;
-      buildStoryTable();
       document.getElementById('importArea').style.display = '';
       document.getElementById('epicSimResults').innerHTML = '';
     }
-    function editVelocity(inp, idx) {
-      velocityArr[idx] = Number(inp.value) || 0;
-    }
+    function editVelocity(inp, idx) { velocityArr[idx] = Number(inp.value) || 0; }
 
-    function buildStoryMap(epicKey) {
-      let byEpic = epicStoryMap[epicKey] || [];
-      let html = `<div class="storymap-epic"><h4>${epicKey}</h4>`;
-      for (let story of byEpic) {
-        let c = story.status.toLowerCase().includes("done") || story.status.toLowerCase().includes("closed")
-          ? "story-done"
-          : story.status.toLowerCase().includes("progress") || story.status.toLowerCase().includes("development")
-            ? "story-indev"
-            : "story-open";
-        html += `<span class="story-badge ${c}">${story.key}: ${story.summary}</span>`;
-      }
-      html += `</div>`;
-      return html;
-    }
-
-    function buildStoryTable() {
-      const container = document.getElementById('storyTableWrap');
-      let html = `<table><thead>
-        <tr><th>Epic</th><th>Story Key</th><th>Summary</th><th>Status</th><th>Team</th><th>Sprint</th><th>Points</th></tr>
-        </thead><tbody>`;
-      for (let i = 0; i < editableData.length; i++) {
-        const s = editableData[i];
-        html += `<tr>
-          <td>${s.epic}</td>
-          <td>${s.key}</td>
-          <td>${s.summary}</td>
-          <td>
-            <select data-idx="${i}" onchange="editStatus(this)">
-              <option${s.status.toLowerCase().includes('done')||s.status.toLowerCase().includes('closed')?' selected':''}>Done</option>
-              <option${s.status.toLowerCase().includes('progress')||s.status.toLowerCase().includes('development')?' selected':''}>In Progress</option>
-              <option${!(s.status.toLowerCase().includes('done')||s.status.toLowerCase().includes('closed')||s.status.toLowerCase().includes('progress')||s.status.toLowerCase().includes('development'))?' selected':''}>To Do</option>
-            </select>
-          </td>
-          <td>${s.team}</td>
-          <td>${s.sprint}</td>
-          <td><input type="number" min="1" style="width:40px" value="${s.points}" data-idx="${i}" onchange="editPoints(this)"></td>
-        </tr>`;
-      }
-      html += '</tbody></table>';
-      container.innerHTML = html;
-    }
-    window.editStatus = function(sel) {
-      const idx = sel.getAttribute('data-idx');
-      editableData[idx].status = sel.value;
-    }
-    window.editPoints = function(input) {
-      const idx = input.getAttribute('data-idx');
-      editableData[idx].points = Number(input.value) || 1;
-    }
-
-    // ---- MCW SIMULATION with Probability Cone ----
+    // ---- MCW SIMULATION & UI ----
     function runAllEpicSimulations() {
       let velocity = velocityArr.filter(v => v>0);
-      const resultsArea = document.getElementById('epicSimResults');
       const targetSprints = Number(document.getElementById('targetSprintsInput').value) || 4;
+      const resultsArea = document.getElementById('epicSimResults');
       resultsArea.innerHTML = '';
-      Object.keys(epicStoryMap).forEach((epicKey, epicIdx) => {
-        const epicStories = epicStoryMap[epicKey];
-        const notDone = epicStories.filter(s =>
-          !(s.status.toLowerCase().includes("done") || s.status.toLowerCase().includes("closed"))
-        );
-        const backlog = notDone.reduce((sum, s) => sum + Number(s.points), 0);
-        if (backlog === 0) return;
+
+      Object.keys(epicStories).forEach((epicKey, idx) => {
+        const allStories = epicStories[epicKey];
+        if (!allStories || !allStories.length) return;
+
+        // Status mapping
+        const statusGroup = s => {
+          s = (s||"").toLowerCase();
+          if (s.includes("done") || s.includes("closed")) return "Done";
+          if (s.includes("progress") || s.includes("development")) return "In Progress";
+          if (s === "ready" || s === "open") return "Ready/Open";
+          return "Other";
+        };
+
+        // Breakdown & MC backlog
+        let ptsDone = 0, ptsIndev = 0, ptsOpen = 0, ptsOther = 0;
+        let done = [], indev = [], open = [], other = [];
+        allStories.forEach(story => {
+          let grp = statusGroup(story.status);
+          if (grp === "Done") { ptsDone += story.points; done.push(story);}
+          else if (grp === "In Progress") { ptsIndev += story.points; indev.push(story);}
+          else if (grp === "Ready/Open") { ptsOpen += story.points; open.push(story);}
+          else { ptsOther += story.points; other.push(story);}
+        });
+        const totalEstimate = ptsDone + ptsIndev + ptsOpen + ptsOther;
+        const backlog = ptsIndev + ptsOpen + ptsOther;
+
+        // Monte Carlo: only remaining stories (not done)
+        const backlogStories = allStories.filter(story => statusGroup(story.status) !== "Done");
+        let backlogPts = backlogStories.reduce((sum, s) => sum + s.points, 0);
 
         // MCW: Run MC simulation
         const mcRuns = [];
         for (let i=0; i<10000; i++) {
-          let b = backlog, s=0;
+          let b = backlogPts, s=0;
           while (b>0 && s<100) {
             let v = velocity[Math.floor(Math.random()*velocity.length)];
             if (v<1) v=1;
@@ -296,42 +295,110 @@
           const idx = Math.floor((pct/100)*(mcRuns.length-1));
           return mcRuns[idx];
         });
-
-        // Table of percentiles (same grid as chart)
-        let probTable = `<table><tr>${probGrid.map(x=>`<th>${x}%</th>`).join('')}</tr>
-        <tr>${yValues.map(x=>`<td>${x}</td>`).join('')}</tr></table>`;
-
-        const neededVelocity = Math.ceil(backlog / targetSprints);
+        const neededVelocity = Math.ceil(backlogPts / targetSprints);
         const percentile75 = mcRuns[Math.floor(0.75*mcRuns.length)];
+
+        // --- Epic Change Detection ---
+        let baseStories = (epicStoriesBaseline[epicKey]||[]);
+        let baseKeys = new Set(baseStories.map(s=>s.key));
+        let currKeys = new Set(allStories.map(s=>s.key));
+        // New stories since baseline
+        let newStories = allStories.filter(s=>!baseKeys.has(s.key));
+        // Removed stories since baseline
+        let removedStories = baseStories.filter(s=>!currKeys.has(s.key));
+        // Points done since baseline
+        let baseDone = baseStories.filter(s=>statusGroup(s.status)==="Done").map(s=>s.points).reduce((a,b)=>a+b,0);
+        let doneSince = ptsDone - baseDone;
+        let estimateBaseline = baseStories.map(s=>s.points).reduce((a,b)=>a+b,0);
+        let deltaEstimate = totalEstimate - estimateBaseline;
+
+        // --- UI BLOCK ---
         let html = `
-          <div class="summary-box">
-            <h3>Epic: ${epicKey} (${epicStories[0]?.epicSummary || ''})</h3>
-            <b>Remaining stories:</b> ${notDone.length} | <b>Backlog (points):</b> ${backlog}<br>
-            ${buildStoryMap(epicKey)}
-            <ul>
-              <li>Median (50% conf): ${mcRuns[Math.floor(0.5*mcRuns.length)]} sprints</li>
-              <li>75% confidence: ${percentile75} sprints</li>
-              <li>90% confidence: ${mcRuns[Math.floor(0.9*mcRuns.length)]} sprints</li>
-              <li>95% confidence: ${mcRuns[Math.floor(0.95*mcRuns.length)]} sprints</li>
-            </ul>
-            <span class="${percentile75>targetSprints?'risk-high':'risk-low'}">
-              ${
-                percentile75<=targetSprints
-                  ? `Good: Likely deliverable within <b>${targetSprints}</b> sprints.`
-                  : `Warning: At 75% confidence, NOT likely deliverable in <b>${targetSprints}</b> sprints.<br>
-                    <b>Required average velocity:</b> <u>${neededVelocity} points/sprint</u> to deliver in ${targetSprints} sprints.`
-              }
-            </span>
-            <div style="width:100%; max-width:550px"><canvas id="mcChart${epicIdx}" height="170"></canvas></div>
-            <div style="margin-top:1em;"><b>Probability Table:</b> ${probTable}</div>
+          <div class="epic-summary">
+            <div class="epic-title">${epicKey}: ${allEpics[epicKey]||""}</div>
+            <div class="epic-breakdown">
+              <b>Total Estimate:</b> ${totalEstimate} SP
+              &nbsp; | &nbsp;<span class="legend-dot status-done"></span> Done: ${ptsDone}
+              &nbsp; | &nbsp;<span class="legend-dot status-progress"></span> In Progress: ${ptsIndev}
+              &nbsp; | &nbsp;<span class="legend-dot status-open"></span> Ready/Open: ${ptsOpen+ptsOther}
+              &nbsp; | &nbsp;<b>Remaining:</b> ${backlog} SP
+            </div>
+            <div style="margin-bottom:8px;">
+              <b>Monte Carlo Forecast:</b><br>
+              <div style="width:100%; max-width:550px"><canvas id="mcChart${idx}" height="150"></canvas></div>
+              <small>Horizontal axis: Probability (%). Vertical: Sprints needed.</small>
+              <br>
+              <b>Probability Table:</b> <table class="change-table" style="display:inline-block;margin-left:1em;">
+                <tr><th>Confidence</th><th>Sprints Needed</th></tr>
+                <tr><td>50%</td><td>${mcRuns[Math.floor(0.5*mcRuns.length)]}</td></tr>
+                <tr><td>75%</td><td>${mcRuns[Math.floor(0.75*mcRuns.length)]}</td></tr>
+                <tr><td>95%</td><td>${mcRuns[Math.floor(0.95*mcRuns.length)]}</td></tr>
+              </table>
+              <br>
+              <span class="${percentile75 > targetSprints ? 'risk-high' : 'risk-low'}">
+                ${percentile75 > targetSprints ?
+                  `At 75% confidence, cannot deliver in <b>${targetSprints}</b> sprints.<br>
+                  <b>Required average velocity:</b> <u>${neededVelocity} points/sprint</u> to deliver in ${targetSprints} sprints.`
+                  :
+                  `At 75% confidence, likely deliverable within <b>${targetSprints}</b> sprints.<br>
+                  Current avg. velocity is sufficient.`
+                }
+              </span>
+            </div>
+            <button class="toggle-details" onclick="toggleDetails(this,'details${idx}')">Show Details</button>
+            <div id="details${idx}" style="display:none;">
+              <div style="margin-top:1em;"><b>All Stories in Epic:</b></div>
+              <table class="story-table">
+                <tr>
+                  <th>Key</th><th>Summary</th><th>Status</th><th>Points</th><th>Responsible Team</th><th>Created</th><th>Resolved</th><th>Sprint(s)</th>
+                </tr>
+                ${allStories.map(story=>`
+                  <tr>
+                    <td>${story.key}</td>
+                    <td>${story.summary}</td>
+                    <td>
+                      <span class="legend-dot ${statusClass(statusGroup(story.status))}"></span>
+                      ${story.status||''}
+                    </td>
+                    <td>${story.points}</td>
+                    <td>${story.team}</td>
+                    <td>${story.created?story.created.substr(0,10):""}</td>
+                    <td>${story.resolved?story.resolved.substr(0,10):""}</td>
+                    <td>${story.sprint}</td>
+                  </tr>
+                `).join('')}
+              </table>
+              <div><b>Change Table (vs ${baselineIsFirstPI ? "PI start" : "last sprint"}):</b></div>
+              <table class="change-table">
+                <tr><th>Change Type</th><th>Count</th><th>Points</th></tr>
+                <tr><td>Points Done since baseline</td><td>${doneSince}</td><td></td></tr>
+                <tr><td><span class="legend-dot status-new"></span>New Stories</td><td>${newStories.length}</td><td>${newStories.reduce((a,b)=>a+b.points,0)}</td></tr>
+                <tr><td><span class="legend-dot status-removed"></span>Removed Stories</td><td>${removedStories.length}</td><td>${removedStories.reduce((a,b)=>a+b.points,0)}</td></tr>
+                <tr>
+                  <td>Scope Change</td>
+                  <td colspan="2">${deltaEstimate===0 ? "No change"
+                      : (deltaEstimate>0?'<span class="scope-growth">Scope increased (+'
+                        +deltaEstimate+')</span>':'<span class="scope-shrink">Scope reduced ('+deltaEstimate+')</span>')}</td>
+                </tr>
+              </table>
+            </div>
           </div>
         `;
         resultsArea.innerHTML += html;
-        setTimeout(()=>drawMCWCone(`mcChart${epicIdx}`, probGrid, yValues, epicKey),0);
+        setTimeout(()=>drawMCWCone(`mcChart${idx}`, probGrid, yValues, epicKey),0);
       });
     }
-
-    // MCW-style cumulative probability line chart
+    function statusClass(group) {
+      if (group === "Done") return "status-done";
+      if (group === "In Progress") return "status-progress";
+      if (group === "Ready/Open") return "status-open";
+      return "";
+    }
+    function toggleDetails(btn, id) {
+      let el = document.getElementById(id);
+      if (el.style.display === "none") { el.style.display = ""; btn.classList.add("open"); btn.textContent="Hide Details"; }
+      else { el.style.display = "none"; btn.classList.remove("open"); btn.textContent="Show Details"; }
+    }
     function drawMCWCone(canvasId, probGrid, yValues, label) {
       const ctx = document.getElementById(canvasId).getContext('2d');
       new Chart(ctx, {
