@@ -85,41 +85,65 @@
 
     // --- ROBUST SPRINT FETCH & SELECTION (paginated) ---
     async function fetchAllSprints() {
-      jiraDomain = document.getElementById('jiraDomain').value.trim();
-      boardNum = document.getElementById('boardNum').value.trim();
-      if (!jiraDomain || !boardNum) return alert("Enter Jira domain and board number.");
-
-      let allSprintsArr = [];
-      let startAt = 0;
-      let keepFetching = true;
-      while (keepFetching) {
-        const url = `https://${jiraDomain}/rest/agile/1.0/board/${boardNum}/sprint?state=active,closed&maxResults=100&startAt=${startAt}`;
-        try {
-          const resp = await fetch(url, { credentials: "include" });
-          const data = await resp.json();
-          if (data.values && data.values.length) {
-            allSprintsArr = allSprintsArr.concat(data.values);
-            if (data.isLast || data.values.length < 100) {
-              keepFetching = false;
-            } else {
-              startAt += 100;
-            }
-          } else {
-            keepFetching = false;
-          }
-        } catch (e) {
-          alert("Failed to fetch sprints. CORS? Are you logged into Jira?");
+    jiraDomain = document.getElementById('jiraDomain').value.trim();
+    boardNum = document.getElementById('boardNum').value.trim();
+    if (!jiraDomain || !boardNum) return alert("Enter Jira domain and board number.");
+  
+    let allSprintsArr = [];
+    let startAt = 0;
+    let keepFetching = true;
+    while (keepFetching) {
+      const url = `https://${jiraDomain}/rest/agile/1.0/board/${boardNum}/sprint?maxResults=100&startAt=${startAt}`;
+      try {
+        const resp = await fetch(url, { credentials: "include" });
+        if (!resp.ok) {
+          const text = await resp.text();
+          console.error("API Error Response:", resp.status, text);
+          alert("API returned an error. See console for details.");
           return;
         }
+        const data = await resp.json();
+        if (data.values && data.values.length) {
+          allSprintsArr = allSprintsArr.concat(data.values);
+          if (data.isLast || data.values.length < 100) {
+            keepFetching = false;
+          } else {
+            startAt += 100;
+          }
+        } else {
+          keepFetching = false;
+        }
+      } catch (e) {
+        console.error(e);
+        alert("Failed to fetch sprints. CORS? Are you logged into Jira?");
+        return;
       }
-      // Now sort by endDate (most recent first), then slice the first 20 closed/active sprints
-      let closed = allSprintsArr.filter(s => s.state === "closed" && s.endDate)
-        .sort((a, b) => new Date(b.endDate) - new Date(a.endDate));
-      let active = allSprintsArr.filter(s => s.state === "active");
-      let recent = active.concat(closed).slice(0, 20);
-      sprints = recent;
-      closedSprintsSorted = closed;
-      populateSprintDropdown();
+    }
+    // Separate closed and active sprints for later use (if needed)
+    let closed = allSprintsArr.filter(s => s.state === "closed" && s.endDate)
+      .sort((a, b) => new Date(b.endDate) - new Date(a.endDate));
+    let active = allSprintsArr.filter(s => s.state === "active");
+    // Show all fetched sprints in the dropdown
+    sprints = active.concat(closed);
+    closedSprintsSorted = closed;
+    populateSprintDropdown();
+  }
+  
+  function populateSprintDropdown() {
+    const sel = document.getElementById('sprintSelect');
+    sel.innerHTML = '';
+    // Sort by startDate descending (most recent at top)
+    sprints.sort((a,b) => new Date(b.startDate||0) - new Date(a.startDate||0));
+    sprints.forEach(sprint => {
+      const opt = document.createElement('option');
+      opt.value = sprint.id;
+      opt.textContent = (sprint.state === "active" ? "🟢 " : "") + sprint.name +
+        (sprint.startDate ? " ("+sprint.startDate.substr(0,10)+")" : "");
+      sel.appendChild(opt);
+    });
+    document.getElementById('sprintRow').style.display = '';
+  }
+
     }
 
     function populateSprintDropdown() {
