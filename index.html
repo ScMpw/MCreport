@@ -52,7 +52,7 @@
     <div>
       <label>Jira Domain: <input id="jiraDomain" value="aldi-sued.atlassian.net" size="28"></label>
       <label>Board Number: <input id="boardNum" size="5"></label>
-    <button class="btn" onclick="fetchAllSprints()">Fetch Sprints</button>
+      <button class="btn" onclick="fetchAllSprints()">Fetch Sprints</button>
     </div>
     <div class="sprint-row" id="sprintRow" style="display:none; margin:1.1em 0;">
       <label>Sprint:
@@ -83,9 +83,13 @@
     let epicAllocations = {}, epicBacklogs = {}, epicRequiredAlloc = {};
     let epicForecastResults = {};
 
-    // --- SPRINT FETCH & SELECTION ---
+    // --- ROBUST SPRINT FETCH & SELECTION (paginated) ---
     async function fetchAllSprints() {
-      let allSprints = [];
+      jiraDomain = document.getElementById('jiraDomain').value.trim();
+      boardNum = document.getElementById('boardNum').value.trim();
+      if (!jiraDomain || !boardNum) return alert("Enter Jira domain and board number.");
+
+      let allSprintsArr = [];
       let startAt = 0;
       let keepFetching = true;
       while (keepFetching) {
@@ -94,7 +98,7 @@
           const resp = await fetch(url, { credentials: "include" });
           const data = await resp.json();
           if (data.values && data.values.length) {
-            allSprints = allSprints.concat(data.values);
+            allSprintsArr = allSprintsArr.concat(data.values);
             if (data.isLast || data.values.length < 100) {
               keepFetching = false;
             } else {
@@ -108,21 +112,16 @@
           return;
         }
       }
-      // Now sort by endDate (most recent first) and take 20
-      let closed = allSprints.filter(s => s.state === "closed" && s.endDate)
+      // Now sort by endDate (most recent first), then slice the first 20 closed/active sprints
+      let closed = allSprintsArr.filter(s => s.state === "closed" && s.endDate)
         .sort((a, b) => new Date(b.endDate) - new Date(a.endDate));
-      let active = allSprints.filter(s => s.state === "active");
+      let active = allSprintsArr.filter(s => s.state === "active");
       let recent = active.concat(closed).slice(0, 20);
       sprints = recent;
       closedSprintsSorted = closed;
       populateSprintDropdown();
     }
 
-} catch (e) {
-  alert("Failed to fetch sprints. CORS? Are you logged into Jira?");
-}
-
-    }
     function populateSprintDropdown() {
       const sel = document.getElementById('sprintSelect');
       sel.innerHTML = '';
