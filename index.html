@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>MCW Stakeholder Report - Jira Integration</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 30px; background: #f9f9f9; }
+    h1 { font-size: 1.6em; }
+    .input-row { margin-bottom: 1em; }
+    table { border-collapse: collapse; background: #fff; }
+    th, td { border: 1px solid #ccc; padding: 6px 10px; }
+    th { background: #f0f0f0; }
+    .storymap { display: flex; gap: 30px; margin-bottom: 2em;}
+    .storymap-epic { background: #fff; border-radius: 10px; box-shadow: 0 0 4px #ddd; padding: 1em; min-width: 160px;}
+    .story-badge { display: block; border-radius: 6px; padding: 2px 6px; margin: 2px 0; }
+    .story-done { background: #bbf7d0; }
+    .story-indev { background: #fde68a; }
+    .story-open { background: #f1f5f9; }
+    .btn { background: #6366f1; color: #fff; border: none; border-radius: 6px; padding: 7px 15px; cursor: pointer; margin-right: 8px;}
+    .btn:disabled { background: #aaa; }
+    .summary-box { background: #fff; border-radius: 12px; box-shadow: 0 0 8px #eee; padding: 1em; margin-bottom: 2em;}
+    .pdf-area { background: #fff; padding: 20px; border-radius: 16px; }
+    .tip { font-size: 0.92em; color: #555; }
+    .risk-high { color: #e11d48; font-weight: bold; }
+    .risk-med { color: #f59e42; font-weight: bold; }
+    .risk-low { color: #10b981; font-weight: bold; }
+    .section-title { font-size: 1.2em; margin-bottom: .2em; }
+    .story-badge input { width: 60px; }
+    .editarr { width: 60px; }
+    @media print { .no-print { display: none !important; } }
+  </style>
+</head>
+<body>
+  <h1>Stakeholder Report Generator (Jira + MCW Simulation)</h1>
+  <div class="input-row">
+    <label>Jira Domain: <input id="jiraDomain" value="aldi-sued.atlassian.net" size="30"></label>
+    <label>Board Number: <input id="boardNum" value="" size="6"></label>
+    <button class="btn" onclick="fetchSprints()">Fetch Sprints</button>
+    <span class="tip">Login to Jira, enable your CORS plugin.</span>
+  </div>
+  <div class="input-row" id="sprintRow" style="display:none;">
+    <label>Sprint:
+      <select id="sprintSelect"></select>
+    </label>
+    <button class="btn" onclick="fetchIssues()">Fetch Issues</button>
+  </div>
+
+  <div id="importArea" style="display:none;">
+    <div class="section-title">1. Velocity History (editable):</div>
+    <div id="velocityWrap"></div>
+    <div class="section-title">2. Remaining Backlog (editable):</div>
+    <div>
+      <label>Backlog Size (story points): <input id="backlogInput" type="number" min="0" value="0" style="width:80px"></label>
+    </div>
+    <div>
+      <button class="btn" onclick="runMCW()">Run Simulation</button>
+      <button class="btn" onclick="exportPDF()">Download PDF Report</button>
+    </div>
+    <hr>
+    <div class="section-title">Story Map (by Epic)</div>
+    <div id="storyMap" class="storymap"></div>
+    <hr>
+    <div class="section-title">Editable Story Table</div>
+    <div id="storyTableWrap"></div>
+    <hr>
+    <div class="section-title">Monte Carlo Simulation Results</div>
+    <div id="mcwResults"></div>
+  </div>
+
+  <script>
+    // Globals
+    let jiraDomain = '', boardNum = '', sprints = [];
+    let stories = [], epicStoryMap = {};
+    let velocityArr = [];
+    let selectedSprintId = '';
+    let selectedSprintName = '';
+    let editableData = [];
+
+    // ---- FETCH SPRINTS ----
+    async function fetchSprints() {
+      jiraDomain = document.getElementById('jiraDomain').value.trim();
+      boardNum = document.getElementById('boardNum').value.trim();
+      if (!jiraDomain || !boardNum) return alert("Enter Jira domain and board number.");
+      const url = `https://${jiraDomain}/rest/agile/1.0/board/${boardNum}/sprint?state=closed`;
+      try {
+        const resp = await fetch(url, { credentials: "include" });
+        const data = await resp.json();
+        if (data.values && data.values.length) {
+          sprints = data.values;
+          populateSprintDropdown();
+        } else {
+          alert("No sprints found for this board.");
+        }
+      } catch (e) {
+        alert("Failed to fetch sprints. CORS? Are you logged into Jira?");
+      }
+    }
+    function populateSprintDropdown() {
+      const sel = document.getElementById('sprintSelect');
+      sel.innerHTML = '';
+      sprints.forEach(sprint => {
+        const opt = document.createElement('option');
+        opt.value = sprint.id;
+        opt.textContent = sprint.name;
+        sel.appendChild(opt);
+      });
+      document.getElementById('sprintRow').style.display = '';
+    }
+
+    // ---- FETCH ISSUES ----
+    async function fetchIssues() {
+      selectedSprintId = document.getElementById('sprintSelect').value;
+      selectedSprintName = document.getElementById('sprintSelect').selectedOptions[0].textContent;
+      if (!selectedSprintId) return alert("Select a sprint.");
+      // Fetch issues for current and past 4 sprints for velocity history
+      let sprintIdx = sprints.findIndex(s => s.id == selectedSprintId);
+      let sprintIds = [];
+      for (let i = sprintIdx; i > sprintIdx - 4 && i >= 0; i--) sprintIds.push(sprints[i].id);
+
+      let allIssues = [];
+      for (let sid of sprintIds) {
+        const jql = encodeURIComponent(`sprint = ${sid} ORDER BY "Epic Link", status, key`);
+        const url = `https://${jiraDomain}/rest/api/3/search?jql=${jql}&fields=summary,status,customfield_10008,customfield_10006,customfield_10104,epic&maxResults=200`;
+        try {
+          const resp = await fetch(url, { credentials: "include" });
+          const data = await resp.json();
+          if (data.issues && data.issues.length) {
+            allIssues.push({sprint: sid, issues: data.issues});
+          }
+        } catch (e) {
+          alert("Failed to fetch issues for sprint " + sid);
+        }
+      }
+      // Now, parse issues into stories
+      let velocityArrRaw = [];
+      let epicMap = {};
+      stories = []; // stories in selected sprint only
+      for (let batch of allIssues) {
+        let pointsDone = 0;
+        for (let issue of batch.issues) {
+          let type = issue.fields.issuetype && issue.fields.issuetype.name;
+          if (type === "Epic") continue; // ignore for velocity
+          let pts = Number(issue.fields['customfield_10006']) || 1;
+          let status = issue.fields.status && issue.fields.status.name;
+          if (status === "Done") pointsDone += pts;
+        }
+        velocityArrRaw.push(pointsDone);
+        // For selected sprint only, collect all issues for display/backlog
+        if (batch.sprint == selectedSprintId) {
+          for (let issue of batch.issues) {
+            let type = issue.fields.issuetype && issue.fields.issuetype.name;
+            if (type === "Epic") continue;
+            let epic = issue.fields['customfield_10008'] || "No Epic";
+            if (!epicMap[epic]) epicMap[epic] = [];
+            let status = issue.fields.status && issue.fields.status.name;
+            epicMap[epic].push({
+              key: issue.key,
+              summary: issue.fields.summary,
+              status: status,
+              epic: epic,
+              team: issue.fields['customfield_10104'] || "",
+              points: Number(issue.fields['customfield_10006']) || 1
+            });
+            stories.push({
+              key: issue.key,
+              summary: issue.fields.summary,
+              status: status,
+              epic: epic,
+              team: issue.fields['customfield_10104'] || "",
+              points: Number(issue.fields['customfield_10006']) || 1
+            });
+          }
+        }
+      }
+      epicStoryMap = epicMap;
+      velocityArr = velocityArrRaw.reverse(); // most recent last
+      editableData = stories.map(s => ({ ...s }));
+      showImportArea();
+    }
+
+    // ---- DISPLAY IMPORT/EDIT AREA ----
+    function showImportArea() {
+      // Velocity array
+      let vhtml = velocityArr.map((v, i) =>
+        `<input class="editarr" type="number" min="0" value="${v}" onchange="editVelocity(this,${i})">`).join(', ');
+      document.getElementById('velocityWrap').innerHTML = vhtml;
+      // Backlog: sum of points for not-done stories
+      let backlog = editableData.filter(s => s.status !== "Done")
+        .reduce((a,b) => a+Number(b.points), 0);
+      document.getElementById('backlogInput').value = backlog;
+      // Table
+      buildStoryTable();
+      // Story map
+      buildStoryMap();
+      // Show area
+      document.getElementById('importArea').style.display = '';
+    }
+    function editVelocity(inp, idx) {
+      velocityArr[idx] = Number(inp.value) || 0;
+    }
+    document.getElementById('backlogInput').onchange = function() {
+      // nothing required, used on simulation run
+    }
+
+    // ---- STORY MAP ----
+    function buildStoryMap() {
+      const container = document.getElementById('storyMap');
+      let byEpic = {};
+      for (let s of editableData) {
+        if (!byEpic[s.epic]) byEpic[s.epic] = [];
+        byEpic[s.epic].push(s);
+      }
+      let html = '';
+      for (let epic in byEpic) {
+        html += `<div class="storymap-epic"><h4>${epic}</h4>`;
+        for (let story of byEpic[epic]) {
+          let c = story.status === "Done" ? "story-done" : story.status === "In Progress" ? "story-indev" : "story-open";
+          html += `<span class="story-badge ${c}">${story.key}: ${story.summary}</span>`;
+        }
+        html += `</div>`;
+      }
+      container.innerHTML = html;
+    }
+
+    // ---- EDITABLE TABLE ----
+    function buildStoryTable() {
+      const container = document.getElementById('storyTableWrap');
+      let html = `<table><thead>
+        <tr><th>Epic</th><th>Story Key</th><th>Summary</th><th>Status</th><th>Team</th><th>Points</th></tr>
+        </thead><tbody>`;
+      for (let i = 0; i < editableData.length; i++) {
+        const s = editableData[i];
+        html += `<tr>
+          <td>${s.epic}</td>
+          <td>${s.key}</td>
+          <td>${s.summary}</td>
+          <td>
+            <select data-idx="${i}" onchange="editStatus(this)">
+              <option${s.status==='Done'?' selected':''}>Done</option>
+              <option${s.status==='In Progress'?' selected':''}>In Progress</option>
+              <option${s.status==='To Do'?' selected':''}>To Do</option>
+            </select>
+          </td>
+          <td>${s.team}</td>
+          <td><input type="number" min="1" style="width:40px" value="${s.points}" data-idx="${i}" onchange="editPoints(this)"></td>
+        </tr>`;
+      }
+      html += '</tbody></table>';
+      container.innerHTML = html;
+    }
+    window.editStatus = function(sel) {
+      const idx = sel.getAttribute('data-idx');
+      editableData[idx].status = sel.value;
+      buildStoryMap();
+    }
+    window.editPoints = function(input) {
+      const idx = input.getAttribute('data-idx');
+      editableData[idx].points = Number(input.value) || 1;
+    }
+
+    // ---- MONTE CARLO SIMULATION LOGIC (MCW-style) ----
+    function runMCW() {
+      let velocity = velocityArr.filter(v => v>0);
+      let backlog = Number(document.getElementById('backlogInput').value) || 1;
+      let results = mcwSimulate(backlog, velocity, 10000);
+      let html = `<b>Results (based on your backlog/velocity):</b><br>
+        <ul>
+          <li>Median (50% conf): ${results.percentiles[50]} sprints</li>
+          <li>75% confidence: ${results.percentiles[75]} sprints</li>
+          <li>90% confidence: ${results.percentiles[90]} sprints</li>
+          <li>95% confidence: ${results.percentiles[95]} sprints</li>
+        </ul>
+        <span class="${results.percentiles[75]>4?'risk-high':'risk-low'}">
+          ${(results.percentiles[75]>4)?
+            "Warning: Risk of not delivering in 4 sprints!":
+            "Good: Likely deliverable within 4 sprints."
+          }
+        </span>
+      `;
+      document.getElementById('mcwResults').innerHTML = html;
+    }
+
+    // ---- MCW SIMULATION (copy-paste from your MCW/index.html, simplified) ----
+    function mcwSimulate(backlog, velocityArr, numRuns) {
+      let outcomes = [];
+      for (let i=0; i<numRuns; i++) {
+        let backlogLeft = backlog;
+        let sprints = 0;
+        while (backlogLeft > 0 && sprints<100) {
+          let v = velocityArr[Math.floor(Math.random()*velocityArr.length)];
+          if (v < 1) v = 1; // Avoid divide by zero
+          backlogLeft -= v;
+          sprints++;
+        }
+        outcomes.push(sprints);
+      }
+      outcomes.sort((a,b)=>a-b);
+      function perc(p) {
+        let idx = Math.floor(numRuns * (p/100));
+        return outcomes[idx];
+      }
+      return {
+        percentiles: {
+          50: perc(50),
+          75: perc(75),
+          90: perc(90),
+          95: perc(95)
+        }
+      };
+    }
+
+    // ---- PDF EXPORT ----
+    async function exportPDF() {
+      const area = document.getElementById('importArea');
+      area.style.background = '#fff';
+      window.scrollTo(0,0);
+      const canvas = await html2canvas(area, {scale:2});
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new window.jspdf.jsPDF({
+        orientation: 'portrait',
+        unit: 'pt',
+        format: 'a4'
+      });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const imgWidth = pageWidth - 40;
+      const ratio = imgWidth / canvas.width;
+      const imgHeight = canvas.height * ratio;
+      pdf.addImage(imgData, 'PNG', 20, 20, imgWidth, imgHeight);
+      pdf.save(`Stakeholder_Report_${selectedSprintName||''}.pdf`);
+    }
+  </script>
+</body>
+</html>
