@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Stakeholder Report (Jira + MCW, Per-Epic)</title>
+  <title>Stakeholder Report (Jira + MCW, Per-Epic, Improved)</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -29,6 +29,8 @@
     .section-title { font-size: 1.2em; margin-bottom: .2em; }
     .story-badge input { width: 60px; }
     .editarr { width: 60px; }
+    .targetSprintBox { margin: 1em 0 1em 0; }
+    .targetSprintBox label { margin-right: .5em; }
     @media print { .no-print { display: none !important; } }
   </style>
 </head>
@@ -48,9 +50,11 @@
   </div>
 
   <div id="importArea" style="display:none;">
-    <div class="section-title">Velocity History (editable, last 6 sprints):</div>
+    <div class="section-title">Velocity History (editable, last 6 closed sprints):</div>
     <div id="velocityWrap"></div>
-    <div>
+    <div class="targetSprintBox">
+      <label>Target sprints to finish (for forecast):</label>
+      <input id="targetSprintsInput" type="number" min="1" max="20" value="4" style="width:60px">
       <button class="btn" onclick="runAllEpicSimulations()">Run Simulations</button>
       <button class="btn" onclick="exportPDF()">Download PDF Report</button>
     </div>
@@ -70,6 +74,7 @@
     let selectedSprintId = '';
     let selectedSprintName = '';
     let editableData = [];
+    let closedSprintsSorted = [];
 
     // ---- FETCH SPRINTS ----
     async function fetchSprints() {
@@ -82,6 +87,10 @@
         const data = await resp.json();
         if (data.values && data.values.length) {
           sprints = data.values;
+          // Build a list of all closed sprints sorted by endDate ascending
+          closedSprintsSorted = data.values
+            .filter(s => s.state === "closed" && s.endDate)
+            .sort((a,b) => new Date(a.endDate) - new Date(b.endDate));
           populateSprintDropdown();
         } else {
           alert("No sprints found for this board.");
@@ -109,13 +118,23 @@
       selectedSprintId = document.getElementById('sprintSelect').value;
       selectedSprintName = document.getElementById('sprintSelect').selectedOptions[0].textContent;
       if (!selectedSprintId) return alert("Select a sprint.");
-      // Fetch issues for current and previous 5 sprints (total 6 for velocity)
-      let sprintIdx = sprints.findIndex(s => s.id == selectedSprintId);
-      let sprintIds = [];
-      for (let i = sprintIdx; i > sprintIdx - 6 && i >= 0; i--) sprintIds.push(sprints[i].id);
+
+      // Get last 6 closed sprints BEFORE the selected sprint (or including if it's closed)
+      let currentSprintObj = sprints.find(s => String(s.id) === String(selectedSprintId));
+      let currEndDate = currentSprintObj && currentSprintObj.endDate ? new Date(currentSprintObj.endDate) : new Date();
+      // Build array of sprints whose endDate is <= currEndDate
+      let velocityClosedSprints = closedSprintsSorted
+        .filter(s => new Date(s.endDate) <= currEndDate)
+        .slice(-6); // last 6 in time before/including this one
+
+      // Always include the selected sprint for story table/etc.
+      let sprintIdsToFetch = velocityClosedSprints.map(s=>s.id);
+      if (!sprintIdsToFetch.includes(Number(selectedSprintId))) {
+        sprintIdsToFetch.push(Number(selectedSprintId));
+      }
 
       let allIssues = [];
-      for (let sid of sprintIds) {
+      for (let sid of sprintIdsToFetch) {
         const jql = encodeURIComponent(`sprint = ${sid} ORDER BY key`);
         const url = `https://${jiraDomain}/rest/api/3/search?jql=${jql}&fields=summary,status,parent,customfield_10002,customfield_12600,customfield_10005,issuetype&expand=parent.fields&maxResults=200`;
         try {
@@ -128,76 +147,79 @@
           alert("Failed to fetch issues for sprint " + sid);
         }
       }
+
       // Parse issues
       let velocityArrRaw = [];
       let epicMap = {};
       stories = []; // stories in selected sprint only
-      for (let batch of allIssues) {
+      // Build velocity array from closed sprints only, oldest to newest
+      for (let i = 0; i < velocityClosedSprints.length; i++) {
+        let sid = velocityClosedSprints[i].id;
+        let batch = allIssues.find(b => Number(b.sprint) === Number(sid));
         let pointsDone = 0;
-        for (let issue of batch.issues) {
-          let typeObj = issue.fields.issuetype;
-          if (typeObj && (typeObj.subtask || typeObj.name === "Epic")) continue; // SKIP sub-tasks and Epics!
-          let pts = Number(issue.fields.customfield_10002) || 1;
-          let status = issue.fields.status && issue.fields.status.name;
-          if (status && (status.toLowerCase().includes("done") || status.toLowerCase().includes("closed"))) pointsDone += pts;
-        }
-        velocityArrRaw.push(pointsDone);
-
-        // For selected sprint only, collect all issues for display/backlog
-        if (batch.sprint == selectedSprintId) {
+        if (batch) {
           for (let issue of batch.issues) {
             let typeObj = issue.fields.issuetype;
             if (typeObj && (typeObj.subtask || typeObj.name === "Epic")) continue;
-            let parent = issue.fields.parent;
-            let isEpic = parent && parent.fields && parent.fields.issuetype && parent.fields.issuetype.name === "Epic";
-            let epicKey = isEpic ? parent.key : "No Epic";
-            let epicSummary = isEpic ? parent.fields.summary : "";
-            let sprintsArr = issue.fields.customfield_10005 || [];
-            let currentSprint = (sprintsArr.find(s => s.state === "active") || sprintsArr[sprintsArr.length-1] || {}).name || "None";
-            let responsibleTeams = (issue.fields.customfield_12600 || []).join(', ');
-            let status = issue.fields.status && issue.fields.status.name;
             let pts = Number(issue.fields.customfield_10002) || 1;
-            if (!epicMap[epicKey]) epicMap[epicKey] = [];
-            epicMap[epicKey].push({
-              key: issue.key,
-              summary: issue.fields.summary,
-              status: status,
-              epic: epicKey,
-              epicSummary: epicSummary,
-              team: responsibleTeams,
-              sprint: currentSprint,
-              points: pts
-            });
-            stories.push({
-              key: issue.key,
-              summary: issue.fields.summary,
-              status: status,
-              epic: epicKey,
-              epicSummary: epicSummary,
-              team: responsibleTeams,
-              sprint: currentSprint,
-              points: pts
-            });
+            let status = issue.fields.status && issue.fields.status.name;
+            if (status && (status.toLowerCase().includes("done") || status.toLowerCase().includes("closed"))) pointsDone += pts;
           }
+        }
+        velocityArrRaw.push(pointsDone);
+      }
+
+      // For the selected sprint only, collect all issues for display/backlog
+      let selectedBatch = allIssues.find(b => Number(b.sprint) === Number(selectedSprintId));
+      if (selectedBatch) {
+        for (let issue of selectedBatch.issues) {
+          let typeObj = issue.fields.issuetype;
+          if (typeObj && (typeObj.subtask || typeObj.name === "Epic")) continue;
+          let parent = issue.fields.parent;
+          let isEpic = parent && parent.fields && parent.fields.issuetype && parent.fields.issuetype.name === "Epic";
+          let epicKey = isEpic ? parent.key : "No Epic";
+          let epicSummary = isEpic ? parent.fields.summary : "";
+          let sprintsArr = issue.fields.customfield_10005 || [];
+          let currentSprint = (sprintsArr.find(s => s.state === "active") || sprintsArr[sprintsArr.length-1] || {}).name || "None";
+          let responsibleTeams = (issue.fields.customfield_12600 || []).join(', ');
+          let status = issue.fields.status && issue.fields.status.name;
+          let pts = Number(issue.fields.customfield_10002) || 1;
+          if (!epicMap[epicKey]) epicMap[epicKey] = [];
+          epicMap[epicKey].push({
+            key: issue.key,
+            summary: issue.fields.summary,
+            status: status,
+            epic: epicKey,
+            epicSummary: epicSummary,
+            team: responsibleTeams,
+            sprint: currentSprint,
+            points: pts
+          });
+          stories.push({
+            key: issue.key,
+            summary: issue.fields.summary,
+            status: status,
+            epic: epicKey,
+            epicSummary: epicSummary,
+            team: responsibleTeams,
+            sprint: currentSprint,
+            points: pts
+          });
         }
       }
       epicStoryMap = epicMap;
-      velocityArr = velocityArrRaw.reverse(); // oldest to newest
+      velocityArr = velocityArrRaw; // already oldest to newest
       editableData = stories.map(s => ({ ...s }));
       showImportArea();
     }
 
     // ---- DISPLAY IMPORT/EDIT AREA ----
     function showImportArea() {
-      // Velocity array
       let vhtml = velocityArr.map((v, i) =>
         `<input class="editarr" type="number" min="0" value="${v}" onchange="editVelocity(this,${i})">`).join(', ');
       document.getElementById('velocityWrap').innerHTML = vhtml;
-      // Table
       buildStoryTable();
-      // Show area
       document.getElementById('importArea').style.display = '';
-      // Reset results view
       document.getElementById('epicSimResults').innerHTML = '';
     }
     function editVelocity(inp, idx) {
@@ -256,10 +278,11 @@
       editableData[idx].points = Number(input.value) || 1;
     }
 
-    // ---- MONTE CARLO SIMULATION (MCW-style, per-epic) ----
+    // ---- MONTE CARLO SIMULATION (MCW-style, per-epic, with threshold/target) ----
     function runAllEpicSimulations() {
       let velocity = velocityArr.filter(v => v>0);
       const resultsArea = document.getElementById('epicSimResults');
+      const targetSprints = Number(document.getElementById('targetSprintsInput').value) || 4;
       resultsArea.innerHTML = '';
       Object.keys(epicStoryMap).forEach((epicKey, epicIdx) => {
         const epicStories = epicStoryMap[epicKey];
@@ -272,6 +295,10 @@
 
         // Monte Carlo for this epic
         const mcResult = mcwSimulate(backlog, velocity, 10000);
+
+        // What average velocity is needed to finish in targetSprints?
+        const neededVelocity = Math.ceil(backlog / targetSprints);
+
         // Draw results and chart for this epic
         let html = `
           <div class="summary-box">
@@ -284,10 +311,12 @@
               <li>90% confidence: ${mcResult.percentiles[90]} sprints</li>
               <li>95% confidence: ${mcResult.percentiles[95]} sprints</li>
             </ul>
-            <span class="${mcResult.percentiles[75]>4?'risk-high':'risk-low'}">
-              ${(mcResult.percentiles[75]>4)?
-                "Warning: Risk of not delivering in 4 sprints!":
-                "Good: Likely deliverable within 4 sprints."
+            <span class="${mcResult.percentiles[75]>targetSprints?'risk-high':'risk-low'}">
+              ${
+                mcResult.percentiles[75]<=targetSprints
+                  ? `Good: Likely deliverable within <b>${targetSprints}</b> sprints.`
+                  : `Warning: At 75% confidence, NOT likely deliverable in <b>${targetSprints}</b> sprints.<br>
+                    <b>Required average velocity:</b> <u>${neededVelocity} points/sprint</u> to deliver in ${targetSprints} sprints.`
               }
             </span>
             <canvas id="mcChart${epicIdx}" width="420" height="170"></canvas>
