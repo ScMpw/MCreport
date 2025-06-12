@@ -36,6 +36,10 @@
     .pdf-cover { font-size:2.1em; text-align:center; margin-top:80px; color:#6366f1;}
     .pdf-sub { font-size:1.1em; color:#374151; text-align:center; margin-top:20px;}
     .pdf-section-title { font-size:1.15em; font-weight:600; margin-top:25px;}
+    .details-toggle { margin: 10px 0 6px 0; }
+    .story-table { border-collapse: collapse; width: 100%; margin: 6px 0 18px 0; }
+    .story-table th, .story-table td { border: 1px solid #e5e7eb; padding: 4px 7px; font-size: 0.98em; text-align:left; }
+    .story-table th { background: #e0e7ef; }
     @media (max-width: 800px) {
       .main {padding:14px;}
       .info-grid {grid-template-columns:1fr;}
@@ -84,7 +88,8 @@
       jiraDomain = document.getElementById('jiraDomain').value.trim();
       boardNum = document.getElementById('boardNum').value.trim();
       if (!jiraDomain || !boardNum) return alert("Enter Jira domain and board number.");
-      const url = `https://${jiraDomain}/rest/agile/1.0/board/${boardNum}/sprint?state=active,closed,future`;
+      // Fetch only recent 20 sprints:
+      const url = `https://${jiraDomain}/rest/agile/1.0/board/${boardNum}/sprint?state=active,closed,future&maxResults=20`;
       try {
         const resp = await fetch(url, { credentials: "include" });
         const data = await resp.json();
@@ -154,7 +159,9 @@
         try {
           const resp = await fetch(urlEpic, { credentials: "include" });
           const data = await resp.json();
-          epicStories[epicKey] = data.issues.map(story => ({
+          epicStories[epicKey] = data.issues.filter(story =>
+            !(story.fields.issuetype && story.fields.issuetype.subtask)
+          ).map(story => ({
             key: story.key,
             summary: story.fields.summary,
             status: story.fields.status && story.fields.status.name,
@@ -174,22 +181,22 @@
         try {
           const resp = await fetch(urlEpic, { credentials: "include" });
           const data = await resp.json();
-          epicStoriesBaseline[epicKey] = data.issues
-            .filter(story => {
-              let created = new Date(story.fields.created);
-              let baseSprint = closedSprintsSorted.find(s=>s.id==baselineSprintId);
-              return created <= new Date(baseSprint.endDate);
-            })
-            .map(story => ({
-              key: story.key,
-              summary: story.fields.summary,
-              status: story.fields.status && story.fields.status.name,
-              points: Number(story.fields.customfield_10002) || 0,
-              team: (story.fields.customfield_12600 || []).join(', '),
-              created: story.fields.created,
-              resolved: story.fields.resolutiondate,
-              sprint: (story.fields.customfield_10005||[]).map(s=>s.name).join(', '),
-            }));
+          epicStoriesBaseline[epicKey] = data.issues.filter(story =>
+            !(story.fields.issuetype && story.fields.issuetype.subtask)
+          ).filter(story => {
+            let created = new Date(story.fields.created);
+            let baseSprint = closedSprintsSorted.find(s=>s.id==baselineSprintId);
+            return created <= new Date(baseSprint.endDate);
+          }).map(story => ({
+            key: story.key,
+            summary: story.fields.summary,
+            status: story.fields.status && story.fields.status.name,
+            points: Number(story.fields.customfield_10002) || 0,
+            team: (story.fields.customfield_12600 || []).join(', '),
+            created: story.fields.created,
+            resolved: story.fields.resolutiondate,
+            sprint: (story.fields.customfield_10005||[]).map(s=>s.name).join(', '),
+          }));
         } catch (e) { epicStoriesBaseline[epicKey] = []; }
       }));
       // 5. Velocity last 6 closed sprints
@@ -276,14 +283,18 @@
         for (let pct=1;pct<=100;pct++) {
           let testVels = velocity.map(v=>v*pct/100);
           let runs = [];
-          for (let i=0;i<6000;i++) {
-            let b=backlogPts,s=0;
-            while (b>0 && s<100) { let v=testVels[Math.floor(Math.random()*testVels.length)]; if(v<1)v=1; b-=v; s++; }
+          for (let i=0;i<600;i++) {
+            let b = backlogPts, s=0;
+            while (b>0 && s<100) {
+              let v = testVels[Math.floor(Math.random()*testVels.length)];
+              if (v<1) v=1;
+              b -= v; s++;
+            }
             runs.push(s);
           }
           runs.sort((a,b)=>a-b);
-          if (!allocNeeded["75"] && runs[Math.floor(0.75*runs.length)] <= targetSprints) allocNeeded["75"] = pct;
-          if (!allocNeeded["95"] && runs[Math.floor(0.95*runs.length)] <= targetSprints) allocNeeded["95"] = pct;
+          if (allocNeeded["75"] === null && runs[Math.floor(0.75*runs.length)]<=targetSprints) allocNeeded["75"] = pct;
+          if (allocNeeded["95"] === null && runs[Math.floor(0.95*runs.length)]<=targetSprints) allocNeeded["95"] = pct;
           if (allocNeeded["75"] && allocNeeded["95"]) break;
         }
         epicRequiredAlloc[epicKey] = allocNeeded;
@@ -296,7 +307,7 @@
       else if (totalAlloc > 101) allocWarn = `<span class="warn">Warning: Allocations exceed 100% of capacity! (${totalAlloc}%)</span>`;
       else allocWarn = `<span class="success">Team allocation: ${totalAlloc}%</span>`;
       let html = `<div class="allocation-row">${allocWarn}</div>`;
-      // --- Per-Epic Block ---
+
       Object.keys(epicStories).forEach((epicKey, idx) => {
         let stories = epicStories[epicKey];
         if (!stories || !stories.length) return;
@@ -314,7 +325,6 @@
         let alloc = epicAllocations[epicKey];
         let required = epicRequiredAlloc[epicKey];
         let mc = epicForecastResults[epicKey];
-        // Probabilities
         let probRows = [[50,mc[Math.floor(0.5*mc.length)]],[75,mc[Math.floor(0.75*mc.length)]],[95,mc[Math.floor(0.95*mc.length)]]];
 
         // Change Table
@@ -328,6 +338,8 @@
         let estimateBaseline = baseStories.map(s=>s.points).reduce((a,b)=>a+b,0);
         let deltaEstimate = totalEstimate - estimateBaseline;
 
+        // --- Epic Summary Block with Toggle Details ---
+        const storyTableId = `storyTable_${epicKey.replace(/[^a-zA-Z0-9]/g, '')}`;
         html += `
         <div class="epic-summary-block">
           <div class="epic-header">${epicKey}: ${allEpics[epicKey]||''}</div>
@@ -384,10 +396,46 @@
               </div>
             </div>
           </div>
+          <button class="btn details-toggle" onclick="toggleEpicDetails(this, '${storyTableId}')">Show Details</button>
+          <div id="${storyTableId}" style="display:none; margin-top:10px;">
+            <table class="story-table">
+              <tr>
+                <th>Story</th>
+                <th>Status</th>
+                <th>Points</th>
+                <th>Team</th>
+                <th>Created</th>
+                <th>Resolved</th>
+              </tr>
+              ${
+                stories.map(story => `
+                  <tr>
+                    <td>${story.key}</td>
+                    <td>${story.status}</td>
+                    <td>${story.points}</td>
+                    <td>${story.team}</td>
+                    <td>${story.created?story.created.substr(0,10):""}</td>
+                    <td>${story.resolved?story.resolved.substr(0,10):""}</td>
+                  </tr>
+                `).join('')
+              }
+            </table>
+          </div>
         </div>
         `;
       });
       document.getElementById('epicSummary').innerHTML = html;
+    }
+
+    function toggleEpicDetails(btn, id) {
+      const block = document.getElementById(id);
+      if (block.style.display === "none") {
+        block.style.display = "";
+        btn.textContent = "Hide Details";
+      } else {
+        block.style.display = "none";
+        btn.textContent = "Show Details";
+      }
     }
 
     function isDone(status) {
@@ -404,7 +452,6 @@
 
     // --- PDF EXPORT (CLEAN SUMMARY ONLY) ---
     function exportPDF() {
-      // 1. Create a new jsPDF document
       const { jsPDF } = window.jspdf;
       const pdf = new jsPDF({ unit:'pt', format:'a4' });
       let y = 38;
@@ -426,7 +473,6 @@
       pdf.setLineWidth(0.3);
       pdf.line(45, y, 530, y); y+=8;
 
-      // Allocation warning
       let totalAlloc = Object.values(epicAllocations).reduce((a,b)=>a+b,0);
       let allocWarn = '';
       if (totalAlloc < 99) allocWarn = `Warning: Not all team capacity assigned (${totalAlloc}% total)`;
@@ -437,7 +483,6 @@
       pdf.text(allocWarn, 45, y); y+=18;
       pdf.setTextColor(51,51,51);
 
-      // --- Per-epic block ---
       Object.keys(epicStories).forEach((epicKey, idx) => {
         let stories = epicStories[epicKey];
         if (!stories || !stories.length) return;
@@ -454,10 +499,8 @@
         let alloc = epicAllocations[epicKey];
         let required = epicRequiredAlloc[epicKey];
         let mc = epicForecastResults[epicKey];
-        // Probabilities
         let probRows = [[50,mc[Math.floor(0.5*mc.length)]],[75,mc[Math.floor(0.75*mc.length)]],[95,mc[Math.floor(0.95*mc.length)]]];
 
-        // Change Table
         let baseStories = (epicStoriesBaseline[epicKey]||[]);
         let baseKeys = new Set(baseStories.map(s=>s.key));
         let currKeys = new Set(stories.map(s=>s.key));
@@ -468,7 +511,6 @@
         let estimateBaseline = baseStories.map(s=>s.points).reduce((a,b)=>a+b,0);
         let deltaEstimate = totalEstimate - estimateBaseline;
 
-        // Section title
         y+=12;
         if (y>760) { pdf.addPage(); y=38;}
         pdf.setFont('helvetica','bold');
@@ -477,7 +519,6 @@
         pdf.setFont('helvetica','normal');
         pdf.setFontSize(11);
 
-        // Table
         pdf.text(`Done: ${ptsDone}    In Progress: ${ptsProg}    Open: ${ptsOpen+ptsOther}    Total: ${totalEstimate} SP    Backlog: ${backlog} SP`, 45, y); y+=15;
         pdf.text(`Team allocation: ${alloc}%   |   Required for ${targetSprints} sprints: 75% conf: ${required["75"]?required["75"]+"%":"Over 100%"}  / 95% conf: ${required["95"]?required["95"]+"%":"Over 100%"}`, 45, y); y+=13;
         pdf.text(`Probability forecast (sprints needed):`, 45, y); y+=12;
@@ -491,7 +532,6 @@
           "On track to finish in "+targetSprints+" sprints at 75% confidence."
         ), 45, y); y+=13;
 
-        // Change table
         pdf.setFont('helvetica','bold');
         pdf.text("Changes since "+(baselineIsFirstPI ? "PI start" : "last sprint")+":", 45, y); y+=12;
         pdf.setFont('helvetica','normal');
