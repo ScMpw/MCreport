@@ -40,6 +40,12 @@
     .story-table { border-collapse: collapse; width: 100%; margin: 6px 0 18px 0; }
     .story-table th, .story-table td { border: 1px solid #e5e7eb; padding: 4px 7px; font-size: 0.98em; text-align:left; }
     .story-table th { background: #e0e7ef; }
+    /* Color coding for the storymap */
+    .story-status-current { background: #E0F7FA; }   /* Done in this sprint - light cyan */
+    .story-status-previous { background: #E8F5E9; }  /* Done before this sprint - light green */
+    .story-status-new { background: #FFF8E1; }       /* Created in this sprint - light yellow */
+    .story-status-open { background: #F3F4F6; }      /* Still open - very light gray */
+    .story-status-other { background: #ECECEC; }     /* Other/misc - muted gray */
     @media (max-width: 800px) {
       .main {padding:14px;}
       .info-grid {grid-template-columns:1fr;}
@@ -83,7 +89,7 @@
     let epicAllocations = {}, epicBacklogs = {}, epicRequiredAlloc = {};
     let epicForecastResults = {};
 
-    // --- SPRINT FETCH & SELECTION (paginated, NO sorting after fetch) ---
+    // Sprint fetching, no sorting after fetch
     async function fetchAllSprints() {
       jiraDomain = document.getElementById('jiraDomain').value.trim();
       boardNum = document.getElementById('boardNum').value.trim();
@@ -121,16 +127,12 @@
         }
       }
 
-      // Log all fetched sprints
-      console.log("Fetched sprints:", allSprintsArr.length, allSprintsArr.map(s => s.name + ' (' + (s.startDate ? s.startDate.substr(0,10) : "undefined") + ')'));
-
-      sprints = allSprintsArr.slice(); // DO NOT reverse or sort
+      sprints = allSprintsArr.slice();
       closedSprintsSorted = sprints.filter(s => s.state === "closed" && s.endDate)
                                    .sort((a, b) => new Date(b.endDate) - new Date(a.endDate));
       populateSprintDropdown();
     }
 
-    // --- SPRINT DROPDOWN: show all sprints as fetched, no sorting ---
     function populateSprintDropdown() {
       const sel = document.getElementById('sprintSelect');
       sel.innerHTML = '';
@@ -144,13 +146,35 @@
       });
       document.getElementById('sprintRow').style.display = '';
     }
-    
-    // --- MAIN DATA FETCH (Epics/Stories/Velocity) ---
+
+    // Color logic for story rows in the storymap
+    function getStoryRowClass(story, currSprintObj) {
+      const created = new Date(story.created);
+      const resolved = story.resolved ? new Date(story.resolved) : null;
+      const sprintStart = currSprintObj && currSprintObj.startDate ? new Date(currSprintObj.startDate) : null;
+      const sprintEnd = currSprintObj && currSprintObj.endDate ? new Date(currSprintObj.endDate) : null;
+
+      if (sprintStart && sprintEnd && created >= sprintStart && created < sprintEnd) {
+        return "story-status-new"; // Created in this sprint
+      }
+      if (sprintStart && sprintEnd && resolved && resolved >= sprintStart && resolved < sprintEnd) {
+        return "story-status-current"; // Done in this sprint
+      }
+      if (resolved && sprintStart && resolved < sprintStart) {
+        return "story-status-previous"; // Done before this sprint
+      }
+      if (!resolved || !story.status || !(story.status.toLowerCase().includes("done") || story.status.toLowerCase().includes("closed"))) {
+        return "story-status-open"; // Still open/in progress
+      }
+      return "story-status-other";
+    }
+
+    // Data fetch for epics/stories/velocity, and all calculations
     async function fetchAll() {
       selectedSprintId = document.getElementById('sprintSelect').value;
       selectedSprintName = document.getElementById('sprintSelect').selectedOptions[0].textContent;
       if (!selectedSprintId) return alert("Select a sprint.");
-      // 1. Baseline (first closed in PI or previous closed)
+      // Baseline (first closed in PI or previous closed)
       let currSprintObj = sprints.find(s => String(s.id) === String(selectedSprintId));
       let allPIClosed = closedSprintsSorted.filter(s =>
         s.name.includes(currSprintObj.name.split(' ')[0])
@@ -160,7 +184,8 @@
       let baselineIdx = currIdx > 0 ? currIdx - 1 : 0;
       baselineIsFirstPI = (closedSprintsSorted[baselineIdx].id === firstPISprint.id);
       baselineSprintId = closedSprintsSorted[baselineIdx].id;
-      // 2. Find all epics in selected sprint
+
+      // Find all epics in selected sprint
       let jql = encodeURIComponent(`sprint = ${selectedSprintId} ORDER BY key`);
       let url = `https://${jiraDomain}/rest/api/3/search?jql=${jql}&fields=summary,parent,customfield_10002,customfield_10005,customfield_12600,status,issuetype&maxResults=500`;
       let epicKeysSet = new Set();
@@ -178,7 +203,8 @@
           }
         }
       } catch (e) { alert("Error fetching stories for selected sprint"); return; }
-      // 3. For each epic, fetch all stories
+
+      // Fetch all stories for each epic
       epicStories = {};
       await Promise.all(Array.from(epicKeysSet).map(async epicKey => {
         let eq = encodeURIComponent(`"Epic Link" = ${epicKey}`);
@@ -200,7 +226,8 @@
           }));
         } catch (e) { epicStories[epicKey] = []; }
       }));
-      // 4. Baseline stories for change detection
+
+      // Baseline stories for change detection
       epicStoriesBaseline = {};
       await Promise.all(Array.from(epicKeysSet).map(async epicKey => {
         let eq = encodeURIComponent(`"Epic Link" = ${epicKey}`);
@@ -226,7 +253,8 @@
           }));
         } catch (e) { epicStoriesBaseline[epicKey] = []; }
       }));
-      // 5. Velocity last 6 closed sprints
+
+      // Velocity last 6 closed sprints
       velocityArr = [];
       let last6Closed = closedSprintsSorted.slice(-6);
       for (let sprint of last6Closed) {
@@ -253,7 +281,6 @@
       renderEpicSummary();
     }
 
-    // --- VELOCITY INPUTS ---
     function renderVelocityInputs() {
       let vhtml = velocityArr.map((v, i) =>
         `<input class="editarr" type="number" min="0" value="${v}" onchange="editVelocity(this,${i})">`).join(', ');
@@ -261,7 +288,7 @@
     }
     function editVelocity(inp, idx) { velocityArr[idx] = Number(inp.value) || 0; }
 
-    // --- MAIN REPORT RENDER ---
+    // Render main report, now with color-coded storymap
     function renderEpicSummary() {
       targetSprints = Number(document.getElementById('targetSprintsInput').value) || 4;
       let velocity = velocityArr.filter(v=>v>0);
@@ -269,8 +296,6 @@
         document.getElementById('epicSummary').innerHTML = '<div class="warn">Please set at least 3 recent velocity values.</div>';
         return;
       }
-      // --- Resource Allocation Calculation ---
-      // For each epic, backlog = sum of non-done stories' points. Total backlog = sum across all epics.
       epicBacklogs = {};
       let totalBacklog = 0;
       Object.keys(epicStories).forEach(epicKey => {
@@ -283,14 +308,14 @@
       Object.keys(epicStories).forEach(epicKey => {
         epicAllocations[epicKey] = totalBacklog ? Math.round(100*epicBacklogs[epicKey]/totalBacklog) : 0;
       });
-      // --- Epic Forecast, Required Allocation Calculation ---
+
+      // Epic forecast and allocation calculation
       epicForecastResults = {};
       epicRequiredAlloc = {};
       Object.keys(epicStories).forEach(epicKey => {
         let stories = epicStories[epicKey]||[];
         let backlogPts = epicBacklogs[epicKey];
         let alloc = epicAllocations[epicKey];
-        // Simulate forecast for this epic with its allocation share
         let allocVels = velocity.map(v=>v*alloc/100);
         let mcRuns = [];
         for (let i=0; i<8000; i++) {
@@ -304,8 +329,6 @@
         }
         mcRuns.sort((a,b)=>a-b);
         epicForecastResults[epicKey] = mcRuns;
-
-        // Find required allocation to finish in target sprints at 75%/95% confidence
         let allocNeeded = { "75": null, "95": null };
         for (let pct=1;pct<=100;pct++) {
           let testVels = velocity.map(v=>v*pct/100);
@@ -327,7 +350,7 @@
         epicRequiredAlloc[epicKey] = allocNeeded;
       });
 
-      // --- HTML Summary ---
+      // HTML
       let totalAlloc = Object.values(epicAllocations).reduce((a,b)=>a+b,0);
       let allocWarn = '';
       if (totalAlloc < 99) allocWarn = `<span class="warn">Warning: Not all team capacity is assigned to listed epics (${totalAlloc}% total).</span>`;
@@ -364,8 +387,7 @@
         let doneSince = ptsDone - baseDone;
         let estimateBaseline = baseStories.map(s=>s.points).reduce((a,b)=>a+b,0);
         let deltaEstimate = totalEstimate - estimateBaseline;
-
-        // --- Epic Summary Block with Toggle Details ---
+        const currSprintObj = sprints.find(s => String(s.id) === String(selectedSprintId));
         const storyTableId = `storyTable_${epicKey.replace(/[^a-zA-Z0-9]/g, '')}`;
         html += `
         <div class="epic-summary-block">
@@ -436,7 +458,7 @@
               </tr>
               ${
                 stories.map(story => `
-                  <tr>
+                  <tr class="${getStoryRowClass(story, currSprintObj)}">
                     <td>${story.key}</td>
                     <td>${story.status}</td>
                     <td>${story.points}</td>
@@ -447,6 +469,12 @@
                 `).join('')
               }
             </table>
+            <div style="font-size:0.95em;margin-top:8px;">
+              <span style="background:#E0F7FA;padding:2px 8px;border-radius:4px;">Done this sprint</span>
+              <span style="background:#E8F5E9;padding:2px 8px;border-radius:4px;">Done before</span>
+              <span style="background:#FFF8E1;padding:2px 8px;border-radius:4px;">New in this sprint</span>
+              <span style="background:#F3F4F6;padding:2px 8px;border-radius:4px;">Open/In Progress</span>
+            </div>
           </div>
         </div>
         `;
@@ -477,7 +505,7 @@
       return "Other";
     }
 
-    // --- PDF EXPORT (CLEAN SUMMARY ONLY) ---
+    // PDF Export (same as before, not story color coded)
     function exportPDF() {
       const { jsPDF } = window.jspdf;
       const pdf = new jsPDF({ unit:'pt', format:'a4' });
@@ -489,8 +517,6 @@
       pdf.setFontSize(12);
       pdf.text(`Generated: ${new Date().toLocaleString()}`, 45, y); y+=13;
       pdf.text(`Board: ${boardNum}   |   Sprint: ${selectedSprintName||''}`, 45, y); y+=23;
-
-      // Velocity history
       pdf.setFont('helvetica','bold');
       pdf.setFontSize(14);
       pdf.text("Velocity history (last 6 sprints):", 45, y); y+=15;
@@ -499,7 +525,6 @@
       pdf.text(velocityArr.join(", "), 45, y); y+=18;
       pdf.setLineWidth(0.3);
       pdf.line(45, y, 530, y); y+=8;
-
       let totalAlloc = Object.values(epicAllocations).reduce((a,b)=>a+b,0);
       let allocWarn = '';
       if (totalAlloc < 99) allocWarn = `Warning: Not all team capacity assigned (${totalAlloc}% total)`;
