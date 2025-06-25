@@ -91,11 +91,12 @@
 
   let allSprintsArr = [];
   let startAt = 0;
-  const maxResults = 100;
-  let keepFetching = true;
+  const maxResults = 100; // Jira's max per page for sprints
+  let total = null; // We'll get this from the first response
 
-  while (keepFetching) {
+  while (true) {
     const url = `https://${jiraDomain}/rest/agile/1.0/board/${boardNum}/sprint?maxResults=${maxResults}&startAt=${startAt}`;
+    console.log("Fetching sprints:", url); // Debug
     try {
       const resp = await fetch(url, { credentials: "include" });
       if (!resp.ok) {
@@ -107,13 +108,12 @@
       const data = await resp.json();
       if (data.values && data.values.length) {
         allSprintsArr = allSprintsArr.concat(data.values);
-        if (data.isLast || data.values.length < maxResults) {
-          keepFetching = false;
-        } else {
-          startAt += maxResults;
-        }
+        total = data.total;
+        startAt += maxResults;
+        // Stop if we've fetched all
+        if (allSprintsArr.length >= total) break;
       } else {
-        keepFetching = false;
+        break;
       }
     } catch (e) {
       console.error(e);
@@ -135,19 +135,6 @@
   populateSprintDropdown();
 }
 
-function populateSprintDropdown() {
-  const sel = document.getElementById('sprintSelect');
-  sel.innerHTML = '';
-  // Do not sort - just use the order from sprints array (most recent first)
-  sprints.forEach(sprint => {
-    const opt = document.createElement('option');
-    opt.value = sprint.id;
-    opt.textContent = (sprint.state === "active" ? "🟢 " : "") + sprint.name +
-      (sprint.startDate ? " ("+sprint.startDate.substr(0,10)+")" : "");
-    sel.appendChild(opt);
-  });
-  document.getElementById('sprintRow').style.display = '';
-}
 
 
 
