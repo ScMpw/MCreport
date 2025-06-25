@@ -84,7 +84,7 @@
     let epicForecastResults = {};
 
     // --- ROBUST SPRINT FETCH & SELECTION (paginated) ---
-   async function fetchAllSprints() {
+     async function fetchAllSprints() {
     jiraDomain = document.getElementById('jiraDomain').value.trim();
     boardNum = document.getElementById('boardNum').value.trim();
     if (!jiraDomain || !boardNum) return alert("Enter Jira domain and board number.");
@@ -108,7 +108,6 @@
         const data = await resp.json();
         if (data.values && data.values.length) {
           allSprintsArr = allSprintsArr.concat(data.values);
-          // Keep going if more sprints
           if (data.isLast || data.values.length < maxResults) {
             keepFetching = false;
           } else {
@@ -124,26 +123,20 @@
       }
     }
   
-    // 2. Sort ALL fetched sprints by startDate DESCENDING (most recent first)
-    allSprintsArr = allSprintsArr.filter(s => s.startDate).sort(
-      (a, b) => new Date(b.startDate) - new Date(a.startDate)
-    );
+    // DO NOT SORT OR SLICE!
+    sprints = allSprintsArr;
   
-    // 3. Now take the most recent N (say, 20 or 50)
-    sprints = allSprintsArr.slice(0, 20); // <-- change number here as needed
-  
-    // For velocity etc, you still want all closed, sorted by endDate descending
+    // You can still separately sort closed sprints for velocity logic, but not for dropdown
     closedSprintsSorted = allSprintsArr.filter(s => s.state === "closed" && s.endDate)
                                        .sort((a, b) => new Date(b.endDate) - new Date(a.endDate));
   
-    // 4. Populate the dropdown!
     populateSprintDropdown();
   }
   
   function populateSprintDropdown() {
     const sel = document.getElementById('sprintSelect');
     sel.innerHTML = '';
-    // No need to sort again, it's already sorted
+    // No sorting here!
     sprints.forEach(sprint => {
       const opt = document.createElement('option');
       opt.value = sprint.id;
@@ -155,6 +148,7 @@
     });
     document.getElementById('sprintRow').style.display = '';
   }
+
 
 
     
