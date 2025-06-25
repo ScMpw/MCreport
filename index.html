@@ -83,77 +83,67 @@
     let epicAllocations = {}, epicBacklogs = {}, epicRequiredAlloc = {};
     let epicForecastResults = {};
 
-    // --- ROBUST SPRINT FETCH & SELECTION (paginated) ---
-     async function fetchAllSprints() {
-  jiraDomain = document.getElementById('jiraDomain').value.trim();
-  boardNum = document.getElementById('boardNum').value.trim();
-  if (!jiraDomain || !boardNum) return alert("Enter Jira domain and board number.");
+    // --- SPRINT FETCH & SELECTION (paginated, NO sorting after fetch) ---
+    async function fetchAllSprints() {
+      jiraDomain = document.getElementById('jiraDomain').value.trim();
+      boardNum = document.getElementById('boardNum').value.trim();
+      if (!jiraDomain || !boardNum) return alert("Enter Jira domain and board number.");
 
-  let allSprintsArr = [];
-  let startAt = 0;
-  const maxResults = 100; // Jira's max per page for sprints
-  let total = null; // We'll get this from the first response
+      let allSprintsArr = [];
+      let startAt = 0;
+      const maxResults = 100;
+      let total = null;
 
-  while (true) {
-    const url = `https://${jiraDomain}/rest/agile/1.0/board/${boardNum}/sprint?maxResults=${maxResults}&startAt=${startAt}`;
-    console.log("Fetching sprints:", url); // Debug
-    try {
-      const resp = await fetch(url, { credentials: "include" });
-      if (!resp.ok) {
-        const text = await resp.text();
-        console.error("API Error Response:", resp.status, text);
-        alert("API returned an error. See console for details.");
-        return;
+      while (true) {
+        const url = `https://${jiraDomain}/rest/agile/1.0/board/${boardNum}/sprint?maxResults=${maxResults}&startAt=${startAt}`;
+        console.log("Fetching sprints:", url);
+        try {
+          const resp = await fetch(url, { credentials: "include" });
+          if (!resp.ok) {
+            const text = await resp.text();
+            console.error("API Error Response:", resp.status, text);
+            alert("API returned an error. See console for details.");
+            return;
+          }
+          const data = await resp.json();
+          if (data.values && data.values.length) {
+            allSprintsArr = allSprintsArr.concat(data.values);
+            total = data.total;
+            startAt += maxResults;
+            if (allSprintsArr.length >= total) break;
+          } else {
+            break;
+          }
+        } catch (e) {
+          console.error(e);
+          alert("Failed to fetch sprints. CORS? Are you logged into Jira?");
+          return;
+        }
       }
-      const data = await resp.json();
-      if (data.values && data.values.length) {
-        allSprintsArr = allSprintsArr.concat(data.values);
-        total = data.total;
-        startAt += maxResults;
-        // Stop if we've fetched all
-        if (allSprintsArr.length >= total) break;
-      } else {
-        break;
-      }
-    } catch (e) {
-      console.error(e);
-      alert("Failed to fetch sprints. CORS? Are you logged into Jira?");
-      return;
+
+      // Log all fetched sprints
+      console.log("Fetched sprints:", allSprintsArr.length, allSprintsArr.map(s => s.name + ' (' + (s.startDate ? s.startDate.substr(0,10) : "undefined") + ')'));
+
+      sprints = allSprintsArr.slice(); // DO NOT reverse or sort
+      closedSprintsSorted = sprints.filter(s => s.state === "closed" && s.endDate)
+                                   .sort((a, b) => new Date(b.endDate) - new Date(a.endDate));
+      populateSprintDropdown();
     }
-  }
 
-  // Log to console to verify what you fetched
-  console.log("Fetched sprints:", allSprintsArr.length, allSprintsArr.map(s => s.name + ' (' + s.startDate?.substr(0,10) + ')'));
-
-  // Reverse so most recent sprints are first
-  sprints = allSprintsArr.slice().reverse();
-
-  // Optionally, filter only closed/active, or leave as-is for "all"
-  closedSprintsSorted = sprints.filter(s => s.state === "closed" && s.endDate)
-                               .sort((a, b) => new Date(b.endDate) - new Date(a.endDate));
-
-  function populateSprintDropdown() {
-  const sel = document.getElementById('sprintSelect');
-  sel.innerHTML = '';
-  // Show all sprints as fetched (no sorting)
-  sprints.forEach(sprint => {
-    const opt = document.createElement('option');
-    opt.value = sprint.id;
-    let name = sprint.name || "(no name)";
-    // Use startDate if available
-    if (sprint.startDate) name += " (" + sprint.startDate.substr(0, 10) + ")";
-    opt.textContent = (sprint.state === "active" ? "🟢 " : "") + name;
-    sel.appendChild(opt);
-  });
-  document.getElementById('sprintRow').style.display = '';
-}
-
-}
-
-
-
-
-
+    // --- SPRINT DROPDOWN: show all sprints as fetched, no sorting ---
+    function populateSprintDropdown() {
+      const sel = document.getElementById('sprintSelect');
+      sel.innerHTML = '';
+      sprints.forEach(sprint => {
+        const opt = document.createElement('option');
+        opt.value = sprint.id;
+        let name = sprint.name || "(no name)";
+        if (sprint.startDate) name += " (" + sprint.startDate.substr(0, 10) + ")";
+        opt.textContent = (sprint.state === "active" ? "🟢 " : "") + name;
+        sel.appendChild(opt);
+      });
+      document.getElementById('sprintRow').style.display = '';
+    }
     
     // --- MAIN DATA FETCH (Epics/Stories/Velocity) ---
     async function fetchAll() {
