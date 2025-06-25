@@ -132,7 +132,22 @@
   closedSprintsSorted = sprints.filter(s => s.state === "closed" && s.endDate)
                                .sort((a, b) => new Date(b.endDate) - new Date(a.endDate));
 
-  populateSprintDropdown();
+  function populateSprintDropdown() {
+  const sel = document.getElementById('sprintSelect');
+  sel.innerHTML = '';
+  // Show all sprints as fetched (no sorting)
+  sprints.forEach(sprint => {
+    const opt = document.createElement('option');
+    opt.value = sprint.id;
+    let name = sprint.name || "(no name)";
+    // Use startDate if available
+    if (sprint.startDate) name += " (" + sprint.startDate.substr(0, 10) + ")";
+    opt.textContent = (sprint.state === "active" ? "🟢 " : "") + name;
+    sel.appendChild(opt);
+  });
+  document.getElementById('sprintRow').style.display = '';
+}
+
 }
 
 
