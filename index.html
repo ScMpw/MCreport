@@ -84,16 +84,19 @@
     let epicForecastResults = {};
 
     // --- ROBUST SPRINT FETCH & SELECTION (paginated) ---
-    async function fetchAllSprints() {
+   async function fetchAllSprints() {
     jiraDomain = document.getElementById('jiraDomain').value.trim();
     boardNum = document.getElementById('boardNum').value.trim();
     if (!jiraDomain || !boardNum) return alert("Enter Jira domain and board number.");
   
     let allSprintsArr = [];
     let startAt = 0;
+    const maxResults = 100;
     let keepFetching = true;
+  
+    // 1. Fetch ALL sprints using pagination
     while (keepFetching) {
-      const url = `https://${jiraDomain}/rest/agile/1.0/board/${boardNum}/sprint?maxResults=100&startAt=${startAt}`;
+      const url = `https://${jiraDomain}/rest/agile/1.0/board/${boardNum}/sprint?maxResults=${maxResults}&startAt=${startAt}`;
       try {
         const resp = await fetch(url, { credentials: "include" });
         if (!resp.ok) {
@@ -105,10 +108,11 @@
         const data = await resp.json();
         if (data.values && data.values.length) {
           allSprintsArr = allSprintsArr.concat(data.values);
-          if (data.isLast || data.values.length < 100) {
+          // Keep going if more sprints
+          if (data.isLast || data.values.length < maxResults) {
             keepFetching = false;
           } else {
-            startAt += 100;
+            startAt += maxResults;
           }
         } else {
           keepFetching = false;
@@ -120,31 +124,38 @@
       }
     }
   
-    // Sort by startDate descending so the most recent are first
-    allSprintsArr = allSprintsArr.filter(s => s.startDate).sort((a, b) => new Date(b.startDate) - new Date(a.startDate));
-    // Show the most recent 50, or however many you want
-    sprints = allSprintsArr.slice(0, 50);
+    // 2. Sort ALL fetched sprints by startDate DESCENDING (most recent first)
+    allSprintsArr = allSprintsArr.filter(s => s.startDate).sort(
+      (a, b) => new Date(b.startDate) - new Date(a.startDate)
+    );
   
-    // Also keep all closed (sorted by endDate) for velocity etc
+    // 3. Now take the most recent N (say, 20 or 50)
+    sprints = allSprintsArr.slice(0, 20); // <-- change number here as needed
+  
+    // For velocity etc, you still want all closed, sorted by endDate descending
     closedSprintsSorted = allSprintsArr.filter(s => s.state === "closed" && s.endDate)
                                        .sort((a, b) => new Date(b.endDate) - new Date(a.endDate));
+  
+    // 4. Populate the dropdown!
     populateSprintDropdown();
   }
   
   function populateSprintDropdown() {
     const sel = document.getElementById('sprintSelect');
     sel.innerHTML = '';
-    // Sort by startDate descending (most recent at top)
-    sprints.sort((a,b) => new Date(a.startDate||0) - new Date(b.startDate||0));
+    // No need to sort again, it's already sorted
     sprints.forEach(sprint => {
       const opt = document.createElement('option');
       opt.value = sprint.id;
-      opt.textContent = (sprint.state === "active" ? "🟢 " : "") + sprint.name +
+      opt.textContent =
+        (sprint.state === "active" ? "🟢 " : "") +
+        sprint.name +
         (sprint.startDate ? " ("+sprint.startDate.substr(0,10)+")" : "");
       sel.appendChild(opt);
     });
     document.getElementById('sprintRow').style.display = '';
-    }
+  }
+
 
     
     // --- MAIN DATA FETCH (Epics/Stories/Velocity) ---
