@@ -97,16 +97,33 @@
         return [];
       }
       const data = await resp.json();
-      // Sort closed sprints by end date so we use the latest ones
-      const closed = (data.sprints || [])
-        .filter(s => s.state === "CLOSED" && s.endDate)
-        .sort((a, b) => new Date(b.endDate) - new Date(a.endDate));
-      const recent6 = closed.slice(0, 6);
-      const velocities = recent6.map(sprint => {
-        const vel = data.velocityStatEntries[sprint.id];
-        return vel ? vel.completed.value : 0;
+      // Attempt to read velocity values from the standard report
+      let closed = (data.sprints || []).filter(s => s.state === "CLOSED");
+      closed.sort((a, b) => {
+        const ad = a.endDate || a.completeDate || a.startDate || '';
+        const bd = b.endDate || b.completeDate || b.startDate || '';
+        return ad && bd ? new Date(bd) - new Date(ad) : 0;
       });
-      console.log('Most recent 6 sprint velocities:', velocities, recent6.map(s=>s.name));
+      closed = closed.slice(0, 6);
+      let velocities = closed.map(s => {
+        const entry = data.velocityStatEntries[s.id];
+        return entry ? entry.completed.value : 0;
+      });
+      console.log('Most recent 6 sprint velocities:', velocities, closed.map(s=>s.name));
+
+      // Fallback: if fewer than 3 velocities are non-zero, try sprint reports
+      if (velocities.filter(v => v > 0).length < 3) {
+        velocities = await Promise.all(closed.map(async s => {
+          const surl = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/sprintreport?rapidViewId=${boardNum}&sprintId=${s.id}`;
+          try {
+            const r = await fetch(surl, { credentials: "include" });
+            if (!r.ok) return 0;
+            const d = await r.json();
+            return d.contents?.completedIssuesEstimateSum?.value || 0;
+          } catch (e) { return 0; }
+        }));
+        console.log('Fallback sprint report velocities:', velocities);
+      }
       return velocities;
     }
 
