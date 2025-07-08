@@ -80,78 +80,44 @@
     </div>
   </div>
   <script>
-let jiraDomain = '', boardNum = '', sprints = [], closedSprintsSorted = [];
-let allEpics = {}, epicStories = {}, epicStoriesBaseline = {};
-let velocityArr = [];
-let selectedSprintId = '', selectedSprintName = '', targetSprints = 4;
-let baselineSprintId = '', baselineIsFirstPI = false;
-let epicAllocations = {}, epicBacklogs = {}, epicRequiredAlloc = {};
-let epicForecastResults = {};
+    let jiraDomain = '', boardNum = '', sprints = [], closedSprintsSorted = [];
+    let allEpics = {}, epicStories = {}, epicStoriesBaseline = {};
+    let velocityArr = [];
+    let selectedSprintId = '', selectedSprintName = '', targetSprints = 4;
+    let baselineSprintId = '', baselineIsFirstPI = false;
+    let epicAllocations = {}, epicBacklogs = {}, epicRequiredAlloc = {};
+    let epicForecastResults = {};
 
-// --- SPRINT FETCH & SELECTION (paginated, NO sorting after fetch) ---
-async function fetchAllSprints() {
-  jiraDomain = document.getElementById('jiraDomain').value.trim();
-  boardNum = document.getElementById('boardNum').value.trim();
-  if (!jiraDomain || !boardNum) return alert("Enter Jira domain and board number.");
-
-  let allSprintsArr = [];
-  let startAt = 0;
-  const maxResults = 100;
-  let total = null;
-
-  while (true) {
-    const url = `https://${jiraDomain}/rest/agile/1.0/board/${boardNum}/sprint?maxResults=${maxResults}&startAt=${startAt}`;
-    console.log("Fetching sprints:", url);
-    try {
-      const resp = await fetch(url, { credentials: "include" });
-      if (!resp.ok) {
-        const text = await resp.text();
-        console.error("API Error Response:", resp.status, text);
-        alert("API returned an error. See console for details.");
-        return;
-      }
-      const data = await resp.json();
-      if (data.values && data.values.length) {
-        allSprintsArr = allSprintsArr.concat(data.values);
-        total = data.total;
-        startAt += maxResults;
-        if (allSprintsArr.length >= total) break;
-      } else {
-        break;
-      }
-    } catch (e) {
-      console.error(e);
-      alert("Failed to fetch sprints. CORS? Are you logged into Jira?");
-      return;
+      // --- NEW: FETCH JIRA VELOCITY REPORT (Greenhopper REST API) ---
+      async function fetchVelocityFromReport(jiraDomain, boardNum) {
+    const url = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/velocity?rapidViewId=${boardNum}`;
+    const resp = await fetch(url, { credentials: "include" });
+    if (!resp.ok) {
+      alert("Failed to fetch velocity report. Are you logged in to Jira?");
+      return [];
     }
+    const data = await resp.json();
+    // Make sure to filter only closed sprints with endDate, and then sort them by endDate descending (latest first)
+    const sortedSprints = (data.sprints || [])
+      .filter(s => s.state === "CLOSED" && s.endDate)
+      .sort((a, b) => new Date(b.endDate) - new Date(a.endDate));
+  
+    // Now take the first 6 (the most recent)
+    const last6 = sortedSprints.slice(0, 6);
+  
+    const velocities = last6.map(sprint => {
+      const vel = data.velocityStatEntries[sprint.id];
+      return vel ? vel.completed.value : 0;
+    });
+    // Optionally, for debugging:
+    console.log('Most recent 6 sprints:', last6.map(s => s.name + ' (' + s.endDate + ')'));
+    console.log('Their velocities:', velocities);
+    return velocities;
   }
 
-  // Log all fetched sprints
-  console.log("Fetched sprints:", allSprintsArr.length, allSprintsArr.map(s => s.name + ' (' + (s.startDate ? s.startDate.substr(0,10) : "undefined") + ')'));
 
-  sprints = allSprintsArr.slice(); // DO NOT reverse or sort
-  closedSprintsSorted = sprints.filter(s => s.state === "closed" && s.endDate)
-                               .sort((a, b) => new Date(b.endDate) - new Date(a.endDate));
-  populateSprintDropdown();
-}
-
-// --- SPRINT DROPDOWN: show all sprints as fetched, no sorting ---
-function populateSprintDropdown() {
-  const sel = document.getElementById('sprintSelect');
-  sel.innerHTML = '';
-  sprints.forEach(sprint => {
-    const opt = document.createElement('option');
-    opt.value = sprint.id;
-    let name = sprint.name || "(no name)";
-    if (sprint.startDate) name += " (" + sprint.startDate.substr(0, 10) + ")";
-    opt.textContent = (sprint.state === "active" ? "🟢 " : "") + name;
-    sel.appendChild(opt);
-  });
-  document.getElementById('sprintRow').style.display = '';
-}
-
-// --- VELOCITY FETCH FROM JIRA REPORT ---
-async function fetchVelocityFromReport(jiraDomain, boardNum) {
+    // --- SPRINT FETCH & SELECTION (paginated, NO sorting after fetch) ---
+    async function fetchVelocityFromReport(jiraDomain, boardNum) {
   const url = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/velocity?rapidViewId=${boardNum}`;
   const resp = await fetch(url, { credentials: "include" });
   if (!resp.ok) {
@@ -176,435 +142,460 @@ async function fetchVelocityFromReport(jiraDomain, boardNum) {
   return velocities;
 }
 
-function getStoryRowClass(story, currSprintObj) {
-  const created = new Date(story.created);
-  const resolved = story.resolved ? new Date(story.resolved) : null;
-  const sprintStart = currSprintObj && currSprintObj.startDate ? new Date(currSprintObj.startDate) : null;
-  const sprintEnd = currSprintObj && currSprintObj.endDate ? new Date(currSprintObj.endDate) : null;
-  if (sprintStart && sprintEnd && created >= sprintStart && created < sprintEnd) {
-    return "story-status-new";
-  }
-  if (sprintStart && sprintEnd && resolved && resolved >= sprintStart && resolved < sprintEnd) {
-    return "story-status-current";
-  }
-  if (resolved && sprintStart && resolved < sprintStart) {
-    return "story-status-previous";
-  }
-  if (!resolved || !story.status || !(story.status.toLowerCase().includes("done") || story.status.toLowerCase().includes("closed"))) {
-    return "story-status-open";
-  }
-  return "story-status-other";
-}
 
-// --- MAIN DATA FETCH (Epics/Stories/Velocity) ---
-async function fetchAll() {
-  selectedSprintId = document.getElementById('sprintSelect').value;
-  selectedSprintName = document.getElementById('sprintSelect').selectedOptions[0].textContent;
-  if (!selectedSprintId) return alert("Select a sprint.");
-  let currSprintObj = sprints.find(s => String(s.id) === String(selectedSprintId));
-  let allPIClosed = closedSprintsSorted.filter(s =>
-    s.name.includes(currSprintObj.name.split(' ')[0])
-  );
-  let firstPISprint = allPIClosed[0];
-  let currIdx = closedSprintsSorted.findIndex(s => String(s.id) === String(selectedSprintId));
-  let baselineIdx = currIdx > 0 ? currIdx - 1 : 0;
-  baselineIsFirstPI = (closedSprintsSorted[baselineIdx].id === firstPISprint.id);
-  baselineSprintId = closedSprintsSorted[baselineIdx].id;
-  let jql = encodeURIComponent(`sprint = ${selectedSprintId} ORDER BY key`);
-  let url = `https://${jiraDomain}/rest/api/3/search?jql=${jql}&fields=summary,parent,customfield_10002,customfield_10005,customfield_12600,status,issuetype&maxResults=500`;
-  let epicKeysSet = new Set();
-  try {
-    const resp = await fetch(url, { credentials: "include" });
-    const data = await resp.json();
-    if (data.issues && data.issues.length) {
-      for (let issue of data.issues) {
-        if (issue.fields.issuetype && issue.fields.issuetype.name === "Epic") continue;
-        let parent = issue.fields.parent;
-        if (parent && parent.fields && parent.fields.issuetype && parent.fields.issuetype.name === "Epic") {
-          epicKeysSet.add(parent.key);
-          allEpics[parent.key] = parent.fields.summary;
-        }
-      }
+      // Log all fetched sprints
+      console.log("Fetched sprints:", allSprintsArr.length, allSprintsArr.map(s => s.name + ' (' + (s.startDate ? s.startDate.substr(0,10) : "undefined") + ')'));
+
+      sprints = allSprintsArr.slice(); // DO NOT reverse or sort
+      closedSprintsSorted = sprints.filter(s => s.state === "closed" && s.endDate)
+                                   .sort((a, b) => new Date(b.endDate) - new Date(a.endDate));
+      populateSprintDropdown();
     }
-  } catch (e) { alert("Error fetching stories for selected sprint"); return; }
-  epicStories = {};
-  await Promise.all(Array.from(epicKeysSet).map(async epicKey => {
-    let eq = encodeURIComponent(`"Epic Link" = ${epicKey}`);
-    let urlEpic = `https://${jiraDomain}/rest/api/3/search?jql=${eq}&fields=summary,status,customfield_10002,customfield_12600,created,resolutiondate,issuetype,customfield_10005&maxResults=500`;
-    try {
-      const resp = await fetch(urlEpic, { credentials: "include" });
-      const data = await resp.json();
-      epicStories[epicKey] = data.issues.filter(story =>
-        !(story.fields.issuetype && story.fields.issuetype.subtask)
-      ).map(story => ({
-        key: story.key,
-        summary: story.fields.summary,
-        status: story.fields.status && story.fields.status.name,
-        points: Number(story.fields.customfield_10002) || 0,
-        team: (story.fields.customfield_12600 || []).join(', '),
-        created: story.fields.created,
-        resolved: story.fields.resolutiondate,
-        sprint: (story.fields.customfield_10005||[]).map(s=>s.name).join(', '),
-      }));
-    } catch (e) { epicStories[epicKey] = []; }
-  }));
-  epicStoriesBaseline = {};
-  await Promise.all(Array.from(epicKeysSet).map(async epicKey => {
-    let eq = encodeURIComponent(`"Epic Link" = ${epicKey}`);
-    let urlEpic = `https://${jiraDomain}/rest/api/3/search?jql=${eq}&fields=summary,status,customfield_10002,customfield_12600,created,resolutiondate,issuetype,customfield_10005&maxResults=500`;
-    try {
-      const resp = await fetch(urlEpic, { credentials: "include" });
-      const data = await resp.json();
-      epicStoriesBaseline[epicKey] = data.issues.filter(story =>
-        !(story.fields.issuetype && story.fields.issuetype.subtask)
-      ).filter(story => {
-        let created = new Date(story.fields.created);
-        let baseSprint = closedSprintsSorted.find(s=>s.id==baselineSprintId);
-        return created <= new Date(baseSprint.endDate);
-      }).map(story => ({
-        key: story.key,
-        summary: story.fields.summary,
-        status: story.fields.status && story.fields.status.name,
-        points: Number(story.fields.customfield_10002) || 0,
-        team: (story.fields.customfield_12600 || []).join(', '),
-        created: story.fields.created,
-        resolved: story.fields.resolutiondate,
-        sprint: (story.fields.customfield_10005||[]).map(s=>s.name).join(', '),
-      }));
-    } catch (e) { epicStoriesBaseline[epicKey] = []; }
-  }));
-  // --- FETCH HISTORICAL VELOCITY FROM JIRA REPORT ---
-  velocityArr = await fetchVelocityFromReport(jiraDomain, boardNum);
-  document.getElementById('configSection').style.display = '';
-  renderVelocityInputs();
-  renderEpicSummary();
-}
 
-// --- VELOCITY INPUTS ---
-function renderVelocityInputs() {
-  let vhtml = velocityArr.map((v, i) =>
-    `<input class="editarr" type="number" min="0" value="${v}" onchange="editVelocity(this,${i})">`).join(', ');
-  document.getElementById('velocityWrap').innerHTML = vhtml;
-}
-function editVelocity(inp, idx) { velocityArr[idx] = Number(inp.value) || 0; }
-
-// --- MAIN REPORT RENDER ---
-function renderEpicSummary() {
-  targetSprints = Number(document.getElementById('targetSprintsInput').value) || 4;
-  let velocity = velocityArr.filter(v=>v>0);
-  if (velocity.length<3) {
-    document.getElementById('epicSummary').innerHTML = '<div class="warn">Please set at least 3 recent velocity values.</div>';
-    return;
-  }
-  epicBacklogs = {};
-  let totalBacklog = 0;
-  Object.keys(epicStories).forEach(epicKey => {
-    let stories = epicStories[epicKey]||[];
-    let backlog = stories.filter(st => !isDone(st.status)).reduce((a,b)=>a+b.points,0);
-    epicBacklogs[epicKey] = backlog;
-    totalBacklog += backlog;
-  });
-  epicAllocations = {};
-  Object.keys(epicStories).forEach(epicKey => {
-    epicAllocations[epicKey] = totalBacklog ? Math.round(100*epicBacklogs[epicKey]/totalBacklog) : 0;
-  });
-  epicForecastResults = {};
-  epicRequiredAlloc = {};
-  Object.keys(epicStories).forEach(epicKey => {
-    let stories = epicStories[epicKey]||[];
-    let backlogPts = epicBacklogs[epicKey];
-    let alloc = epicAllocations[epicKey];
-    let allocVels = velocity.map(v=>v*alloc/100);
-    let mcRuns = [];
-    for (let i=0; i<8000; i++) {
-      let b = backlogPts, s=0;
-      while (b>0 && s<100) {
-        let v = allocVels[Math.floor(Math.random()*allocVels.length)];
-        if (v<1) v=1;
-        b -= v; s++;
-      }
-      mcRuns.push(s);
+    // --- SPRINT DROPDOWN: show all sprints as fetched, no sorting ---
+    function populateSprintDropdown() {
+      const sel = document.getElementById('sprintSelect');
+      sel.innerHTML = '';
+      sprints.forEach(sprint => {
+        const opt = document.createElement('option');
+        opt.value = sprint.id;
+        let name = sprint.name || "(no name)";
+        if (sprint.startDate) name += " (" + sprint.startDate.substr(0, 10) + ")";
+        opt.textContent = (sprint.state === "active" ? "🟢 " : "") + name;
+        sel.appendChild(opt);
+      });
+      document.getElementById('sprintRow').style.display = '';
     }
-    mcRuns.sort((a,b)=>a-b);
-    epicForecastResults[epicKey] = mcRuns;
-    let allocNeeded = { "75": null, "95": null };
-    for (let pct=1;pct<=100;pct++) {
-      let testVels = velocity.map(v=>v*pct/100);
-      let runs = [];
-      for (let i=0;i<600;i++) {
-        let b = backlogPts, s=0;
-        while (b>0 && s<100) {
-          let v = testVels[Math.floor(Math.random()*testVels.length)];
-          if (v<1) v=1;
-          b -= v; s++;
-        }
-        runs.push(s);
+
+    function getStoryRowClass(story, currSprintObj) {
+      const created = new Date(story.created);
+      const resolved = story.resolved ? new Date(story.resolved) : null;
+      const sprintStart = currSprintObj && currSprintObj.startDate ? new Date(currSprintObj.startDate) : null;
+      const sprintEnd = currSprintObj && currSprintObj.endDate ? new Date(currSprintObj.endDate) : null;
+      if (sprintStart && sprintEnd && created >= sprintStart && created < sprintEnd) {
+        return "story-status-new";
       }
-      runs.sort((a,b)=>a-b);
-      if (allocNeeded["75"] === null && runs[Math.floor(0.75*runs.length)]<=targetSprints) allocNeeded["75"] = pct;
-      if (allocNeeded["95"] === null && runs[Math.floor(0.95*runs.length)]<=targetSprints) allocNeeded["95"] = pct;
-      if (allocNeeded["75"] && allocNeeded["95"]) break;
+      if (sprintStart && sprintEnd && resolved && resolved >= sprintStart && resolved < sprintEnd) {
+        return "story-status-current";
+      }
+      if (resolved && sprintStart && resolved < sprintStart) {
+        return "story-status-previous";
+      }
+      if (!resolved || !story.status || !(story.status.toLowerCase().includes("done") || story.status.toLowerCase().includes("closed"))) {
+        return "story-status-open";
+      }
+      return "story-status-other";
     }
-    epicRequiredAlloc[epicKey] = allocNeeded;
-  });
 
-  let totalAlloc = Object.values(epicAllocations).reduce((a,b)=>a+b,0);
-  let allocWarn = '';
-  if (totalAlloc < 99) allocWarn = `<span class="warn">Warning: Not all team capacity is assigned to listed epics (${totalAlloc}% total).</span>`;
-  else if (totalAlloc > 101) allocWarn = `<span class="warn">Warning: Allocations exceed 100% of capacity! (${totalAlloc}%)</span>`;
-  else allocWarn = `<span class="success">Team allocation: ${totalAlloc}%</span>`;
-  let html = `<div class="allocation-row">${allocWarn}</div>`;
-
-  Object.keys(epicStories).forEach((epicKey, idx) => {
-    let stories = epicStories[epicKey];
-    if (!stories || !stories.length) return;
-    let statusCounts = {done:0,prog:0,open:0,other:0};
-    let ptsDone=0, ptsProg=0, ptsOpen=0, ptsOther=0;
-    stories.forEach(story => {
-      let sgrp = statusGroup(story.status);
-      if (sgrp==='Done') { statusCounts.done++; ptsDone+=story.points;}
-      else if (sgrp==='In Progress') { statusCounts.prog++; ptsProg+=story.points;}
-      else if (sgrp==='Ready/Open') { statusCounts.open++; ptsOpen+=story.points;}
-      else { statusCounts.other++; ptsOther+=story.points;}
-    });
-    let totalEstimate = ptsDone+ptsProg+ptsOpen+ptsOther;
-    let backlog = ptsProg+ptsOpen+ptsOther;
-    let alloc = epicAllocations[epicKey];
-    let required = epicRequiredAlloc[epicKey];
-    let mc = epicForecastResults[epicKey];
-    let probRows = [[50,mc[Math.floor(0.5*mc.length)]],[75,mc[Math.floor(0.75*mc.length)]],[95,mc[Math.floor(0.95*mc.length)]]];
-
-    let baseStories = (epicStoriesBaseline[epicKey]||[]);
-    let baseKeys = new Set(baseStories.map(s=>s.key));
-    let currKeys = new Set(stories.map(s=>s.key));
-    let newStories = stories.filter(s=>!baseKeys.has(s.key));
-    let removedStories = baseStories.filter(s=>!currKeys.has(s.key));
-    let baseDone = baseStories.filter(s=>statusGroup(s.status)==="Done").map(s=>s.points).reduce((a,b)=>a+b,0);
-    let doneSince = ptsDone - baseDone;
-    let estimateBaseline = baseStories.map(s=>s.points).reduce((a,b)=>a+b,0);
-    let deltaEstimate = totalEstimate - estimateBaseline;
-    const currSprintObj = sprints.find(s => String(s.id) === String(selectedSprintId));
-    const storyTableId = `storyTable_${epicKey.replace(/[^a-zA-Z0-9]/g, '')}`;
-    html += `
-    <div class="epic-summary-block">
-      <div class="epic-header">${epicKey}: ${allEpics[epicKey]||''}</div>
-      <div style="margin-top:4px;margin-bottom:10px;">
-        <span class="status-pill pill-done">${ptsDone} Done</span>
-        <span class="status-pill pill-prog">${ptsProg} In Progress</span>
-        <span class="status-pill pill-open">${ptsOpen+ptsOther} Open</span>
-        &nbsp; <b>Total:</b> ${totalEstimate} SP &nbsp; | &nbsp; <b>Backlog:</b> ${backlog} SP
-      </div>
-      <div class="info-grid">
-        <div>
-          <div style="margin-bottom:4px;">
-            <b>Team allocation for this epic:</b> 
-            <span style="font-size:1.1em;font-weight:600;">${alloc}%</span>
-            <div class="allocation-bar" style="width:${2*alloc}px"></div>
-          </div>
-          <div>
-            <table class="prob-table">
-              <tr><th>Confidence</th><th>Sprints Needed</th></tr>
-              ${probRows.map(r=>`<tr><td>${r[0]}%</td><td>${r[1]}</td></tr>`).join('')}
-            </table>
-          </div>
-          <div style="margin-bottom:8px;">
-            <b>Required allocation to finish in ${targetSprints} sprints:</b>
-            <ul style="margin:3px 0 0 0;padding-left:1.3em;">
-              <li>75% confidence: ${required["75"] ? required["75"]+"%" : '<span class="warn">Over 100%</span>'}</li>
-              <li>95% confidence: ${required["95"] ? required["95"]+"%" : '<span class="warn">Over 100%</span>'}</li>
-            </ul>
-          </div>
-          <div style="font-size:0.99em;">
-            ${probRows[1][1] > targetSprints ?
-              `<span class="warn">At 75% confidence, this epic is <b>not likely</b> to finish in ${targetSprints} sprints.<br>
-              More allocation or velocity needed.</span>`
-              :
-              `<span class="success">On track to finish in ${targetSprints} sprints at 75% confidence.</span>`
+    // --- MAIN DATA FETCH (Epics/Stories/Velocity) ---
+    async function fetchAll() {
+      selectedSprintId = document.getElementById('sprintSelect').value;
+      selectedSprintName = document.getElementById('sprintSelect').selectedOptions[0].textContent;
+      if (!selectedSprintId) return alert("Select a sprint.");
+      let currSprintObj = sprints.find(s => String(s.id) === String(selectedSprintId));
+      let allPIClosed = closedSprintsSorted.filter(s =>
+        s.name.includes(currSprintObj.name.split(' ')[0])
+      );
+      let firstPISprint = allPIClosed[0];
+      let currIdx = closedSprintsSorted.findIndex(s => String(s.id) === String(selectedSprintId));
+      let baselineIdx = currIdx > 0 ? currIdx - 1 : 0;
+      baselineIsFirstPI = (closedSprintsSorted[baselineIdx].id === firstPISprint.id);
+      baselineSprintId = closedSprintsSorted[baselineIdx].id;
+      let jql = encodeURIComponent(`sprint = ${selectedSprintId} ORDER BY key`);
+      let url = `https://${jiraDomain}/rest/api/3/search?jql=${jql}&fields=summary,parent,customfield_10002,customfield_10005,customfield_12600,status,issuetype&maxResults=500`;
+      let epicKeysSet = new Set();
+      try {
+        const resp = await fetch(url, { credentials: "include" });
+        const data = await resp.json();
+        if (data.issues && data.issues.length) {
+          for (let issue of data.issues) {
+            if (issue.fields.issuetype && issue.fields.issuetype.name === "Epic") continue;
+            let parent = issue.fields.parent;
+            if (parent && parent.fields && parent.fields.issuetype && parent.fields.issuetype.name === "Epic") {
+              epicKeysSet.add(parent.key);
+              allEpics[parent.key] = parent.fields.summary;
             }
-          </div>
-        </div>
-        <div>
-          <div class="pdf-section-title" style="margin-top:0;">Changes since ${baselineIsFirstPI ? "PI start" : "last sprint"}:</div>
-          <div class="change-block">
-            <ul>
-              <li>Story points completed: <b>${doneSince}</b></li>
-              <li>New stories: <b>${newStories.length}</b> (${newStories.reduce((a,b)=>a+b.points,0)} SP)</li>
-              <li>Removed stories: <b>${removedStories.length}</b> (${removedStories.reduce((a,b)=>a+b.points,0)} SP)</li>
-              <li>
-                Scope change: ${
-                  deltaEstimate===0 ? "No change"
-                  : (deltaEstimate>0?'<span class="warn">Increased (+'
-                    +deltaEstimate+')</span>':'<span class="success">Reduced ('+deltaEstimate+')</span>')
-                }
-              </li>
-            </ul>
-          </div>
-        </div>
-      </div>
-      <button class="btn details-toggle" onclick="toggleEpicDetails(this, '${storyTableId}')">Show Details</button>
-      <div id="${storyTableId}" style="display:none; margin-top:10px;">
-        <table class="story-table">
-          <tr>
-            <th>Story</th>
-            <th>Status</th>
-            <th>Points</th>
-            <th>Team</th>
-            <th>Created</th>
-            <th>Resolved</th>
-          </tr>
-          ${
-            stories.map(story => {
-              const rowClass = getStoryRowClass(story, currSprintObj);
-              return `
-                <tr class="${rowClass}">
-                  <td>${story.key}</td>
-                  <td>${story.status}</td>
-                  <td>${story.points}</td>
-                  <td>${story.team}</td>
-                  <td>${story.created?story.created.substr(0,10):""}</td>
-                  <td>${story.resolved?story.resolved.substr(0,10):""}</td>
-                </tr>
-              `;
-            }).join('')
           }
-        </table>
-        <div style="font-size:0.95em;margin-top:8px;">
-          <span style="background:#E0F7FA;padding:2px 8px;border-radius:4px;">Done this sprint</span>
-          <span style="background:#E8F5E9;padding:2px 8px;border-radius:4px;">Done before</span>
-          <span style="background:#FFF8E1;padding:2px 8px;border-radius:4px;">New in this sprint</span>
-          <span style="background:#F3F4F6;padding:2px 8px;border-radius:4px;">Open/In Progress</span>
+        }
+      } catch (e) { alert("Error fetching stories for selected sprint"); return; }
+      epicStories = {};
+      await Promise.all(Array.from(epicKeysSet).map(async epicKey => {
+        let eq = encodeURIComponent(`"Epic Link" = ${epicKey}`);
+        let urlEpic = `https://${jiraDomain}/rest/api/3/search?jql=${eq}&fields=summary,status,customfield_10002,customfield_12600,created,resolutiondate,issuetype,customfield_10005&maxResults=500`;
+        try {
+          const resp = await fetch(urlEpic, { credentials: "include" });
+          const data = await resp.json();
+          epicStories[epicKey] = data.issues.filter(story =>
+            !(story.fields.issuetype && story.fields.issuetype.subtask)
+          ).map(story => ({
+            key: story.key,
+            summary: story.fields.summary,
+            status: story.fields.status && story.fields.status.name,
+            points: Number(story.fields.customfield_10002) || 0,
+            team: (story.fields.customfield_12600 || []).join(', '),
+            created: story.fields.created,
+            resolved: story.fields.resolutiondate,
+            sprint: (story.fields.customfield_10005||[]).map(s=>s.name).join(', '),
+          }));
+        } catch (e) { epicStories[epicKey] = []; }
+      }));
+      epicStoriesBaseline = {};
+      await Promise.all(Array.from(epicKeysSet).map(async epicKey => {
+        let eq = encodeURIComponent(`"Epic Link" = ${epicKey}`);
+        let urlEpic = `https://${jiraDomain}/rest/api/3/search?jql=${eq}&fields=summary,status,customfield_10002,customfield_12600,created,resolutiondate,issuetype,customfield_10005&maxResults=500`;
+        try {
+          const resp = await fetch(urlEpic, { credentials: "include" });
+          const data = await resp.json();
+          epicStoriesBaseline[epicKey] = data.issues.filter(story =>
+            !(story.fields.issuetype && story.fields.issuetype.subtask)
+          ).filter(story => {
+            let created = new Date(story.fields.created);
+            let baseSprint = closedSprintsSorted.find(s=>s.id==baselineSprintId);
+            return created <= new Date(baseSprint.endDate);
+          }).map(story => ({
+            key: story.key,
+            summary: story.fields.summary,
+            status: story.fields.status && story.fields.status.name,
+            points: Number(story.fields.customfield_10002) || 0,
+            team: (story.fields.customfield_12600 || []).join(', '),
+            created: story.fields.created,
+            resolved: story.fields.resolutiondate,
+            sprint: (story.fields.customfield_10005||[]).map(s=>s.name).join(', '),
+          }));
+        } catch (e) { epicStoriesBaseline[epicKey] = []; }
+      }));
+      // --- FETCH HISTORICAL VELOCITY FROM JIRA REPORT ---
+      velocityArr = await fetchVelocityFromReport(jiraDomain, boardNum);
+      document.getElementById('configSection').style.display = '';
+      renderVelocityInputs();
+      renderEpicSummary();
+    }
+
+    // --- VELOCITY INPUTS ---
+    function renderVelocityInputs() {
+      let vhtml = velocityArr.map((v, i) =>
+        `<input class="editarr" type="number" min="0" value="${v}" onchange="editVelocity(this,${i})">`).join(', ');
+      document.getElementById('velocityWrap').innerHTML = vhtml;
+    }
+    function editVelocity(inp, idx) { velocityArr[idx] = Number(inp.value) || 0; }
+
+    // --- MAIN REPORT RENDER ---
+    function renderEpicSummary() {
+      targetSprints = Number(document.getElementById('targetSprintsInput').value) || 4;
+      let velocity = velocityArr.filter(v=>v>0);
+      if (velocity.length<3) {
+        document.getElementById('epicSummary').innerHTML = '<div class="warn">Please set at least 3 recent velocity values.</div>';
+        return;
+      }
+      epicBacklogs = {};
+      let totalBacklog = 0;
+      Object.keys(epicStories).forEach(epicKey => {
+        let stories = epicStories[epicKey]||[];
+        let backlog = stories.filter(st => !isDone(st.status)).reduce((a,b)=>a+b.points,0);
+        epicBacklogs[epicKey] = backlog;
+        totalBacklog += backlog;
+      });
+      epicAllocations = {};
+      Object.keys(epicStories).forEach(epicKey => {
+        epicAllocations[epicKey] = totalBacklog ? Math.round(100*epicBacklogs[epicKey]/totalBacklog) : 0;
+      });
+      epicForecastResults = {};
+      epicRequiredAlloc = {};
+      Object.keys(epicStories).forEach(epicKey => {
+        let stories = epicStories[epicKey]||[];
+        let backlogPts = epicBacklogs[epicKey];
+        let alloc = epicAllocations[epicKey];
+        let allocVels = velocity.map(v=>v*alloc/100);
+        let mcRuns = [];
+        for (let i=0; i<8000; i++) {
+          let b = backlogPts, s=0;
+          while (b>0 && s<100) {
+            let v = allocVels[Math.floor(Math.random()*allocVels.length)];
+            if (v<1) v=1;
+            b -= v; s++;
+          }
+          mcRuns.push(s);
+        }
+        mcRuns.sort((a,b)=>a-b);
+        epicForecastResults[epicKey] = mcRuns;
+        let allocNeeded = { "75": null, "95": null };
+        for (let pct=1;pct<=100;pct++) {
+          let testVels = velocity.map(v=>v*pct/100);
+          let runs = [];
+          for (let i=0;i<600;i++) {
+            let b = backlogPts, s=0;
+            while (b>0 && s<100) {
+              let v = testVels[Math.floor(Math.random()*testVels.length)];
+              if (v<1) v=1;
+              b -= v; s++;
+            }
+            runs.push(s);
+          }
+          runs.sort((a,b)=>a-b);
+          if (allocNeeded["75"] === null && runs[Math.floor(0.75*runs.length)]<=targetSprints) allocNeeded["75"] = pct;
+          if (allocNeeded["95"] === null && runs[Math.floor(0.95*runs.length)]<=targetSprints) allocNeeded["95"] = pct;
+          if (allocNeeded["75"] && allocNeeded["95"]) break;
+        }
+        epicRequiredAlloc[epicKey] = allocNeeded;
+      });
+
+      let totalAlloc = Object.values(epicAllocations).reduce((a,b)=>a+b,0);
+      let allocWarn = '';
+      if (totalAlloc < 99) allocWarn = `<span class="warn">Warning: Not all team capacity is assigned to listed epics (${totalAlloc}% total).</span>`;
+      else if (totalAlloc > 101) allocWarn = `<span class="warn">Warning: Allocations exceed 100% of capacity! (${totalAlloc}%)</span>`;
+      else allocWarn = `<span class="success">Team allocation: ${totalAlloc}%</span>`;
+      let html = `<div class="allocation-row">${allocWarn}</div>`;
+
+      Object.keys(epicStories).forEach((epicKey, idx) => {
+        let stories = epicStories[epicKey];
+        if (!stories || !stories.length) return;
+        let statusCounts = {done:0,prog:0,open:0,other:0};
+        let ptsDone=0, ptsProg=0, ptsOpen=0, ptsOther=0;
+        stories.forEach(story => {
+          let sgrp = statusGroup(story.status);
+          if (sgrp==='Done') { statusCounts.done++; ptsDone+=story.points;}
+          else if (sgrp==='In Progress') { statusCounts.prog++; ptsProg+=story.points;}
+          else if (sgrp==='Ready/Open') { statusCounts.open++; ptsOpen+=story.points;}
+          else { statusCounts.other++; ptsOther+=story.points;}
+        });
+        let totalEstimate = ptsDone+ptsProg+ptsOpen+ptsOther;
+        let backlog = ptsProg+ptsOpen+ptsOther;
+        let alloc = epicAllocations[epicKey];
+        let required = epicRequiredAlloc[epicKey];
+        let mc = epicForecastResults[epicKey];
+        let probRows = [[50,mc[Math.floor(0.5*mc.length)]],[75,mc[Math.floor(0.75*mc.length)]],[95,mc[Math.floor(0.95*mc.length)]]];
+
+        let baseStories = (epicStoriesBaseline[epicKey]||[]);
+        let baseKeys = new Set(baseStories.map(s=>s.key));
+        let currKeys = new Set(stories.map(s=>s.key));
+        let newStories = stories.filter(s=>!baseKeys.has(s.key));
+        let removedStories = baseStories.filter(s=>!currKeys.has(s.key));
+        let baseDone = baseStories.filter(s=>statusGroup(s.status)==="Done").map(s=>s.points).reduce((a,b)=>a+b,0);
+        let doneSince = ptsDone - baseDone;
+        let estimateBaseline = baseStories.map(s=>s.points).reduce((a,b)=>a+b,0);
+        let deltaEstimate = totalEstimate - estimateBaseline;
+        const currSprintObj = sprints.find(s => String(s.id) === String(selectedSprintId));
+        const storyTableId = `storyTable_${epicKey.replace(/[^a-zA-Z0-9]/g, '')}`;
+        html += `
+        <div class="epic-summary-block">
+          <div class="epic-header">${epicKey}: ${allEpics[epicKey]||''}</div>
+          <div style="margin-top:4px;margin-bottom:10px;">
+            <span class="status-pill pill-done">${ptsDone} Done</span>
+            <span class="status-pill pill-prog">${ptsProg} In Progress</span>
+            <span class="status-pill pill-open">${ptsOpen+ptsOther} Open</span>
+            &nbsp; <b>Total:</b> ${totalEstimate} SP &nbsp; | &nbsp; <b>Backlog:</b> ${backlog} SP
+          </div>
+          <div class="info-grid">
+            <div>
+              <div style="margin-bottom:4px;">
+                <b>Team allocation for this epic:</b> 
+                <span style="font-size:1.1em;font-weight:600;">${alloc}%</span>
+                <div class="allocation-bar" style="width:${2*alloc}px"></div>
+              </div>
+              <div>
+                <table class="prob-table">
+                  <tr><th>Confidence</th><th>Sprints Needed</th></tr>
+                  ${probRows.map(r=>`<tr><td>${r[0]}%</td><td>${r[1]}</td></tr>`).join('')}
+                </table>
+              </div>
+              <div style="margin-bottom:8px;">
+                <b>Required allocation to finish in ${targetSprints} sprints:</b>
+                <ul style="margin:3px 0 0 0;padding-left:1.3em;">
+                  <li>75% confidence: ${required["75"] ? required["75"]+"%" : '<span class="warn">Over 100%</span>'}</li>
+                  <li>95% confidence: ${required["95"] ? required["95"]+"%" : '<span class="warn">Over 100%</span>'}</li>
+                </ul>
+              </div>
+              <div style="font-size:0.99em;">
+                ${probRows[1][1] > targetSprints ?
+                  `<span class="warn">At 75% confidence, this epic is <b>not likely</b> to finish in ${targetSprints} sprints.<br>
+                  More allocation or velocity needed.</span>`
+                  :
+                  `<span class="success">On track to finish in ${targetSprints} sprints at 75% confidence.</span>`
+                }
+              </div>
+            </div>
+            <div>
+              <div class="pdf-section-title" style="margin-top:0;">Changes since ${baselineIsFirstPI ? "PI start" : "last sprint"}:</div>
+              <div class="change-block">
+                <ul>
+                  <li>Story points completed: <b>${doneSince}</b></li>
+                  <li>New stories: <b>${newStories.length}</b> (${newStories.reduce((a,b)=>a+b.points,0)} SP)</li>
+                  <li>Removed stories: <b>${removedStories.length}</b> (${removedStories.reduce((a,b)=>a+b.points,0)} SP)</li>
+                  <li>
+                    Scope change: ${
+                      deltaEstimate===0 ? "No change"
+                      : (deltaEstimate>0?'<span class="warn">Increased (+'
+                        +deltaEstimate+')</span>':'<span class="success">Reduced ('+deltaEstimate+')</span>')
+                    }
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+          <button class="btn details-toggle" onclick="toggleEpicDetails(this, '${storyTableId}')">Show Details</button>
+          <div id="${storyTableId}" style="display:none; margin-top:10px;">
+            <table class="story-table">
+              <tr>
+                <th>Story</th>
+                <th>Status</th>
+                <th>Points</th>
+                <th>Team</th>
+                <th>Created</th>
+                <th>Resolved</th>
+              </tr>
+              ${
+                stories.map(story => {
+                  const rowClass = getStoryRowClass(story, currSprintObj);
+                  return `
+                    <tr class="${rowClass}">
+                      <td>${story.key}</td>
+                      <td>${story.status}</td>
+                      <td>${story.points}</td>
+                      <td>${story.team}</td>
+                      <td>${story.created?story.created.substr(0,10):""}</td>
+                      <td>${story.resolved?story.resolved.substr(0,10):""}</td>
+                    </tr>
+                  `;
+                }).join('')
+              }
+            </table>
+            <div style="font-size:0.95em;margin-top:8px;">
+              <span style="background:#E0F7FA;padding:2px 8px;border-radius:4px;">Done this sprint</span>
+              <span style="background:#E8F5E9;padding:2px 8px;border-radius:4px;">Done before</span>
+              <span style="background:#FFF8E1;padding:2px 8px;border-radius:4px;">New in this sprint</span>
+              <span style="background:#F3F4F6;padding:2px 8px;border-radius:4px;">Open/In Progress</span>
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
-    `;
-  });
-  document.getElementById('epicSummary').innerHTML = html;
-}
+        `;
+      });
+      document.getElementById('epicSummary').innerHTML = html;
+    }
 
-function toggleEpicDetails(btn, id) {
-  const block = document.getElementById(id);
-  if (block.style.display === "none") {
-    block.style.display = "";
-    btn.textContent = "Hide Details";
-  } else {
-    block.style.display = "none";
-    btn.textContent = "Show Details";
-  }
-}
+    function toggleEpicDetails(btn, id) {
+      const block = document.getElementById(id);
+      if (block.style.display === "none") {
+        block.style.display = "";
+        btn.textContent = "Hide Details";
+      } else {
+        block.style.display = "none";
+        btn.textContent = "Show Details";
+      }
+    }
 
-function isDone(status) {
-  status = (status||'').toLowerCase();
-  return status.includes("done") || status.includes("closed");
-}
-function statusGroup(s) {
-  s = (s||"").toLowerCase();
-  if (s.includes("done") || s.includes("closed")) return "Done";
-  if (s.includes("progress") || s.includes("development")) return "In Progress";
-  if (s === "ready" || s === "open") return "Ready/Open";
-  return "Other";
-}
+    function isDone(status) {
+      status = (status||'').toLowerCase();
+      return status.includes("done") || status.includes("closed");
+    }
+    function statusGroup(s) {
+      s = (s||"").toLowerCase();
+      if (s.includes("done") || s.includes("closed")) return "Done";
+      if (s.includes("progress") || s.includes("development")) return "In Progress";
+      if (s === "ready" || s === "open") return "Ready/Open";
+      return "Other";
+    }
 
-// --- PDF EXPORT (CLEAN SUMMARY ONLY) ---
-function exportPDF() {
-  const { jsPDF } = window.jspdf;
-  const pdf = new jsPDF({ unit:'pt', format:'a4' });
-  let y = 38;
-  pdf.setFont('helvetica', 'bold');
-  pdf.setFontSize(23);
-  pdf.text("Stakeholder PI Status Report", 45, y); y+=22;
-  pdf.setFont('helvetica','normal');
-  pdf.setFontSize(12);
-  pdf.text(`Generated: ${new Date().toLocaleString()}`, 45, y); y+=13;
-  pdf.text(`Board: ${boardNum}   |   Sprint: ${selectedSprintName||''}`, 45, y); y+=23;
+    // --- PDF EXPORT (CLEAN SUMMARY ONLY) ---
+    function exportPDF() {
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF({ unit:'pt', format:'a4' });
+      let y = 38;
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(23);
+      pdf.text("Stakeholder PI Status Report", 45, y); y+=22;
+      pdf.setFont('helvetica','normal');
+      pdf.setFontSize(12);
+      pdf.text(`Generated: ${new Date().toLocaleString()}`, 45, y); y+=13;
+      pdf.text(`Board: ${boardNum}   |   Sprint: ${selectedSprintName||''}`, 45, y); y+=23;
 
-  // Velocity history
-  pdf.setFont('helvetica','bold');
-  pdf.setFontSize(14);
-  pdf.text("Velocity history (last 6 sprints):", 45, y); y+=15;
-  pdf.setFont('helvetica','normal');
-  pdf.setFontSize(11);
-  pdf.text(velocityArr.join(", "), 45, y); y+=18;
-  pdf.setLineWidth(0.3);
-  pdf.line(45, y, 530, y); y+=8;
+      // Velocity history
+      pdf.setFont('helvetica','bold');
+      pdf.setFontSize(14);
+      pdf.text("Velocity history (last 6 sprints):", 45, y); y+=15;
+      pdf.setFont('helvetica','normal');
+      pdf.setFontSize(11);
+      pdf.text(velocityArr.join(", "), 45, y); y+=18;
+      pdf.setLineWidth(0.3);
+      pdf.line(45, y, 530, y); y+=8;
 
-  let totalAlloc = Object.values(epicAllocations).reduce((a,b)=>a+b,0);
-  let allocWarn = '';
-  if (totalAlloc < 99) allocWarn = `Warning: Not all team capacity assigned (${totalAlloc}% total)`;
-  else if (totalAlloc > 101) allocWarn = `Warning: Allocations exceed 100% (${totalAlloc}%)`;
-  else allocWarn = `Team allocation: ${totalAlloc}%`;
-  pdf.setFont('helvetica','normal');
-  pdf.setTextColor(totalAlloc>101?225:16, totalAlloc>101?29:153, totalAlloc>101?72:105);
-  pdf.text(allocWarn, 45, y); y+=18;
-  pdf.setTextColor(51,51,51);
+      let totalAlloc = Object.values(epicAllocations).reduce((a,b)=>a+b,0);
+      let allocWarn = '';
+      if (totalAlloc < 99) allocWarn = `Warning: Not all team capacity assigned (${totalAlloc}% total)`;
+      else if (totalAlloc > 101) allocWarn = `Warning: Allocations exceed 100% (${totalAlloc}%)`;
+      else allocWarn = `Team allocation: ${totalAlloc}%`;
+      pdf.setFont('helvetica','normal');
+      pdf.setTextColor(totalAlloc>101?225:16, totalAlloc>101?29:153, totalAlloc>101?72:105);
+      pdf.text(allocWarn, 45, y); y+=18;
+      pdf.setTextColor(51,51,51);
 
-  Object.keys(epicStories).forEach((epicKey, idx) => {
-    let stories = epicStories[epicKey];
-    if (!stories || !stories.length) return;
-    let ptsDone=0, ptsProg=0, ptsOpen=0, ptsOther=0;
-    stories.forEach(story => {
-      let sgrp = statusGroup(story.status);
-      if (sgrp==='Done') { ptsDone+=story.points;}
-      else if (sgrp==='In Progress') { ptsProg+=story.points;}
-      else if (sgrp==='Ready/Open') { ptsOpen+=story.points;}
-      else { ptsOther+=story.points;}
-    });
-    let totalEstimate = ptsDone+ptsProg+ptsOpen+ptsOther;
-    let backlog = ptsProg+ptsOpen+ptsOther;
-    let alloc = epicAllocations[epicKey];
-    let required = epicRequiredAlloc[epicKey];
-    let mc = epicForecastResults[epicKey];
-    let probRows = [[50,mc[Math.floor(0.5*mc.length)]],[75,mc[Math.floor(0.75*mc.length)]],[95,mc[Math.floor(0.95*mc.length)]]];
+      Object.keys(epicStories).forEach((epicKey, idx) => {
+        let stories = epicStories[epicKey];
+        if (!stories || !stories.length) return;
+        let ptsDone=0, ptsProg=0, ptsOpen=0, ptsOther=0;
+        stories.forEach(story => {
+          let sgrp = statusGroup(story.status);
+          if (sgrp==='Done') { ptsDone+=story.points;}
+          else if (sgrp==='In Progress') { ptsProg+=story.points;}
+          else if (sgrp==='Ready/Open') { ptsOpen+=story.points;}
+          else { ptsOther+=story.points;}
+        });
+        let totalEstimate = ptsDone+ptsProg+ptsOpen+ptsOther;
+        let backlog = ptsProg+ptsOpen+ptsOther;
+        let alloc = epicAllocations[epicKey];
+        let required = epicRequiredAlloc[epicKey];
+        let mc = epicForecastResults[epicKey];
+        let probRows = [[50,mc[Math.floor(0.5*mc.length)]],[75,mc[Math.floor(0.75*mc.length)]],[95,mc[Math.floor(0.95*mc.length)]]];
 
-    let baseStories = (epicStoriesBaseline[epicKey]||[]);
-    let baseKeys = new Set(baseStories.map(s=>s.key));
-    let currKeys = new Set(stories.map(s=>s.key));
-    let newStories = stories.filter(s=>!baseKeys.has(s.key));
-    let removedStories = baseStories.filter(s=>!currKeys.has(s.key));
-    let baseDone = baseStories.filter(s=>statusGroup(s.status)==="Done").map(s=>s.points).reduce((a,b)=>a+b,0);
-    let doneSince = ptsDone - baseDone;
-    let estimateBaseline = baseStories.map(s=>s.points).reduce((a,b)=>a+b,0);
-    let deltaEstimate = totalEstimate - estimateBaseline;
+        let baseStories = (epicStoriesBaseline[epicKey]||[]);
+        let baseKeys = new Set(baseStories.map(s=>s.key));
+        let currKeys = new Set(stories.map(s=>s.key));
+        let newStories = stories.filter(s=>!baseKeys.has(s.key));
+        let removedStories = baseStories.filter(s=>!currKeys.has(s.key));
+        let baseDone = baseStories.filter(s=>statusGroup(s.status)==="Done").map(s=>s.points).reduce((a,b)=>a+b,0);
+        let doneSince = ptsDone - baseDone;
+        let estimateBaseline = baseStories.map(s=>s.points).reduce((a,b)=>a+b,0);
+        let deltaEstimate = totalEstimate - estimateBaseline;
 
-    y+=12;
-    if (y>760) { pdf.addPage(); y=38;}
-    pdf.setFont('helvetica','bold');
-    pdf.setFontSize(13.5);
-    pdf.text(`${epicKey}: ${allEpics[epicKey]||''}`, 45, y); y+=13;
-    pdf.setFont('helvetica','normal');
-    pdf.setFontSize(11);
+        y+=12;
+        if (y>760) { pdf.addPage(); y=38;}
+        pdf.setFont('helvetica','bold');
+        pdf.setFontSize(13.5);
+        pdf.text(`${epicKey}: ${allEpics[epicKey]||''}`, 45, y); y+=13;
+        pdf.setFont('helvetica','normal');
+        pdf.setFontSize(11);
 
-    pdf.text(`Done: ${ptsDone}    In Progress: ${ptsProg}    Open: ${ptsOpen+ptsOther}    Total: ${totalEstimate} SP    Backlog: ${backlog} SP`, 45, y); y+=15;
-    pdf.text(`Team allocation: ${alloc}%   |   Required for ${targetSprints} sprints: 75% conf: ${required["75"]?required["75"]+"%":"Over 100%"}  / 95% conf: ${required["95"]?required["95"]+"%":"Over 100%"}`, 45, y); y+=13;
-    pdf.text(`Probability forecast (sprints needed):`, 45, y); y+=12;
-    probRows.forEach(r=>{
-      pdf.text(`${r[0]}%: ${r[1]} sprints`, 70, y); y+=11;
-    });
-    y+=2;
-    pdf.text((probRows[1][1] > targetSprints ?
-      "At 75% confidence: NOT likely to finish in "+targetSprints+" sprints. More allocation/velocity needed."
-      :
-      "On track to finish in "+targetSprints+" sprints at 75% confidence."
-    ), 45, y); y+=13;
+        pdf.text(`Done: ${ptsDone}    In Progress: ${ptsProg}    Open: ${ptsOpen+ptsOther}    Total: ${totalEstimate} SP    Backlog: ${backlog} SP`, 45, y); y+=15;
+        pdf.text(`Team allocation: ${alloc}%   |   Required for ${targetSprints} sprints: 75% conf: ${required["75"]?required["75"]+"%":"Over 100%"}  / 95% conf: ${required["95"]?required["95"]+"%":"Over 100%"}`, 45, y); y+=13;
+        pdf.text(`Probability forecast (sprints needed):`, 45, y); y+=12;
+        probRows.forEach(r=>{
+          pdf.text(`${r[0]}%: ${r[1]} sprints`, 70, y); y+=11;
+        });
+        y+=2;
+        pdf.text((probRows[1][1] > targetSprints ?
+          "At 75% confidence: NOT likely to finish in "+targetSprints+" sprints. More allocation/velocity needed."
+          :
+          "On track to finish in "+targetSprints+" sprints at 75% confidence."
+        ), 45, y); y+=13;
 
-    pdf.setFont('helvetica','bold');
-    pdf.text("Changes since "+(baselineIsFirstPI ? "PI start" : "last sprint")+":", 45, y); y+=12;
-    pdf.setFont('helvetica','normal');
-    pdf.text([
-      `Story points completed: ${doneSince}`,
-      `New stories: ${newStories.length} (${newStories.reduce((a,b)=>a+b.points,0)} SP)`,
-      `Removed stories: ${removedStories.length} (${removedStories.reduce((a,b)=>a+b.points,0)} SP)`,
-      `Scope change: ${
-        deltaEstimate===0 ? "No change"
-        : (deltaEstimate>0?'Increased (+'
-          +deltaEstimate+')':'Reduced ('+deltaEstimate+')')
-      }`
-    ].join("    "), 55, y); y+=16;
+        pdf.setFont('helvetica','bold');
+        pdf.text("Changes since "+(baselineIsFirstPI ? "PI start" : "last sprint")+":", 45, y); y+=12;
+        pdf.setFont('helvetica','normal');
+        pdf.text([
+          `Story points completed: ${doneSince}`,
+          `New stories: ${newStories.length} (${newStories.reduce((a,b)=>a+b.points,0)} SP)`,
+          `Removed stories: ${removedStories.length} (${removedStories.reduce((a,b)=>a+b.points,0)} SP)`,
+          `Scope change: ${
+            deltaEstimate===0 ? "No change"
+            : (deltaEstimate>0?'Increased (+'
+              +deltaEstimate+')':'Reduced ('+deltaEstimate+')')
+          }`
+        ].join("    "), 55, y); y+=16;
 
-    pdf.setLineWidth(0.2); pdf.line(45, y, 530, y); y+=8;
-  });
+        pdf.setLineWidth(0.2); pdf.line(45, y, 530, y); y+=8;
+      });
 
-  pdf.save(`Stakeholder_StatusReport_${selectedSprintName||''}.pdf`);
-}
+      pdf.save(`Stakeholder_StatusReport_${selectedSprintName||''}.pdf`);
+    }
   </script>
 </body>
 </html>
