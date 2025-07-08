@@ -80,15 +80,78 @@
     </div>
   </div>
   <script>
-    let jiraDomain = '', boardNum = '', sprints = [], closedSprintsSorted = [];
-    let allEpics = {}, epicStories = {}, epicStoriesBaseline = {};
-    let velocityArr = [];
-    let selectedSprintId = '', selectedSprintName = '', targetSprints = 4;
-    let baselineSprintId = '', baselineIsFirstPI = false;
-    let epicAllocations = {}, epicBacklogs = {}, epicRequiredAlloc = {};
-    let epicForecastResults = {};
+let jiraDomain = '', boardNum = '', sprints = [], closedSprintsSorted = [];
+let allEpics = {}, epicStories = {}, epicStoriesBaseline = {};
+let velocityArr = [];
+let selectedSprintId = '', selectedSprintName = '', targetSprints = 4;
+let baselineSprintId = '', baselineIsFirstPI = false;
+let epicAllocations = {}, epicBacklogs = {}, epicRequiredAlloc = {};
+let epicForecastResults = {};
 
-   async function fetchVelocityFromReport(jiraDomain, boardNum) {
+// --- SPRINT FETCH & SELECTION (paginated, NO sorting after fetch) ---
+async function fetchAllSprints() {
+  jiraDomain = document.getElementById('jiraDomain').value.trim();
+  boardNum = document.getElementById('boardNum').value.trim();
+  if (!jiraDomain || !boardNum) return alert("Enter Jira domain and board number.");
+
+  let allSprintsArr = [];
+  let startAt = 0;
+  const maxResults = 100;
+  let total = null;
+
+  while (true) {
+    const url = `https://${jiraDomain}/rest/agile/1.0/board/${boardNum}/sprint?maxResults=${maxResults}&startAt=${startAt}`;
+    console.log("Fetching sprints:", url);
+    try {
+      const resp = await fetch(url, { credentials: "include" });
+      if (!resp.ok) {
+        const text = await resp.text();
+        console.error("API Error Response:", resp.status, text);
+        alert("API returned an error. See console for details.");
+        return;
+      }
+      const data = await resp.json();
+      if (data.values && data.values.length) {
+        allSprintsArr = allSprintsArr.concat(data.values);
+        total = data.total;
+        startAt += maxResults;
+        if (allSprintsArr.length >= total) break;
+      } else {
+        break;
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Failed to fetch sprints. CORS? Are you logged into Jira?");
+      return;
+    }
+  }
+
+  // Log all fetched sprints
+  console.log("Fetched sprints:", allSprintsArr.length, allSprintsArr.map(s => s.name + ' (' + (s.startDate ? s.startDate.substr(0,10) : "undefined") + ')'));
+
+  sprints = allSprintsArr.slice(); // DO NOT reverse or sort
+  closedSprintsSorted = sprints.filter(s => s.state === "closed" && s.endDate)
+                               .sort((a, b) => new Date(b.endDate) - new Date(a.endDate));
+  populateSprintDropdown();
+}
+
+// --- SPRINT DROPDOWN: show all sprints as fetched, no sorting ---
+function populateSprintDropdown() {
+  const sel = document.getElementById('sprintSelect');
+  sel.innerHTML = '';
+  sprints.forEach(sprint => {
+    const opt = document.createElement('option');
+    opt.value = sprint.id;
+    let name = sprint.name || "(no name)";
+    if (sprint.startDate) name += " (" + sprint.startDate.substr(0, 10) + ")";
+    opt.textContent = (sprint.state === "active" ? "🟢 " : "") + name;
+    sel.appendChild(opt);
+  });
+  document.getElementById('sprintRow').style.display = '';
+}
+
+// --- VELOCITY FETCH FROM JIRA REPORT ---
+async function fetchVelocityFromReport(jiraDomain, boardNum) {
   const url = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/velocity?rapidViewId=${boardNum}`;
   const resp = await fetch(url, { credentials: "include" });
   if (!resp.ok) {
@@ -111,7 +174,8 @@
   });
   console.log('Most recent 6 velocities:', velocities);
   return velocities;
-    }
+}
+
 
       // Log all fetched sprints
       console.log("Fetched sprints:", allSprintsArr.length, allSprintsArr.map(s => s.name + ' (' + (s.startDate ? s.startDate.substr(0,10) : "undefined") + ')'));
