@@ -89,7 +89,7 @@
     let epicForecastResults = {};
 
     // --- NEW: FETCH JIRA VELOCITY REPORT (Greenhopper REST API) ---
-    async function fetchVelocityFromReport(jiraDomain, boardNum) {
+       async function fetchVelocityFromReport(jiraDomain, boardNum) {
       const url = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/velocity?rapidViewId=${boardNum}`;
       const resp = await fetch(url, { credentials: "include" });
       if (!resp.ok) {
@@ -97,10 +97,12 @@
         return [];
       }
       const data = await resp.json();
+      // Sort descending by endDate (most recent first)
       const sortedSprints = (data.sprints || [])
         .filter(s => s.state === "CLOSED")
-        .sort((a,b) => new Date(a.endDate||a.completeDate||0) - new Date(b.endDate||b.completeDate||0));
-      const last6 = sortedSprints.slice(-6);
+        .sort((a, b) => new Date(b.endDate||b.completeDate||0) - new Date(a.endDate||a.completeDate||0))
+        .reverse();
+      const last6 = sortedSprints.slice(0, 6); // <-- take first 6 (now most recent)
       const velocities = last6.map(sprint => {
         const vel = data.velocityStatEntries[sprint.id];
         return vel ? vel.completed.value : 0;
@@ -108,6 +110,7 @@
       console.log('Last 6 sprint velocities:', velocities, last6.map(s=>s.name));
       return velocities;
     }
+
 
     // --- SPRINT FETCH & SELECTION (paginated, NO sorting after fetch) ---
     async function fetchAllSprints() {
