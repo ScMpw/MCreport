@@ -97,14 +97,16 @@
         return [];
       }
       const data = await resp.json();
-      // sprints are in oldest-to-newest order, so last 6 are most recent
-      const sortedSprints = (data.sprints || []).filter(s => s.state === "CLOSED");
-      const last6 = sortedSprints.slice(-6);
-      const velocities = last6.map(sprint => {
+      // Sort closed sprints by end date so we use the latest ones
+      const closed = (data.sprints || [])
+        .filter(s => s.state === "CLOSED" && s.endDate)
+        .sort((a, b) => new Date(b.endDate) - new Date(a.endDate));
+      const recent6 = closed.slice(0, 6);
+      const velocities = recent6.map(sprint => {
         const vel = data.velocityStatEntries[sprint.id];
         return vel ? vel.completed.value : 0;
       });
-      console.log('Most recent 6 sprint velocities:', velocities, last6.map(s=>s.name));
+      console.log('Most recent 6 sprint velocities:', velocities, recent6.map(s=>s.name));
       return velocities;
     }
 
