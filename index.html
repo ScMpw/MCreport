@@ -256,7 +256,7 @@
 
       // Velocity last 6 closed sprints
       velocityArr = [];
-      let last6Closed = closedSprintsSorted.slice(-6);
+      let last6Closed = closedSprintsSorted.slice(0, 6);
       for (let sprint of last6Closed) {
         let jqlV = encodeURIComponent(`sprint = ${sprint.id}`);
         let urlV = `https://${jiraDomain}/rest/api/3/search?jql=${jqlV}&fields=status,customfield_10002,issuetype&maxResults=500`;
