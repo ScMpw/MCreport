@@ -88,36 +88,7 @@
     let epicAllocations = {}, epicBacklogs = {}, epicRequiredAlloc = {};
     let epicForecastResults = {};
 
-      // --- NEW: FETCH JIRA VELOCITY REPORT (Greenhopper REST API) ---
-      async function fetchVelocityFromReport(jiraDomain, boardNum) {
-    const url = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/velocity?rapidViewId=${boardNum}`;
-    const resp = await fetch(url, { credentials: "include" });
-    if (!resp.ok) {
-      alert("Failed to fetch velocity report. Are you logged in to Jira?");
-      return [];
-    }
-    const data = await resp.json();
-    // Make sure to filter only closed sprints with endDate, and then sort them by endDate descending (latest first)
-    const sortedSprints = (data.sprints || [])
-      .filter(s => s.state === "CLOSED" && s.endDate)
-      .sort((a, b) => new Date(b.endDate) - new Date(a.endDate));
-  
-    // Now take the first 6 (the most recent)
-    const last6 = sortedSprints.slice(0, 6);
-  
-    const velocities = last6.map(sprint => {
-      const vel = data.velocityStatEntries[sprint.id];
-      return vel ? vel.completed.value : 0;
-    });
-    // Optionally, for debugging:
-    console.log('Most recent 6 sprints:', last6.map(s => s.name + ' (' + s.endDate + ')'));
-    console.log('Their velocities:', velocities);
-    return velocities;
-  }
-
-
-    // --- SPRINT FETCH & SELECTION (paginated, NO sorting after fetch) ---
-    async function fetchVelocityFromReport(jiraDomain, boardNum) {
+   async function fetchVelocityFromReport(jiraDomain, boardNum) {
   const url = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/velocity?rapidViewId=${boardNum}`;
   const resp = await fetch(url, { credentials: "include" });
   if (!resp.ok) {
