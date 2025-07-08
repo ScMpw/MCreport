@@ -40,12 +40,11 @@
     .story-table { border-collapse: collapse; width: 100%; margin: 6px 0 18px 0; }
     .story-table th, .story-table td { border: 1px solid #e5e7eb; padding: 4px 7px; font-size: 0.98em; text-align:left; }
     .story-table th { background: #e0e7ef; }
-    /* Color coding for the storymap */
-    .story-status-current { background: #E0F7FA; }   /* Done in this sprint - light cyan */
-    .story-status-previous { background: #E8F5E9; }  /* Done before this sprint - light green */
-    .story-status-new { background: #FFF8E1; }       /* Created in this sprint - light yellow */
-    .story-status-open { background: #F3F4F6; }      /* Still open - very light gray */
-    .story-status-other { background: #ECECEC; }     /* Other/misc - muted gray */
+    .story-status-current { background: #E0F7FA; }
+    .story-status-previous { background: #E8F5E9; }
+    .story-status-new { background: #FFF8E1; }
+    .story-status-open { background: #F3F4F6; }
+    .story-status-other { background: #ECECEC; }
     @media (max-width: 800px) {
       .main {padding:14px;}
       .info-grid {grid-template-columns:1fr;}
@@ -89,7 +88,28 @@
     let epicAllocations = {}, epicBacklogs = {}, epicRequiredAlloc = {};
     let epicForecastResults = {};
 
-    // Sprint fetching, no sorting after fetch
+    // --- NEW: FETCH JIRA VELOCITY REPORT (Greenhopper REST API) ---
+    async function fetchVelocityFromReport(jiraDomain, boardNum) {
+      const url = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/velocity?rapidViewId=${boardNum}`;
+      const resp = await fetch(url, { credentials: "include" });
+      if (!resp.ok) {
+        alert("Failed to fetch velocity report. Are you logged in to Jira?");
+        return [];
+      }
+      const data = await resp.json();
+      const sortedSprints = (data.sprints || [])
+        .filter(s => s.state === "CLOSED")
+        .sort((a,b) => new Date(a.endDate||a.completeDate||0) - new Date(b.endDate||b.completeDate||0));
+      const last6 = sortedSprints.slice(-6);
+      const velocities = last6.map(sprint => {
+        const vel = data.velocityStatEntries[sprint.id];
+        return vel ? vel.completed.value : 0;
+      });
+      console.log('Last 6 sprint velocities:', velocities, last6.map(s=>s.name));
+      return velocities;
+    }
+
+    // --- SPRINT FETCH & SELECTION (paginated, NO sorting after fetch) ---
     async function fetchAllSprints() {
       jiraDomain = document.getElementById('jiraDomain').value.trim();
       boardNum = document.getElementById('boardNum').value.trim();
@@ -127,12 +147,16 @@
         }
       }
 
-      sprints = allSprintsArr.slice();
+      // Log all fetched sprints
+      console.log("Fetched sprints:", allSprintsArr.length, allSprintsArr.map(s => s.name + ' (' + (s.startDate ? s.startDate.substr(0,10) : "undefined") + ')'));
+
+      sprints = allSprintsArr.slice(); // DO NOT reverse or sort
       closedSprintsSorted = sprints.filter(s => s.state === "closed" && s.endDate)
                                    .sort((a, b) => new Date(b.endDate) - new Date(a.endDate));
       populateSprintDropdown();
     }
 
+    // --- SPRINT DROPDOWN: show all sprints as fetched, no sorting ---
     function populateSprintDropdown() {
       const sel = document.getElementById('sprintSelect');
       sel.innerHTML = '';
@@ -147,34 +171,31 @@
       document.getElementById('sprintRow').style.display = '';
     }
 
-    // Color logic for story rows in the storymap
     function getStoryRowClass(story, currSprintObj) {
       const created = new Date(story.created);
       const resolved = story.resolved ? new Date(story.resolved) : null;
       const sprintStart = currSprintObj && currSprintObj.startDate ? new Date(currSprintObj.startDate) : null;
       const sprintEnd = currSprintObj && currSprintObj.endDate ? new Date(currSprintObj.endDate) : null;
-
       if (sprintStart && sprintEnd && created >= sprintStart && created < sprintEnd) {
-        return "story-status-new"; // Created in this sprint
+        return "story-status-new";
       }
       if (sprintStart && sprintEnd && resolved && resolved >= sprintStart && resolved < sprintEnd) {
-        return "story-status-current"; // Done in this sprint
+        return "story-status-current";
       }
       if (resolved && sprintStart && resolved < sprintStart) {
-        return "story-status-previous"; // Done before this sprint
+        return "story-status-previous";
       }
       if (!resolved || !story.status || !(story.status.toLowerCase().includes("done") || story.status.toLowerCase().includes("closed"))) {
-        return "story-status-open"; // Still open/in progress
+        return "story-status-open";
       }
       return "story-status-other";
     }
 
-    // Data fetch for epics/stories/velocity, and all calculations
+    // --- MAIN DATA FETCH (Epics/Stories/Velocity) ---
     async function fetchAll() {
       selectedSprintId = document.getElementById('sprintSelect').value;
       selectedSprintName = document.getElementById('sprintSelect').selectedOptions[0].textContent;
       if (!selectedSprintId) return alert("Select a sprint.");
-      // Baseline (first closed in PI or previous closed)
       let currSprintObj = sprints.find(s => String(s.id) === String(selectedSprintId));
       let allPIClosed = closedSprintsSorted.filter(s =>
         s.name.includes(currSprintObj.name.split(' ')[0])
@@ -184,8 +205,6 @@
       let baselineIdx = currIdx > 0 ? currIdx - 1 : 0;
       baselineIsFirstPI = (closedSprintsSorted[baselineIdx].id === firstPISprint.id);
       baselineSprintId = closedSprintsSorted[baselineIdx].id;
-
-      // Find all epics in selected sprint
       let jql = encodeURIComponent(`sprint = ${selectedSprintId} ORDER BY key`);
       let url = `https://${jiraDomain}/rest/api/3/search?jql=${jql}&fields=summary,parent,customfield_10002,customfield_10005,customfield_12600,status,issuetype&maxResults=500`;
       let epicKeysSet = new Set();
@@ -203,8 +222,6 @@
           }
         }
       } catch (e) { alert("Error fetching stories for selected sprint"); return; }
-
-      // Fetch all stories for each epic
       epicStories = {};
       await Promise.all(Array.from(epicKeysSet).map(async epicKey => {
         let eq = encodeURIComponent(`"Epic Link" = ${epicKey}`);
@@ -226,8 +243,6 @@
           }));
         } catch (e) { epicStories[epicKey] = []; }
       }));
-
-      // Baseline stories for change detection
       epicStoriesBaseline = {};
       await Promise.all(Array.from(epicKeysSet).map(async epicKey => {
         let eq = encodeURIComponent(`"Epic Link" = ${epicKey}`);
@@ -253,34 +268,14 @@
           }));
         } catch (e) { epicStoriesBaseline[epicKey] = []; }
       }));
-
-      // Velocity last 6 closed sprints
-      velocityArr = [];
-      let last6Closed = closedSprintsSorted.slice(0, 6);
-      for (let sprint of last6Closed) {
-        let jqlV = encodeURIComponent(`sprint = ${sprint.id}`);
-        let urlV = `https://${jiraDomain}/rest/api/3/search?jql=${jqlV}&fields=status,customfield_10002,issuetype&maxResults=500`;
-        try {
-          const resp = await fetch(urlV, { credentials: "include" });
-          const data = await resp.json();
-          let pts = 0;
-          if (data.issues && data.issues.length) {
-            for (let issue of data.issues) {
-              if (issue.fields.issuetype && issue.fields.issuetype.name === "Epic") continue;
-              let status = issue.fields.status && issue.fields.status.name;
-              if (status && (status.toLowerCase().includes("done") || status.toLowerCase().includes("closed"))) {
-                pts += Number(issue.fields.customfield_10002) || 0;
-              }
-            }
-          }
-          velocityArr.push(pts);
-        } catch (e) { velocityArr.push(0);}
-      }
+      // --- FETCH HISTORICAL VELOCITY FROM JIRA REPORT ---
+      velocityArr = await fetchVelocityFromReport(jiraDomain, boardNum);
       document.getElementById('configSection').style.display = '';
       renderVelocityInputs();
       renderEpicSummary();
     }
 
+    // --- VELOCITY INPUTS ---
     function renderVelocityInputs() {
       let vhtml = velocityArr.map((v, i) =>
         `<input class="editarr" type="number" min="0" value="${v}" onchange="editVelocity(this,${i})">`).join(', ');
@@ -288,7 +283,7 @@
     }
     function editVelocity(inp, idx) { velocityArr[idx] = Number(inp.value) || 0; }
 
-    // Render main report, now with color-coded storymap
+    // --- MAIN REPORT RENDER ---
     function renderEpicSummary() {
       targetSprints = Number(document.getElementById('targetSprintsInput').value) || 4;
       let velocity = velocityArr.filter(v=>v>0);
@@ -308,8 +303,6 @@
       Object.keys(epicStories).forEach(epicKey => {
         epicAllocations[epicKey] = totalBacklog ? Math.round(100*epicBacklogs[epicKey]/totalBacklog) : 0;
       });
-
-      // Epic forecast and allocation calculation
       epicForecastResults = {};
       epicRequiredAlloc = {};
       Object.keys(epicStories).forEach(epicKey => {
@@ -350,7 +343,6 @@
         epicRequiredAlloc[epicKey] = allocNeeded;
       });
 
-      // HTML
       let totalAlloc = Object.values(epicAllocations).reduce((a,b)=>a+b,0);
       let allocWarn = '';
       if (totalAlloc < 99) allocWarn = `<span class="warn">Warning: Not all team capacity is assigned to listed epics (${totalAlloc}% total).</span>`;
@@ -377,7 +369,6 @@
         let mc = epicForecastResults[epicKey];
         let probRows = [[50,mc[Math.floor(0.5*mc.length)]],[75,mc[Math.floor(0.75*mc.length)]],[95,mc[Math.floor(0.95*mc.length)]]];
 
-        // Change Table
         let baseStories = (epicStoriesBaseline[epicKey]||[]);
         let baseKeys = new Set(baseStories.map(s=>s.key));
         let currKeys = new Set(stories.map(s=>s.key));
@@ -457,16 +448,19 @@
                 <th>Resolved</th>
               </tr>
               ${
-                stories.map(story => `
-                  <tr class="${getStoryRowClass(story, currSprintObj)}">
-                    <td>${story.key}</td>
-                    <td>${story.status}</td>
-                    <td>${story.points}</td>
-                    <td>${story.team}</td>
-                    <td>${story.created?story.created.substr(0,10):""}</td>
-                    <td>${story.resolved?story.resolved.substr(0,10):""}</td>
-                  </tr>
-                `).join('')
+                stories.map(story => {
+                  const rowClass = getStoryRowClass(story, currSprintObj);
+                  return `
+                    <tr class="${rowClass}">
+                      <td>${story.key}</td>
+                      <td>${story.status}</td>
+                      <td>${story.points}</td>
+                      <td>${story.team}</td>
+                      <td>${story.created?story.created.substr(0,10):""}</td>
+                      <td>${story.resolved?story.resolved.substr(0,10):""}</td>
+                    </tr>
+                  `;
+                }).join('')
               }
             </table>
             <div style="font-size:0.95em;margin-top:8px;">
@@ -505,7 +499,7 @@
       return "Other";
     }
 
-    // PDF Export (same as before, not story color coded)
+    // --- PDF EXPORT (CLEAN SUMMARY ONLY) ---
     function exportPDF() {
       const { jsPDF } = window.jspdf;
       const pdf = new jsPDF({ unit:'pt', format:'a4' });
@@ -517,6 +511,8 @@
       pdf.setFontSize(12);
       pdf.text(`Generated: ${new Date().toLocaleString()}`, 45, y); y+=13;
       pdf.text(`Board: ${boardNum}   |   Sprint: ${selectedSprintName||''}`, 45, y); y+=23;
+
+      // Velocity history
       pdf.setFont('helvetica','bold');
       pdf.setFontSize(14);
       pdf.text("Velocity history (last 6 sprints):", 45, y); y+=15;
@@ -525,6 +521,7 @@
       pdf.text(velocityArr.join(", "), 45, y); y+=18;
       pdf.setLineWidth(0.3);
       pdf.line(45, y, 530, y); y+=8;
+
       let totalAlloc = Object.values(epicAllocations).reduce((a,b)=>a+b,0);
       let allocWarn = '';
       if (totalAlloc < 99) allocWarn = `Warning: Not all team capacity assigned (${totalAlloc}% total)`;
