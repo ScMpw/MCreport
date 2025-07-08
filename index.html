@@ -88,60 +88,65 @@
     let epicAllocations = {}, epicBacklogs = {}, epicRequiredAlloc = {};
     let epicForecastResults = {};
 
-      // --- NEW: FETCH JIRA VELOCITY REPORT (Greenhopper REST API) ---
-      async function fetchVelocityFromReport(jiraDomain, boardNum) {
-    const url = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/velocity?rapidViewId=${boardNum}`;
-    const resp = await fetch(url, { credentials: "include" });
-    if (!resp.ok) {
-      alert("Failed to fetch velocity report. Are you logged in to Jira?");
-      return [];
+    // --- NEW: FETCH JIRA VELOCITY REPORT (Greenhopper REST API) ---
+    async function fetchVelocityFromReport(jiraDomain, boardNum) {
+      const url = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/velocity?rapidViewId=${boardNum}`;
+      const resp = await fetch(url, { credentials: "include" });
+      if (!resp.ok) {
+        alert("Failed to fetch velocity report. Are you logged in to Jira?");
+        return [];
+      }
+      const data = await resp.json();
+      // sprints are in oldest-to-newest order, so last 6 are most recent
+      const sortedSprints = (data.sprints || []).filter(s => s.state === "CLOSED");
+      const last6 = sortedSprints.slice(-6);
+      const velocities = last6.map(sprint => {
+        const vel = data.velocityStatEntries[sprint.id];
+        return vel ? vel.completed.value : 0;
+      });
+      console.log('Most recent 6 sprint velocities:', velocities, last6.map(s=>s.name));
+      return velocities;
     }
-    const data = await resp.json();
-    // Make sure to filter only closed sprints with endDate, and then sort them by endDate descending (latest first)
-    const sortedSprints = (data.sprints || [])
-      .filter(s => s.state === "CLOSED" && s.endDate)
-      .sort((a, b) => new Date(b.endDate) - new Date(a.endDate));
-  
-    // Now take the first 6 (the most recent)
-    const last6 = sortedSprints.slice(0, 6);
-  
-    const velocities = last6.map(sprint => {
-      const vel = data.velocityStatEntries[sprint.id];
-      return vel ? vel.completed.value : 0;
-    });
-    // Optionally, for debugging:
-    console.log('Most recent 6 sprints:', last6.map(s => s.name + ' (' + s.endDate + ')'));
-    console.log('Their velocities:', velocities);
-    return velocities;
-  }
+
 
 
     // --- SPRINT FETCH & SELECTION (paginated, NO sorting after fetch) ---
-    async function fetchVelocityFromReport(jiraDomain, boardNum) {
-  const url = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/velocity?rapidViewId=${boardNum}`;
-  const resp = await fetch(url, { credentials: "include" });
-  if (!resp.ok) {
-    alert("Failed to fetch velocity report. Are you logged in to Jira?");
-    return [];
-  }
-  const data = await resp.json();
-  const sortedSprints = (data.sprints || [])
-    .filter(s => s.state === "CLOSED" && s.endDate)
-    .sort((a, b) => new Date(b.endDate) - new Date(a.endDate));
-  const last6 = sortedSprints
-    .filter(s => {
-      const entry = data.velocityStatEntries[s.id];
-      return entry && typeof entry.completed?.value === 'number';
-    })
-    .slice(0, 6);
-  const velocities = last6.map(sprint => {
-    const vel = data.velocityStatEntries[sprint.id];
-    return vel ? vel.completed.value : 0;
-  });
-  console.log('Most recent 6 velocities:', velocities);
-  return velocities;
-}
+    async function fetchAllSprints() {
+      jiraDomain = document.getElementById('jiraDomain').value.trim();
+      boardNum = document.getElementById('boardNum').value.trim();
+      if (!jiraDomain || !boardNum) return alert("Enter Jira domain and board number.");
 
+      let allSprintsArr = [];
+      let startAt = 0;
+      const maxResults = 100;
+      let total = null;
+
+      while (true) {
+        const url = `https://${jiraDomain}/rest/agile/1.0/board/${boardNum}/sprint?maxResults=${maxResults}&startAt=${startAt}`;
+        console.log("Fetching sprints:", url);
+        try {
+          const resp = await fetch(url, { credentials: "include" });
+          if (!resp.ok) {
+            const text = await resp.text();
+            console.error("API Error Response:", resp.status, text);
+            alert("API returned an error. See console for details.");
+            return;
+          }
+          const data = await resp.json();
+          if (data.values && data.values.length) {
+            allSprintsArr = allSprintsArr.concat(data.values);
+            total = data.total;
+            startAt += maxResults;
+            if (allSprintsArr.length >= total) break;
+          } else {
+            break;
+          }
+        } catch (e) {
+          console.error(e);
+          alert("Failed to fetch sprints. CORS? Are you logged into Jira?");
+          return;
+        }
+      }
 
       // Log all fetched sprints
       console.log("Fetched sprints:", allSprintsArr.length, allSprintsArr.map(s => s.name + ' (' + (s.startDate ? s.startDate.substr(0,10) : "undefined") + ')'));
