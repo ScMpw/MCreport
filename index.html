@@ -45,6 +45,14 @@
     .story-status-new { background: #FFF8E1; }
     .story-status-open { background: #F3F4F6; }
     .story-status-other { background: #ECECEC; }
+    .story-map { display:flex; gap:12px; overflow-x:auto; }
+    .story-lane { flex:1; min-width:180px; background:#fafafa; border:1px solid #e5e7eb; border-radius:6px; padding:6px; }
+    .story-lane-header { font-weight:600; margin-bottom:4px; font-size:0.96em; color:#374151; }
+    .story-card { border:1px solid #e5e7eb; border-radius:4px; padding:4px 5px; margin-bottom:6px; background:white; font-size:0.92em; }
+    .story-card .tags { margin-top:2px; }
+    .story-tag { font-size:0.75em; background:#d1d5db; color:#111; border-radius:3px; padding:1px 4px; margin-right:3px; }
+    .story-card .small { font-size:0.8em; color:#555; }
+    .story-map-legend span { display:inline-block; padding:2px 8px; border-radius:4px; margin-right:6px; }
     @media (max-width: 800px) {
       .main {padding:14px;}
       .info-grid {grid-template-columns:1fr;}
@@ -245,7 +253,7 @@
       epicStories = {};
       await Promise.all(Array.from(epicKeysSet).map(async epicKey => {
         let eq = encodeURIComponent(`"Epic Link" = ${epicKey}`);
-        let urlEpic = `https://${jiraDomain}/rest/api/3/search?jql=${eq}&fields=summary,status,customfield_10002,customfield_12600,created,resolutiondate,issuetype,customfield_10005&maxResults=500`;
+        let urlEpic = `https://${jiraDomain}/rest/api/3/search?jql=${eq}&fields=summary,status,assignee,customfield_10002,customfield_12600,created,resolutiondate,issuetype,customfield_10005&maxResults=500`;
         try {
           const resp = await fetch(urlEpic, { credentials: "include" });
           const data = await resp.json();
@@ -255,6 +263,7 @@
             key: story.key,
             summary: story.fields.summary,
             status: story.fields.status && story.fields.status.name,
+            assignee: story.fields.assignee && story.fields.assignee.displayName,
             points: Number(story.fields.customfield_10002) || 0,
             team: (story.fields.customfield_12600 || []).join(', '),
             created: story.fields.created,
@@ -266,7 +275,7 @@
       epicStoriesBaseline = {};
       await Promise.all(Array.from(epicKeysSet).map(async epicKey => {
         let eq = encodeURIComponent(`"Epic Link" = ${epicKey}`);
-        let urlEpic = `https://${jiraDomain}/rest/api/3/search?jql=${eq}&fields=summary,status,customfield_10002,customfield_12600,created,resolutiondate,issuetype,customfield_10005&maxResults=500`;
+        let urlEpic = `https://${jiraDomain}/rest/api/3/search?jql=${eq}&fields=summary,status,assignee,customfield_10002,customfield_12600,created,resolutiondate,issuetype,customfield_10005&maxResults=500`;
         try {
           const resp = await fetch(urlEpic, { credentials: "include" });
           const data = await resp.json();
@@ -280,6 +289,7 @@
             key: story.key,
             summary: story.fields.summary,
             status: story.fields.status && story.fields.status.name,
+            assignee: story.fields.assignee && story.fields.assignee.displayName,
             points: Number(story.fields.customfield_10002) || 0,
             team: (story.fields.customfield_12600 || []).join(', '),
             created: story.fields.created,
@@ -399,7 +409,7 @@
         let estimateBaseline = baseStories.map(s=>s.points).reduce((a,b)=>a+b,0);
         let deltaEstimate = totalEstimate - estimateBaseline;
         const currSprintObj = sprints.find(s => String(s.id) === String(selectedSprintId));
-        const storyTableId = `storyTable_${epicKey.replace(/[^a-zA-Z0-9]/g, '')}`;
+        const storyMapId = `storyMap_${epicKey.replace(/[^a-zA-Z0-9]/g, '')}`;
         html += `
         <div class="epic-summary-block">
           <div class="epic-header">${epicKey}: ${allEpics[epicKey]||''}</div>
@@ -456,38 +466,47 @@
               </div>
             </div>
           </div>
-          <button class="btn details-toggle" onclick="toggleEpicDetails(this, '${storyTableId}')">Show Details</button>
-          <div id="${storyTableId}" style="display:none; margin-top:10px;">
-            <table class="story-table">
-              <tr>
-                <th>Story</th>
-                <th>Status</th>
-                <th>Points</th>
-                <th>Team</th>
-                <th>Created</th>
-                <th>Resolved</th>
-              </tr>
-              ${
-                stories.map(story => {
-                  const rowClass = getStoryRowClass(story, currSprintObj);
-                  return `
-                    <tr class="${rowClass}">
-                      <td>${story.key}</td>
-                      <td>${story.status}</td>
-                      <td>${story.points}</td>
-                      <td>${story.team}</td>
-                      <td>${story.created?story.created.substr(0,10):""}</td>
-                      <td>${story.resolved?story.resolved.substr(0,10):""}</td>
-                    </tr>
-                  `;
-                }).join('')
-              }
-            </table>
-            <div style="font-size:0.95em;margin-top:8px;">
-              <span style="background:#E0F7FA;padding:2px 8px;border-radius:4px;">Done this sprint</span>
-              <span style="background:#E8F5E9;padding:2px 8px;border-radius:4px;">Done before</span>
-              <span style="background:#FFF8E1;padding:2px 8px;border-radius:4px;">New in this sprint</span>
-              <span style="background:#F3F4F6;padding:2px 8px;border-radius:4px;">Open/In Progress</span>
+          <button class="btn details-toggle" onclick="toggleEpicDetails(this, '${storyMapId}')">Show Details</button>
+          <div id="${storyMapId}" style="display:none; margin-top:10px;">
+            <div class="story-map">
+              ${(() => {
+                const newSet = new Set(newStories.map(s=>s.key));
+                const lanes = [
+                  ['Done', stories.filter(s=>statusGroup(s.status)==='Done')],
+                  ['In Progress', stories.filter(s=>statusGroup(s.status)==='In Progress')],
+                  ['Open', stories.filter(s=>statusGroup(s.status)==='Ready/Open')]
+                ];
+                return lanes.map(l => `
+                  <div class="story-lane">
+                    <div class="story-lane-header">${l[0]}</div>
+                    ${l[1].map(st => {
+                      const c = getStoryRowClass(st, currSprintObj);
+                      const tags = [];
+                      if (newSet.has(st.key)) tags.push('New');
+                      if (c==='story-status-current') tags.push('Done now');
+                      return `<div class="story-card ${c}">
+                        <div><b>${st.key}</b> (${st.points} SP)</div>
+                        <div>${st.summary}</div>
+                        <div class="small">${st.status}${st.assignee? ' - '+st.assignee : (st.team?' - '+st.team:'')}</div>
+                        <div class="small">${st.created?st.created.substr(0,10):''}${st.resolved?' → '+st.resolved.substr(0,10):''}</div>
+                        ${tags.length?`<div class="tags">${tags.map(t=>`<span class="story-tag">${t}</span>`).join('')}</div>`:''}
+                      </div>`;
+                    }).join('')}
+                  </div>
+                `).join('');
+              })()}
+              ${removedStories.length?`
+                <div class="story-lane">
+                  <div class="story-lane-header">Removed since last sprint</div>
+                  ${removedStories.map(st=>`<div class="story-card story-status-other"><b>${st.key}</b> (${st.points} SP)</div>`).join('')}
+                </div>
+              `:''}
+            </div>
+            <div class="story-map-legend" style="font-size:0.95em;margin-top:8px;">
+              <span class="story-status-current">Done this sprint</span>
+              <span class="story-status-previous">Done before</span>
+              <span class="story-status-new">New story</span>
+              <span class="story-status-open">Open/In Progress</span>
             </div>
           </div>
         </div>
@@ -541,6 +560,7 @@
       pdf.text(velocityArr.join(", "), 45, y); y+=18;
       pdf.setLineWidth(0.3);
       pdf.line(45, y, 530, y); y+=8;
+      pdf.text('Story map legend: Done this sprint | Done before | New story | Open/In Progress', 45, y); y+=15;
 
       let totalAlloc = Object.values(epicAllocations).reduce((a,b)=>a+b,0);
       let allocWarn = '';
@@ -614,6 +634,37 @@
               +deltaEstimate+')':'Reduced ('+deltaEstimate+')')
           }`
         ].join("    "), 55, y); y+=16;
+
+        const currSprintObj = sprints.find(s => String(s.id) === String(selectedSprintId));
+        const newSet = new Set(newStories.map(s=>s.key));
+        const lanes = [
+          ['Done this sprint', stories.filter(st => getStoryRowClass(st, currSprintObj)==='story-status-current')],
+          ['In Progress', stories.filter(st => statusGroup(st.status)==='In Progress')],
+          ['Open', stories.filter(st => statusGroup(st.status)==='Ready/Open')]
+        ];
+        lanes.forEach(l => {
+          if (!l[1].length) return;
+          pdf.setFont('helvetica','bold');
+          pdf.text(l[0]+':', 55, y); y+=11;
+          pdf.setFont('helvetica','normal');
+          l[1].forEach(st => {
+            const tags = [];
+            if (newSet.has(st.key)) tags.push('New');
+            let line = `- ${st.key} (${st.points} SP)`;
+            if (tags.length) line += ' ['+tags.join(', ')+']';
+            pdf.text(line, 65, y); y+=11;
+            if (y>760) { pdf.addPage(); y=38; }
+          });
+        });
+        if (removedStories.length) {
+          pdf.setFont('helvetica','bold');
+          pdf.text('Removed since last sprint:', 55, y); y+=11;
+          pdf.setFont('helvetica','normal');
+          removedStories.forEach(st => {
+            pdf.text(`- ${st.key} (${st.points} SP)`, 65, y); y+=11;
+            if (y>760) { pdf.addPage(); y=38; }
+          });
+        }
 
         pdf.setLineWidth(0.2); pdf.line(45, y, 530, y); y+=8;
       });
