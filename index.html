@@ -16,6 +16,7 @@
     .sprint-row label { margin-right: 1.2em; }
     .section-title { font-size: 1.1em; font-weight: 600; margin: 1.7em 0 0.5em 0; }
     .epic-summary-block { margin:2em 0 2.5em 0; border-radius:14px; background: #f3f4f6; box-shadow: 0 1px 6px #e0e7ef70; padding: 24px 24px 18px 24px; }
+    .epic-risk { border:2px solid #e11d48; box-shadow:0 0 6px #e11d48; }
     .epic-header { font-size: 1.15em; font-weight: 600; color: #374151; }
     .allocation-bar { height: 18px; border-radius: 8px; background: #6366f1; display:inline-block; vertical-align:middle;}
     .prob-table { border-collapse:collapse; margin:12px 0 18px 0;}
@@ -47,6 +48,7 @@
     .story-status-other { background: #ECECEC; }
     .story-map { display:flex; gap:12px; overflow-x:auto; }
     .story-lane { flex:1; min-width:180px; background:#fafafa; border:1px solid #e5e7eb; border-radius:6px; padding:6px; }
+    .removed-lane { background:#fbe8eb; }
     .story-lane-header { font-weight:600; margin-bottom:4px; font-size:0.96em; color:#374151; }
     .story-card { border:1px solid #e5e7eb; border-radius:4px; padding:4px 5px; margin-bottom:6px; background:white; font-size:0.92em; }
     .story-card .tags { margin-top:2px; }
@@ -84,6 +86,8 @@
         <button class="btn" onclick="renderEpicSummary()">Update Report</button>
         <button class="btn" onclick="exportPDF()">Download PDF Report</button>
       </div>
+      <canvas id="trendChart" height="150" style="max-width:900px;margin-bottom:20px;"></canvas>
+      <div id="filterOptions" style="margin-bottom:15px;"></div>
       <div id="epicSummary"></div>
     </div>
   </div>
@@ -94,7 +98,22 @@
     let selectedSprintId = '', selectedSprintName = '', targetSprints = 4;
     let baselineSprintId = '', baselineIsFirstPI = false;
     let epicAllocations = {}, epicBacklogs = {}, epicRequiredAlloc = {};
-    let epicForecastResults = {};
+let epicForecastResults = {};
+let historicData = [];
+let storyFilters = { current:true, previous:true, new:true, open:true, removed:true };
+
+    function loadHistoricData() {
+      try { historicData = JSON.parse(localStorage.getItem('mc_hist')) || []; }
+      catch (e) { historicData = []; }
+    }
+
+    function saveHistoricData() {
+      localStorage.setItem('mc_hist', JSON.stringify(historicData));
+    }
+
+    loadHistoricData();
+    renderTrendChart();
+    renderFilterOptions();
 
     // --- NEW: FETCH JIRA VELOCITY REPORT (Greenhopper REST API) ---
     async function fetchVelocityFromReport(jiraDomain, boardNum) {
@@ -313,6 +332,62 @@
     }
     function editVelocity(inp, idx) { velocityArr[idx] = Number(inp.value) || 0; }
 
+    function updateHistoricTotals() {
+      const entry = {
+        sprint: selectedSprintName || ('#'+selectedSprintId),
+        date: new Date().toISOString().substr(0,10),
+        epicBacklogs: Object.assign({}, epicBacklogs),
+        backlog: Object.values(epicBacklogs).reduce((a,b)=>a+b,0)
+      };
+      historicData.push(entry);
+      if (historicData.length>12) historicData.shift();
+      saveHistoricData();
+    }
+
+    function renderTrendChart() {
+      const ctx = document.getElementById('trendChart').getContext('2d');
+      const labels = historicData.map(h=>h.sprint);
+      const data = historicData.map(h=>h.backlog);
+      if (window.trendChart) window.trendChart.destroy();
+      window.trendChart = new Chart(ctx, {
+        type:'line',
+        data:{ labels, datasets:[{ label:'Backlog', data, borderColor:'#6366f1', fill:false }] },
+        options:{ scales:{ y:{ beginAtZero:true } } }
+      });
+    }
+
+    function renderFilterOptions() {
+      const html = [
+        ['current','Done this sprint'],
+        ['previous','Done before'],
+        ['new','New story'],
+        ['open','Open/In Progress'],
+        ['removed','Removed']
+      ].map(f=>`<label style="margin-right:10px;"><input type="checkbox" data-filter="${f[0]}" ${storyFilters[f[0]]?'checked':''}> ${f[1]}</label>`).join('');
+      document.getElementById('filterOptions').innerHTML = '<span class="section-title" style="display:block;margin-top:0;">Story Map Filters:</span>'+html;
+      document.querySelectorAll('#filterOptions input[type=checkbox]').forEach(cb=>{
+        cb.addEventListener('change',()=>{ storyFilters[cb.dataset.filter]=cb.checked; applyStoryFilters(); });
+      });
+    }
+
+    function applyStoryFilters() {
+      document.querySelectorAll('.story-status-current').forEach(el=>el.style.display = storyFilters.current? '':'none');
+      document.querySelectorAll('.story-status-previous').forEach(el=>el.style.display = storyFilters.previous? '':'none');
+      document.querySelectorAll('.story-status-new').forEach(el=>el.style.display = storyFilters.new? '':'none');
+      document.querySelectorAll('.story-status-open').forEach(el=>el.style.display = storyFilters.open? '':'none');
+      document.querySelectorAll('.story-status-other').forEach(el=>el.style.display = storyFilters.open? '':'none');
+      document.querySelectorAll('.removed-lane').forEach(el=>el.style.display = storyFilters.removed? '':'none');
+    }
+
+    function scopeIncreaseConsistent(epicKey) {
+      if (historicData.length < 3) return false;
+      const recs = historicData.slice(-3);
+      const b1 = recs[0].epicBacklogs[epicKey] || 0;
+      const b2 = recs[1].epicBacklogs[epicKey] || 0;
+      const b3 = recs[2].epicBacklogs[epicKey] || 0;
+      return (b2 > b1 && b3 > b2);
+    }
+
     // --- MAIN REPORT RENDER ---
     function renderEpicSummary() {
       targetSprints = Number(document.getElementById('targetSprintsInput').value) || 4;
@@ -333,6 +408,10 @@
       Object.keys(epicStories).forEach(epicKey => {
         epicAllocations[epicKey] = totalBacklog ? Math.round(100*epicBacklogs[epicKey]/totalBacklog) : 0;
       });
+      updateHistoricTotals();
+      renderTrendChart();
+      renderFilterOptions();
+      applyStoryFilters();
       epicForecastResults = {};
       epicRequiredAlloc = {};
       Object.keys(epicStories).forEach(epicKey => {
@@ -410,8 +489,9 @@
         let deltaEstimate = totalEstimate - estimateBaseline;
         const currSprintObj = sprints.find(s => String(s.id) === String(selectedSprintId));
         const storyMapId = `storyMap_${epicKey.replace(/[^a-zA-Z0-9]/g, '')}`;
+        const risk = ((required["75"] && required["75"]-alloc>15) || scopeIncreaseConsistent(epicKey));
         html += `
-        <div class="epic-summary-block">
+        <div class="epic-summary-block ${risk?'epic-risk':''}">
           <div class="epic-header">${epicKey}: ${allEpics[epicKey]||''}</div>
           <div style="margin-top:4px;margin-bottom:10px;">
             <span class="status-pill pill-done">${ptsDone} Done</span>
@@ -496,7 +576,7 @@
                 `).join('');
               })()}
               ${removedStories.length?`
-                <div class="story-lane">
+                <div class="story-lane removed-lane">
                   <div class="story-lane-header">Removed since last sprint</div>
                   ${removedStories.map(st=>`<div class="story-card story-status-other"><b>${st.key}</b> (${st.points} SP)</div>`).join('')}
                 </div>
@@ -513,6 +593,7 @@
         `;
       });
       document.getElementById('epicSummary').innerHTML = html;
+      applyStoryFilters();
     }
 
     function toggleEpicDetails(btn, id) {
