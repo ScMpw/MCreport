@@ -3,7 +3,6 @@
 <head>
   <meta charset="UTF-8">
   <title>Stakeholder PI Status Report – MCW with Allocation</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
   <style>
@@ -86,7 +85,6 @@
         <button class="btn" onclick="renderEpicSummary()">Update Report</button>
         <button class="btn" onclick="exportPDF()">Download PDF Report</button>
       </div>
-      <canvas id="trendChart" height="150" style="max-width:900px;margin-bottom:20px;"></canvas>
       <div id="filterOptions" style="margin-bottom:15px;"></div>
       <div id="epicSummary"></div>
     </div>
@@ -101,7 +99,6 @@
 let epicForecastResults = {};
 let historicData = [];
 let storyFilters = { current:true, previous:true, new:true, open:true, removed:true };
-let trendChart = null;
 
     function loadHistoricData() {
       try { historicData = JSON.parse(localStorage.getItem('mc_hist')) || []; }
@@ -113,7 +110,6 @@ let trendChart = null;
     }
 
     loadHistoricData();
-    renderTrendChart();
     renderFilterOptions();
 
     // --- NEW: FETCH JIRA VELOCITY REPORT (Greenhopper REST API) ---
@@ -345,17 +341,7 @@ let trendChart = null;
       saveHistoricData();
     }
 
-    function renderTrendChart() {
-      const ctx = document.getElementById('trendChart').getContext('2d');
-      const labels = historicData.map(h=>h.sprint);
-      const data = historicData.map(h=>h.backlog);
-      if (trendChart && typeof trendChart.destroy === 'function') trendChart.destroy();
-      trendChart = new Chart(ctx, {
-        type:'line',
-        data:{ labels, datasets:[{ label:'Backlog', data, borderColor:'#6366f1', fill:false }] },
-        options:{ scales:{ y:{ beginAtZero:true } } }
-      });
-    }
+
 
     function renderFilterOptions() {
       const html = [
@@ -409,10 +395,9 @@ let trendChart = null;
       Object.keys(epicStories).forEach(epicKey => {
         epicAllocations[epicKey] = totalBacklog ? Math.round(100*epicBacklogs[epicKey]/totalBacklog) : 0;
       });
-      updateHistoricTotals();
-      renderTrendChart();
-      renderFilterOptions();
-      applyStoryFilters();
+        updateHistoricTotals();
+        renderFilterOptions();
+        applyStoryFilters();
       epicForecastResults = {};
       epicRequiredAlloc = {};
       Object.keys(epicStories).forEach(epicKey => {
