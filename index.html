@@ -90,15 +90,16 @@
     </div>
   </div>
   <script>
-    let jiraDomain = '', boardNum = '', sprints = [], closedSprintsSorted = [];
-    let allEpics = {}, epicStories = {}, epicStoriesBaseline = {};
-    let velocityArr = [];
-    let selectedSprintId = '', selectedSprintName = '', targetSprints = 4;
-    let baselineSprintId = '', baselineIsFirstPI = false;
-    let epicAllocations = {}, epicBacklogs = {}, epicRequiredAlloc = {};
+let jiraDomain = '', boardNum = '', sprints = [], closedSprintsSorted = [];
+let allEpics = {}, epicStories = {}, epicStoriesBaseline = {};
+let velocityArr = [];
+let selectedSprintId = '', selectedSprintName = '', targetSprints = 4;
+let baselineSprintId = '', baselineIsFirstPI = false;
+let epicAllocations = {}, epicBacklogs = {}, epicRequiredAlloc = {};
 let epicForecastResults = {};
 let historicData = [];
 let storyFilters = { current:true, previous:true, new:true, open:true, removed:true };
+let boardTeam = '';
 
     function loadHistoricData() {
       try { historicData = JSON.parse(localStorage.getItem('mc_hist')) || []; }
@@ -151,6 +152,27 @@ let storyFilters = { current:true, previous:true, new:true, open:true, removed:t
       return velocities;
     }
 
+    async function fetchBoardTeam() {
+      boardTeam = '';
+      try {
+        const cfgUrl = `https://${jiraDomain}/rest/agile/1.0/board/${boardNum}/configuration`;
+        const cfgResp = await fetch(cfgUrl, { credentials: "include" });
+        if (!cfgResp.ok) return;
+        const cfg = await cfgResp.json();
+        const filterId = cfg.filter && cfg.filter.id;
+        if (!filterId) return;
+        const fResp = await fetch(`https://${jiraDomain}/rest/api/3/filter/${filterId}`, { credentials: "include" });
+        if (!fResp.ok) return;
+        const fd = await fResp.json();
+        const jql = fd.jql || '';
+        const m = jql.match(/(?:"Team"|customfield_12600|cf\[12600\])\s*(?:=|in)\s*(?:\(\s*"?([^"\)]+)"?\s*\)|"([^\"]+)")/i);
+        if (m) boardTeam = (m[1] || m[2] || '').split(',')[0].trim();
+      } catch (e) {
+        console.error('Failed to fetch board team', e);
+      }
+      console.log('Board team:', boardTeam);
+    }
+
 
 
     // --- SPRINT FETCH & SELECTION (paginated, NO sorting after fetch) ---
@@ -158,6 +180,8 @@ let storyFilters = { current:true, previous:true, new:true, open:true, removed:t
       jiraDomain = document.getElementById('jiraDomain').value.trim();
       boardNum = document.getElementById('boardNum').value.trim();
       if (!jiraDomain || !boardNum) return alert("Enter Jira domain and board number.");
+
+      await fetchBoardTeam();
 
       let allSprintsArr = [];
       let startAt = 0;
@@ -240,6 +264,7 @@ let storyFilters = { current:true, previous:true, new:true, open:true, removed:t
       selectedSprintId = document.getElementById('sprintSelect').value;
       selectedSprintName = document.getElementById('sprintSelect').selectedOptions[0].textContent;
       if (!selectedSprintId) return alert("Select a sprint.");
+      if (!boardTeam) await fetchBoardTeam();
       let currSprintObj = sprints.find(s => String(s.id) === String(selectedSprintId));
       let allPIClosed = closedSprintsSorted.filter(s =>
         s.name.includes(currSprintObj.name.split(' ')[0])
@@ -274,7 +299,8 @@ let storyFilters = { current:true, previous:true, new:true, open:true, removed:t
           const resp = await fetch(urlEpic, { credentials: "include" });
           const data = await resp.json();
           epicStories[epicKey] = data.issues.filter(story =>
-            !(story.fields.issuetype && story.fields.issuetype.subtask)
+            !(story.fields.issuetype && story.fields.issuetype.subtask) &&
+            (!boardTeam || (story.fields.customfield_12600 || []).includes(boardTeam))
           ).map(story => ({
             key: story.key,
             summary: story.fields.summary,
@@ -296,7 +322,8 @@ let storyFilters = { current:true, previous:true, new:true, open:true, removed:t
           const resp = await fetch(urlEpic, { credentials: "include" });
           const data = await resp.json();
           epicStoriesBaseline[epicKey] = data.issues.filter(story =>
-            !(story.fields.issuetype && story.fields.issuetype.subtask)
+            !(story.fields.issuetype && story.fields.issuetype.subtask) &&
+            (!boardTeam || (story.fields.customfield_12600 || []).includes(boardTeam))
           ).filter(story => {
             let created = new Date(story.fields.created);
             let baseSprint = closedSprintsSorted.find(s=>s.id==baselineSprintId);
