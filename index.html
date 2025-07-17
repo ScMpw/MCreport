@@ -775,6 +775,16 @@ let boardTeams = [];
 
         pdf.text(`Done: ${ptsDone}    In Progress: ${ptsProg}    Open: ${ptsOpen+ptsOther}    Total: ${totalEstimate} SP    Backlog: ${backlog} SP`, 45, y); y+=15;
 
+        const fmtReq = pct => {
+          const sp = epicRequiredSP[epicKey][pct];
+          return sp != null ? `${sp} SP/sprint (${required[pct]}%)` : 'Over 100%';
+        };
+        pdf.text(
+          `Team allocation: ${alloc}%   |   Required for ${targetSprints} sprints: ` +
+          `75% conf: ${fmtReq("75")}  / 95% conf: ${fmtReq("95")}`, 45, y
+        );
+        y += 13;
+
         pdf.text(`Probability forecast (sprints needed):`, 45, y); y+=12;
         probRows.forEach(r=>{
           pdf.text(`${r[0]}%: ${r[1]} sprints`, 70, y); y+=11;
