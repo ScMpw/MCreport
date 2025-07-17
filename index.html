@@ -99,7 +99,7 @@ let epicAllocations = {}, epicBacklogs = {}, epicRequiredAlloc = {};
 let epicForecastResults = {};
 let historicData = [];
 let storyFilters = { current:true, previous:true, new:true, open:true, removed:true };
-let boardTeam = '';
+let boardTeams = [];
 
     function loadHistoricData() {
       try { historicData = JSON.parse(localStorage.getItem('mc_hist')) || []; }
@@ -153,7 +153,7 @@ let boardTeam = '';
     }
 
     async function fetchBoardTeam() {
-      boardTeam = '';
+      boardTeams = [];
       try {
         const cfgUrl = `https://${jiraDomain}/rest/agile/1.0/board/${boardNum}/configuration`;
         const cfgResp = await fetch(cfgUrl, { credentials: "include" });
@@ -165,12 +165,19 @@ let boardTeam = '';
         if (!fResp.ok) return;
         const fd = await fResp.json();
         const jql = fd.jql || '';
-        const m = jql.match(/(?:"Team"|customfield_12600|cf\[12600\])\s*(?:=|in)\s*(?:\(\s*"?([^"\)]+)"?\s*\)|"([^\"]+)")/i);
-        if (m) boardTeam = (m[1] || m[2] || '').split(',')[0].trim();
+        const regex = /(?:"Team"|customfield_12600|cf\[12600\])\s*(?:=|in)\s*(\([^\)]*\)|"[^"\n]+")/gi;
+        let m;
+        while ((m = regex.exec(jql)) !== null) {
+          let str = m[1].replace(/[()]/g, '');
+          str.split(',').forEach(t => {
+            t = t.replace(/"/g, '').trim();
+            if (t && !boardTeams.includes(t)) boardTeams.push(t);
+          });
+        }
       } catch (e) {
         console.error('Failed to fetch board team', e);
       }
-      console.log('Board team:', boardTeam);
+      console.log('Board teams:', boardTeams.join(', '));
     }
 
 
@@ -264,7 +271,7 @@ let boardTeam = '';
       selectedSprintId = document.getElementById('sprintSelect').value;
       selectedSprintName = document.getElementById('sprintSelect').selectedOptions[0].textContent;
       if (!selectedSprintId) return alert("Select a sprint.");
-      if (!boardTeam) await fetchBoardTeam();
+      if (!boardTeams.length) await fetchBoardTeam();
       let currSprintObj = sprints.find(s => String(s.id) === String(selectedSprintId));
       let allPIClosed = closedSprintsSorted.filter(s =>
         s.name.includes(currSprintObj.name.split(' ')[0])
@@ -300,7 +307,7 @@ let boardTeam = '';
           const data = await resp.json();
           epicStories[epicKey] = data.issues.filter(story =>
             !(story.fields.issuetype && story.fields.issuetype.subtask) &&
-            (!boardTeam || (story.fields.customfield_12600 || []).includes(boardTeam))
+            (!boardTeams.length || (story.fields.customfield_12600 || []).some(t => boardTeams.includes(t)))
           ).map(story => ({
             key: story.key,
             summary: story.fields.summary,
@@ -323,7 +330,7 @@ let boardTeam = '';
           const data = await resp.json();
           epicStoriesBaseline[epicKey] = data.issues.filter(story =>
             !(story.fields.issuetype && story.fields.issuetype.subtask) &&
-            (!boardTeam || (story.fields.customfield_12600 || []).includes(boardTeam))
+            (!boardTeams.length || (story.fields.customfield_12600 || []).some(t => boardTeams.includes(t)))
           ).filter(story => {
             let created = new Date(story.fields.created);
             let baseSprint = closedSprintsSorted.find(s=>s.id==baselineSprintId);
