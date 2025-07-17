@@ -306,9 +306,7 @@ let boardTeams = [];
         try {
           const resp = await fetch(urlEpic, { credentials: "include" });
           const data = await resp.json();
-
-
-          ).map(story => ({
+          epicStories[epicKey] = (data.issues || []).map(story => ({
             key: story.key,
             summary: story.fields.summary,
             status: story.fields.status && story.fields.status.name,
@@ -328,13 +326,12 @@ let boardTeams = [];
         try {
           const resp = await fetch(urlEpic, { credentials: "include" });
           const data = await resp.json();
-          epicStoriesBaseline[epicKey] = data.issues.filter(story =>
-
-          ).filter(story => {
-            let created = new Date(story.fields.created);
-            let baseSprint = closedSprintsSorted.find(s=>s.id==baselineSprintId);
-            return created <= new Date(baseSprint.endDate);
-          }).map(story => ({
+          epicStoriesBaseline[epicKey] = (data.issues || [])
+            .filter(story => {
+              let created = new Date(story.fields.created);
+              let baseSprint = closedSprintsSorted.find(s=>s.id==baselineSprintId);
+              return created <= new Date(baseSprint.endDate);
+            }).map(story => ({
             key: story.key,
             summary: story.fields.summary,
             status: story.fields.status && story.fields.status.name,
