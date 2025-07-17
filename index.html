@@ -86,6 +86,7 @@
         <button class="btn" onclick="exportPDF()">Download PDF Report</button>
       </div>
       <div id="filterOptions" style="margin-bottom:15px;"></div>
+      <div id="requiredSummary" style="margin-bottom:15px;"></div>
       <div id="epicSummary"></div>
     </div>
   </div>
@@ -539,6 +540,20 @@ let teamFilters = {};
       if (totalAlloc < 99) allocWarn = `<span class="warn">Warning: Not all team capacity is assigned to listed epics (${totalAlloc}% total).</span>`;
       else if (totalAlloc > 101) allocWarn = `<span class="warn">Warning: Allocations exceed 100% of capacity! (${totalAlloc}%)</span>`;
       else allocWarn = `<span class="success">Team allocation: ${totalAlloc}%</span>`;
+
+      let totalReq75 = 0, totalReq95 = 0;
+      Object.values(epicRequiredAlloc).forEach(r => {
+        totalReq75 += r["75"] != null ? r["75"] : 101;
+        totalReq95 += r["95"] != null ? r["95"] : 101;
+      });
+      totalReq75 = Math.round(totalReq75);
+      totalReq95 = Math.round(totalReq95);
+      let reqWarn = (totalReq75 > 100 || totalReq95 > 100)
+        ? `<span class="warn">Required allocations exceed team capacity. Not all epics likely to finish.</span>`
+        : `<span class="success">Required allocations within team capacity.</span>`;
+      document.getElementById('requiredSummary').innerHTML =
+        `<div><b>Sum of required allocation for ${targetSprints} sprints:</b> `+
+        `75% = ${totalReq75}% &nbsp; | &nbsp; 95% = ${totalReq95}%<br>${reqWarn}</div>`;
       // The total allocation info is still calculated for simulations but no longer displayed in the UI
       let html = '';
 
@@ -745,6 +760,19 @@ let teamFilters = {};
       pdf.setTextColor(totalAlloc>101?225:16, totalAlloc>101?29:153, totalAlloc>101?72:105);
       pdf.text(allocWarn, 45, y); y+=18;
       pdf.setTextColor(51,51,51);
+
+      let totalReq75 = 0, totalReq95 = 0;
+      Object.values(epicRequiredAlloc).forEach(r => {
+        totalReq75 += r["75"] != null ? r["75"] : 101;
+        totalReq95 += r["95"] != null ? r["95"] : 101;
+      });
+      totalReq75 = Math.round(totalReq75);
+      totalReq95 = Math.round(totalReq95);
+      let reqWarn = (totalReq75 > 100 || totalReq95 > 100)
+        ? 'Required allocations exceed team capacity. Not all epics likely to finish.'
+        : 'Required allocations within team capacity.';
+      pdf.text(`Required allocation for ${targetSprints} sprints - 75%: ${totalReq75}%  |  95%: ${totalReq95}%`, 45, y); y+=13;
+      pdf.text(reqWarn, 45, y); y+=18;
 
       Object.keys(epicStories).forEach((epicKey, idx) => {
         let stories = epicStories[epicKey];
