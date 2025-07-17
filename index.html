@@ -570,7 +570,6 @@ let boardTeams = [];
         let estimateBaseline = baseStories.map(s=>s.points).reduce((a,b)=>a+b,0);
 
         let deltaEstimate = totalEstimate - estimateBaseline;
-        const ptsFor = pct => Math.round(avgVelocity * targetSprints * pct / 100);
         const currSprintObj = sprints.find(s => String(s.id) === String(selectedSprintId));
         const storyMapId = `storyMap_${epicKey.replace(/[^a-zA-Z0-9]/g, '')}`;
         const risk = ((required["75"] && required["75"]-alloc>15) || scopeIncreaseConsistent(epicKey));
