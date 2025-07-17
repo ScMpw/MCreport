@@ -100,7 +100,7 @@ let epicForecastResults = {};
 let historicData = [];
 let storyFilters = { current:true, previous:true, new:true, open:true, removed:true };
 let boardTeams = [];
-let teamFilters = {};
+
 
     function loadHistoricData() {
       try { historicData = JSON.parse(localStorage.getItem('mc_hist')) || []; }
@@ -306,8 +306,8 @@ let teamFilters = {};
         try {
           const resp = await fetch(urlEpic, { credentials: "include" });
           const data = await resp.json();
-          epicStories[epicKey] = data.issues.filter(story =>
-            !(story.fields.issuetype && story.fields.issuetype.subtask)
+
+
           ).map(story => ({
             key: story.key,
             summary: story.fields.summary,
@@ -329,7 +329,7 @@ let teamFilters = {};
           const resp = await fetch(urlEpic, { credentials: "include" });
           const data = await resp.json();
           epicStoriesBaseline[epicKey] = data.issues.filter(story =>
-            !(story.fields.issuetype && story.fields.issuetype.subtask)
+
           ).filter(story => {
             let created = new Date(story.fields.created);
             let baseSprint = closedSprintsSorted.find(s=>s.id==baselineSprintId);
