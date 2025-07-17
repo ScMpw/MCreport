@@ -93,9 +93,10 @@
 let jiraDomain = '', boardNum = '', sprints = [], closedSprintsSorted = [];
 let allEpics = {}, epicStories = {}, epicStoriesBaseline = {};
 let velocityArr = [];
+let avgVelocity = 0;
 let selectedSprintId = '', selectedSprintName = '', targetSprints = 4;
 let baselineSprintId = '', baselineIsFirstPI = false;
-let epicAllocations = {}, epicBacklogs = {}, epicRequiredAlloc = {};
+let epicAllocations = {}, epicBacklogs = {}, epicRequiredAlloc = {}, epicRequiredSP = {};
 let epicForecastResults = {};
 let historicData = [];
 let storyFilters = { current:true, previous:true, new:true, open:true, removed:true };
@@ -471,6 +472,7 @@ let boardTeams = [];
         document.getElementById('epicSummary').innerHTML = '<div class="warn">Please set at least 3 recent velocity values.</div>';
         return;
       }
+      avgVelocity = velocity.reduce((a,b)=>a+b,0)/velocity.length;
       epicBacklogs = {};
       let totalBacklog = 0;
       Object.keys(epicStories).forEach(epicKey => {
@@ -488,6 +490,7 @@ let boardTeams = [];
         applyStoryFilters();
       epicForecastResults = {};
       epicRequiredAlloc = {};
+      epicRequiredSP = {};
       Object.keys(epicStories).forEach(epicKey => {
         let stories = epicStories[epicKey]||[];
         let backlogPts = epicBacklogs[epicKey];
@@ -524,6 +527,10 @@ let boardTeams = [];
           if (allocNeeded["75"] && allocNeeded["95"]) break;
         }
         epicRequiredAlloc[epicKey] = allocNeeded;
+        epicRequiredSP[epicKey] = {
+          "75": allocNeeded["75"] ? Math.round(avgVelocity * allocNeeded["75"] / 100) : null,
+          "95": allocNeeded["95"] ? Math.round(avgVelocity * allocNeeded["95"] / 100) : null
+        };
       });
 
       let totalAlloc = Object.values(epicAllocations).reduce((a,b)=>a+b,0);
@@ -552,7 +559,7 @@ let boardTeams = [];
         let required = epicRequiredAlloc[epicKey];
         let mc = epicForecastResults[epicKey];
         let probRows = [[50,mc[Math.floor(0.5*mc.length)]],[75,mc[Math.floor(0.75*mc.length)]],[95,mc[Math.floor(0.95*mc.length)]]];
-
+        // story points needed per sprint based on required allocation
         let baseStories = (epicStoriesBaseline[epicKey]||[]);
         let baseKeys = new Set(baseStories.map(s=>s.key));
         let currKeys = new Set(stories.map(s=>s.key));
@@ -561,6 +568,7 @@ let boardTeams = [];
         let baseDone = baseStories.filter(s=>statusGroup(s.status)==="Done").map(s=>s.points).reduce((a,b)=>a+b,0);
         let doneSince = ptsDone - baseDone;
         let estimateBaseline = baseStories.map(s=>s.points).reduce((a,b)=>a+b,0);
+
         let deltaEstimate = totalEstimate - estimateBaseline;
         const currSprintObj = sprints.find(s => String(s.id) === String(selectedSprintId));
         const storyMapId = `storyMap_${epicKey.replace(/[^a-zA-Z0-9]/g, '')}`;
@@ -590,8 +598,8 @@ let boardTeams = [];
               <div style="margin-bottom:8px;">
                 <b>Required allocation to finish in ${targetSprints} sprints:</b>
                 <ul style="margin:3px 0 0 0;padding-left:1.3em;">
-                  <li>75% confidence: ${required["75"] ? required["75"]+"%" : '<span class="warn">Over 100%</span>'}</li>
-                  <li>95% confidence: ${required["95"] ? required["95"]+"%" : '<span class="warn">Over 100%</span>'}</li>
+                  <li>75% confidence: ${required["75"] ? epicRequiredSP[epicKey]["75"] + " SP/sprint (" + required["75"] + "%)" : '<span class="warn">Over 100%</span>'}</li>
+                  <li>95% confidence: ${required["95"] ? epicRequiredSP[epicKey]["95"] + " SP/sprint (" + required["95"] + "%)" : '<span class="warn">Over 100%</span>'}</li>
                 </ul>
               </div>
               <div style="font-size:0.99em;">
@@ -714,6 +722,8 @@ let boardTeams = [];
       pdf.setFont('helvetica','normal');
       pdf.setFontSize(11);
       pdf.text(velocityArr.join(", "), 45, y); y+=18;
+      const velList = velocityArr.filter(v=>v>0);
+      avgVelocity = velList.reduce((a,b)=>a+b,0)/velList.length;
       pdf.setLineWidth(0.3);
       pdf.line(45, y, 530, y); y+=8;
       pdf.text('Story map legend: Done this sprint | Done before | New story | Open/In Progress', 45, y); y+=15;
@@ -755,7 +765,6 @@ let boardTeams = [];
         let doneSince = ptsDone - baseDone;
         let estimateBaseline = baseStories.map(s=>s.points).reduce((a,b)=>a+b,0);
         let deltaEstimate = totalEstimate - estimateBaseline;
-
         y+=12;
         if (y>760) { pdf.addPage(); y=38;}
         pdf.setFont('helvetica','bold');
@@ -765,7 +774,7 @@ let boardTeams = [];
         pdf.setFontSize(11);
 
         pdf.text(`Done: ${ptsDone}    In Progress: ${ptsProg}    Open: ${ptsOpen+ptsOther}    Total: ${totalEstimate} SP    Backlog: ${backlog} SP`, 45, y); y+=15;
-        pdf.text(`Team allocation: ${alloc}%   |   Required for ${targetSprints} sprints: 75% conf: ${required["75"]?required["75"]+"%":"Over 100%"}  / 95% conf: ${required["95"]?required["95"]+"%":"Over 100%"}`, 45, y); y+=13;
+        pdf.text(`Team allocation: ${alloc}%   |   Required for ${targetSprints} sprints: 75% conf: ${required["75"]?epicRequiredSP[epicKey]["75"] + " SP/sprint (" + required["75"] + "%)":"Over 100%"}  / 95% conf: ${required["95"]?epicRequiredSP[epicKey]["95"] + " SP/sprint (" + required["95"] + "%)":"Over 100%"}`, 45, y); y+=13;
         pdf.text(`Probability forecast (sprints needed):`, 45, y); y+=12;
         probRows.forEach(r=>{
           pdf.text(`${r[0]}%: ${r[1]} sprints`, 70, y); y+=11;
