@@ -599,7 +599,15 @@ let boardTeams = [];
               <div style="margin-bottom:8px;">
                 <b>Required allocation to finish in ${targetSprints} sprints:</b>
                 <ul style="margin:3px 0 0 0;padding-left:1.3em;">
-
+                  ${(() => {
+                    const fmt = pct => {
+                      const sp = epicRequiredSP[epicKey][pct];
+                      return sp != null ? `${sp} SP/sprint (${required[pct]}%)`
+                                        : '<span class="warn">Over 100%</span>';
+                    };
+                    return [`<li>75% confidence: ${fmt("75")}</li>`,
+                            `<li>95% confidence: ${fmt("95")}</li>`].join('');
+                  })()}
                 </ul>
               </div>
               <div style="font-size:0.99em;">
