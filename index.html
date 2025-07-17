@@ -531,7 +531,8 @@ let boardTeams = [];
       if (totalAlloc < 99) allocWarn = `<span class="warn">Warning: Not all team capacity is assigned to listed epics (${totalAlloc}% total).</span>`;
       else if (totalAlloc > 101) allocWarn = `<span class="warn">Warning: Allocations exceed 100% of capacity! (${totalAlloc}%)</span>`;
       else allocWarn = `<span class="success">Team allocation: ${totalAlloc}%</span>`;
-      let html = `<div class="allocation-row">${allocWarn}</div>`;
+      // The total allocation info is still calculated for simulations but no longer displayed in the UI
+      let html = '';
 
       Object.keys(epicStories).forEach((epicKey, idx) => {
         let stories = epicStories[epicKey];
