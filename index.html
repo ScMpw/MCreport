@@ -306,9 +306,7 @@ let boardTeams = [];
         try {
           const resp = await fetch(urlEpic, { credentials: "include" });
           const data = await resp.json();
-
-
-          ).map(story => ({
+          epicStories[epicKey] = (data.issues || []).map(story => ({
             key: story.key,
             summary: story.fields.summary,
             status: story.fields.status && story.fields.status.name,
@@ -328,13 +326,12 @@ let boardTeams = [];
         try {
           const resp = await fetch(urlEpic, { credentials: "include" });
           const data = await resp.json();
-          epicStoriesBaseline[epicKey] = data.issues.filter(story =>
-
-          ).filter(story => {
-            let created = new Date(story.fields.created);
-            let baseSprint = closedSprintsSorted.find(s=>s.id==baselineSprintId);
-            return created <= new Date(baseSprint.endDate);
-          }).map(story => ({
+          epicStoriesBaseline[epicKey] = (data.issues || [])
+            .filter(story => {
+              let created = new Date(story.fields.created);
+              let baseSprint = closedSprintsSorted.find(s=>s.id==baselineSprintId);
+              return created <= new Date(baseSprint.endDate);
+            }).map(story => ({
             key: story.key,
             summary: story.fields.summary,
             status: story.fields.status && story.fields.status.name,
@@ -407,19 +404,55 @@ let boardTeams = [];
       });
     }
 
-    function applyStoryFilters() {
-      document.querySelectorAll('.story-status-current').forEach(el=>el.style.display = storyFilters.current? '':'none');
-      document.querySelectorAll('.story-status-previous').forEach(el=>el.style.display = storyFilters.previous? '':'none');
-      document.querySelectorAll('.story-status-new').forEach(el=>el.style.display = storyFilters.new? '':'none');
-      document.querySelectorAll('.story-status-open').forEach(el=>el.style.display = storyFilters.open? '':'none');
-      document.querySelectorAll('.story-status-other').forEach(el=>el.style.display = storyFilters.open? '':'none');
-      document.querySelectorAll('.removed-lane').forEach(el=>el.style.display = storyFilters.removed? '':'none');
-      document.querySelectorAll('.story-card').forEach(el=>{
-        if (el.style.display==='none') return;
-        let teams = (el.dataset.teams||'').split(',').map(t=>t.trim()).filter(Boolean);
-        if (teams.length && !teams.some(t=>teamFilters[t])) el.style.display='none';
-      });
-    }
+      function applyStoryFilters() {
+        document.querySelectorAll('.story-status-current').forEach(el=>el.style.display = storyFilters.current? '':'none');
+        document.querySelectorAll('.story-status-previous').forEach(el=>el.style.display = storyFilters.previous? '':'none');
+        document.querySelectorAll('.story-status-new').forEach(el=>el.style.display = storyFilters.new? '':'none');
+        document.querySelectorAll('.story-status-open').forEach(el=>el.style.display = storyFilters.open? '':'none');
+        document.querySelectorAll('.story-status-other').forEach(el=>el.style.display = storyFilters.open? '':'none');
+        document.querySelectorAll('.removed-lane').forEach(el=>el.style.display = storyFilters.removed? '':'none');
+        document.querySelectorAll('.story-card').forEach(el=>{
+          if (el.style.display==='none') return;
+          let teams = (el.dataset.teams||'').split(',').map(t=>t.trim()).filter(Boolean);
+          if (teams.length && !teams.some(t=>teamFilters[t])) el.style.display='none';
+        });
+        updateEpicStatusCounts();
+      }
+
+      function updateEpicStatusCounts() {
+        const currSprintObj = sprints.find(s => String(s.id) === String(selectedSprintId));
+        Object.keys(epicStories).forEach(epicKey => {
+          let done=0, prog=0, open=0, other=0;
+          (epicStories[epicKey]||[]).forEach(story => {
+            let show=true;
+            let cls = getStoryRowClass(story, currSprintObj);
+            if (cls==='story-status-current' && !storyFilters.current) show=false;
+            else if (cls==='story-status-previous' && !storyFilters.previous) show=false;
+            else if (cls==='story-status-new' && !storyFilters.new) show=false;
+            else if ((cls==='story-status-open' || cls==='story-status-other') && !storyFilters.open) show=false;
+            if (show) {
+              let teams=(story.team||'').split(',').map(t=>t.trim()).filter(Boolean);
+              if (teams.length && !teams.some(t=>teamFilters[t])) show=false;
+            }
+            if (!show) return;
+            let grp=statusGroup(story.status);
+            if (grp==='Done') done++;
+            else if (grp==='In Progress') prog++;
+            else if (grp==='Ready/Open') open++;
+            else other++;
+          });
+          const block=document.getElementById(`storyMap_${epicKey.replace(/[^a-zA-Z0-9]/g,'')}`);
+          if (!block) return;
+          const container=block.closest('.epic-summary-block');
+          if (!container) return;
+          const doneSpan=container.querySelector('.pill-done');
+          const progSpan=container.querySelector('.pill-prog');
+          const openSpan=container.querySelector('.pill-open');
+          if (doneSpan) doneSpan.textContent=`${done} Done`;
+          if (progSpan) progSpan.textContent=`${prog} In Progress`;
+          if (openSpan) openSpan.textContent=`${open+other} Open`;
+        });
+      }
 
     function scopeIncreaseConsistent(epicKey) {
       if (historicData.length < 3) return false;
