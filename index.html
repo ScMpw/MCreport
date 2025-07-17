@@ -99,7 +99,8 @@ let epicAllocations = {}, epicBacklogs = {}, epicRequiredAlloc = {};
 let epicForecastResults = {};
 let historicData = [];
 let storyFilters = { current:true, previous:true, new:true, open:true, removed:true };
-let boardTeam = '';
+let boardTeams = [];
+let teamFilters = {};
 
     function loadHistoricData() {
       try { historicData = JSON.parse(localStorage.getItem('mc_hist')) || []; }
@@ -153,7 +154,7 @@ let boardTeam = '';
     }
 
     async function fetchBoardTeam() {
-      boardTeam = '';
+      boardTeams = [];
       try {
         const cfgUrl = `https://${jiraDomain}/rest/agile/1.0/board/${boardNum}/configuration`;
         const cfgResp = await fetch(cfgUrl, { credentials: "include" });
@@ -165,12 +166,19 @@ let boardTeam = '';
         if (!fResp.ok) return;
         const fd = await fResp.json();
         const jql = fd.jql || '';
-        const m = jql.match(/(?:"Team"|customfield_12600|cf\[12600\])\s*(?:=|in)\s*(?:\(\s*"?([^"\)]+)"?\s*\)|"([^\"]+)")/i);
-        if (m) boardTeam = (m[1] || m[2] || '').split(',')[0].trim();
+        const regex = /(?:"Team"|customfield_12600|cf\[12600\])\s*(?:=|in)\s*(\([^\)]*\)|"[^"\n]+")/gi;
+        let m;
+        while ((m = regex.exec(jql)) !== null) {
+          let str = m[1].replace(/[()]/g, '');
+          str.split(',').forEach(t => {
+            t = t.replace(/"/g, '').trim();
+            if (t && !boardTeams.includes(t)) boardTeams.push(t);
+          });
+        }
       } catch (e) {
         console.error('Failed to fetch board team', e);
       }
-      console.log('Board team:', boardTeam);
+      console.log('Board teams:', boardTeams.join(', '));
     }
 
 
@@ -264,7 +272,7 @@ let boardTeam = '';
       selectedSprintId = document.getElementById('sprintSelect').value;
       selectedSprintName = document.getElementById('sprintSelect').selectedOptions[0].textContent;
       if (!selectedSprintId) return alert("Select a sprint.");
-      if (!boardTeam) await fetchBoardTeam();
+      if (!boardTeams.length) await fetchBoardTeam();
       let currSprintObj = sprints.find(s => String(s.id) === String(selectedSprintId));
       let allPIClosed = closedSprintsSorted.filter(s =>
         s.name.includes(currSprintObj.name.split(' ')[0])
@@ -299,8 +307,7 @@ let boardTeam = '';
           const resp = await fetch(urlEpic, { credentials: "include" });
           const data = await resp.json();
           epicStories[epicKey] = data.issues.filter(story =>
-            !(story.fields.issuetype && story.fields.issuetype.subtask) &&
-            (!boardTeam || (story.fields.customfield_12600 || []).includes(boardTeam))
+            !(story.fields.issuetype && story.fields.issuetype.subtask)
           ).map(story => ({
             key: story.key,
             summary: story.fields.summary,
@@ -322,8 +329,7 @@ let boardTeam = '';
           const resp = await fetch(urlEpic, { credentials: "include" });
           const data = await resp.json();
           epicStoriesBaseline[epicKey] = data.issues.filter(story =>
-            !(story.fields.issuetype && story.fields.issuetype.subtask) &&
-            (!boardTeam || (story.fields.customfield_12600 || []).includes(boardTeam))
+            !(story.fields.issuetype && story.fields.issuetype.subtask)
           ).filter(story => {
             let created = new Date(story.fields.created);
             let baseSprint = closedSprintsSorted.find(s=>s.id==baselineSprintId);
@@ -341,6 +347,14 @@ let boardTeam = '';
           }));
         } catch (e) { epicStoriesBaseline[epicKey] = []; }
       }));
+      let allTeams = new Set();
+      Object.values(epicStories).forEach(arr => {
+        arr.forEach(st => {
+          st.team.split(',').forEach(t => { t = t.trim(); if (t) allTeams.add(t); });
+        });
+      });
+      teamFilters = {};
+      allTeams.forEach(t => { teamFilters[t] = boardTeams.length ? boardTeams.includes(t) : true; });
       // --- FETCH HISTORICAL VELOCITY FROM JIRA REPORT ---
       velocityArr = await fetchVelocityFromReport(jiraDomain, boardNum);
       document.getElementById('configSection').style.display = '';
@@ -378,9 +392,18 @@ let boardTeam = '';
         ['open','Open/In Progress'],
         ['removed','Removed']
       ].map(f=>`<label style="margin-right:10px;"><input type="checkbox" data-filter="${f[0]}" ${storyFilters[f[0]]?'checked':''}> ${f[1]}</label>`).join('');
-      document.getElementById('filterOptions').innerHTML = '<span class="section-title" style="display:block;margin-top:0;">Story Map Filters:</span>'+html;
-      document.querySelectorAll('#filterOptions input[type=checkbox]').forEach(cb=>{
+      const teamsHtml = Object.keys(teamFilters).sort().map(t=>
+        `<label style="margin-right:10px;"><input type="checkbox" data-team="${t}" ${teamFilters[t]?'checked':''}> ${t}</label>`
+      ).join('');
+      document.getElementById('filterOptions').innerHTML =
+        '<span class="section-title" style="display:block;margin-top:0;">Story Map Filters:</span>'+
+        html+
+        (teamsHtml?'<br><span class="section-title" style="display:block;margin-top:0.8em;">Team Filter:</span>'+teamsHtml:'');
+      document.querySelectorAll('#filterOptions input[data-filter]').forEach(cb=>{
         cb.addEventListener('change',()=>{ storyFilters[cb.dataset.filter]=cb.checked; applyStoryFilters(); });
+      });
+      document.querySelectorAll('#filterOptions input[data-team]').forEach(cb=>{
+        cb.addEventListener('change',()=>{ teamFilters[cb.dataset.team]=cb.checked; applyStoryFilters(); });
       });
     }
 
@@ -391,6 +414,11 @@ let boardTeam = '';
       document.querySelectorAll('.story-status-open').forEach(el=>el.style.display = storyFilters.open? '':'none');
       document.querySelectorAll('.story-status-other').forEach(el=>el.style.display = storyFilters.open? '':'none');
       document.querySelectorAll('.removed-lane').forEach(el=>el.style.display = storyFilters.removed? '':'none');
+      document.querySelectorAll('.story-card').forEach(el=>{
+        if (el.style.display==='none') return;
+        let teams = (el.dataset.teams||'').split(',').map(t=>t.trim()).filter(Boolean);
+        if (teams.length && !teams.some(t=>teamFilters[t])) el.style.display='none';
+      });
     }
 
     function scopeIncreaseConsistent(epicKey) {
@@ -577,7 +605,7 @@ let boardTeam = '';
                       const tags = [];
                       if (newSet.has(st.key)) tags.push('New');
                       if (c==='story-status-current') tags.push('Done now');
-                      return `<div class="story-card ${c}">
+                      return `<div class="story-card ${c}" data-teams="${st.team}">
                         <div><b>${st.key}</b> (${st.points} SP)</div>
                         <div>${st.summary}</div>
                         <div class="small">${st.status}${st.assignee? ' - '+st.assignee : (st.team?' - '+st.team:'')}</div>
@@ -591,7 +619,7 @@ let boardTeam = '';
               ${removedStories.length?`
                 <div class="story-lane removed-lane">
                   <div class="story-lane-header">Removed since last sprint</div>
-                  ${removedStories.map(st=>`<div class="story-card story-status-other"><b>${st.key}</b> (${st.points} SP)</div>`).join('')}
+                  ${removedStories.map(st=>`<div class="story-card story-status-other" data-teams="${st.team}"><b>${st.key}</b> (${st.points} SP)</div>`).join('')}
                 </div>
               `:''}
             </div>
