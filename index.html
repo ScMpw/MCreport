@@ -40,10 +40,10 @@
     .story-table { border-collapse: collapse; width: 100%; margin: 6px 0 18px 0; }
     .story-table th, .story-table td { border: 1px solid #e5e7eb; padding: 4px 7px; font-size: 0.98em; text-align:left; }
     .story-table th { background: #e0e7ef; }
-    .story-status-current { background: #E0F7FA; }
-    .story-status-previous { background: #E8F5E9; }
-    .story-status-new { background: #FFF8E1; }
-    .story-status-open { background: #F3F4F6; }
+    .story-status-current { background: #b2ebf2; }
+    .story-status-previous { background: #c8e6c9; }
+    .story-status-new { background: #fff59d; }
+    .story-status-open { background: #e0e7ff; }
     .story-status-other { background: #ECECEC; }
     .story-map { display:flex; gap:12px; overflow-x:auto; }
     .story-lane { flex:1; min-width:180px; background:#fafafa; border:1px solid #e5e7eb; border-radius:6px; padding:6px; }
@@ -53,7 +53,14 @@
     .story-card .tags { margin-top:2px; }
     .story-tag { font-size:0.75em; background:#d1d5db; color:#111; border-radius:3px; padding:1px 4px; margin-right:3px; }
     .story-card .small { font-size:0.8em; color:#555; }
-    .story-map-legend span { display:inline-block; padding:2px 8px; border-radius:4px; margin-right:6px; }
+    .story-map-legend span {
+      display:inline-block;
+      padding:2px 8px;
+      border-radius:4px;
+      margin-right:6px;
+      border:1px solid #9ca3af;
+      font-weight:600;
+    }
     @media (max-width: 800px) {
       .main {padding:14px;}
       .info-grid {grid-template-columns:1fr;}
@@ -782,6 +789,15 @@ let teamFilters = {};
       return "Other";
     }
 
+    function hexToRgb(hex) {
+      const m = hex.match(/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i);
+      return m ? {
+        r: parseInt(m[1], 16),
+        g: parseInt(m[2], 16),
+        b: parseInt(m[3], 16)
+      } : {r:0,g:0,b:0};
+    }
+
     // --- PDF EXPORT (CLEAN SUMMARY ONLY) ---
     function exportPDF() {
       const { jsPDF } = window.jspdf;
@@ -806,7 +822,23 @@ let teamFilters = {};
       avgVelocity = velList.reduce((a,b)=>a+b,0)/velList.length;
       pdf.setLineWidth(0.3);
       pdf.line(45, y, 530, y); y+=8;
-      pdf.text('Story map legend: Done this sprint | Done before | New story | Open/In Progress', 45, y); y+=15;
+      const legendItems = [
+        ['Done this sprint', '#b2ebf2'],
+        ['Done before', '#c8e6c9'],
+        ['New story', '#fff59d'],
+        ['Open/In Progress', '#e0e7ff']
+      ];
+      pdf.setFont('helvetica','normal');
+      pdf.setFontSize(11);
+      legendItems.forEach(item => {
+        const rgb = hexToRgb(item[1]);
+        pdf.setFillColor(rgb.r, rgb.g, rgb.b);
+        pdf.rect(45, y-7, 10, 10, 'F');
+        pdf.setTextColor(51,51,51);
+        pdf.text(item[0], 60, y);
+        y += 12;
+      });
+      pdf.setTextColor(51,51,51);
 
       let totalAlloc = Object.values(epicAllocations).reduce((a,b)=>a+b,0);
       let allocWarn = '';
