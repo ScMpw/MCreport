@@ -564,6 +564,7 @@ let teamFilters = {};
         if (!stories || !stories.length) return;
         let statusCounts = {done:0,prog:0,open:0,other:0};
         let ptsDone=0, ptsProg=0, ptsOpen=0, ptsOther=0;
+        let unestimated = 0;
         stories.forEach(story => {
           let teams = (story.team||'').split(',').map(t=>t.trim()).filter(Boolean);
           if (teams.length && !teams.some(t=>teamFilters[t])) return;
@@ -572,6 +573,7 @@ let teamFilters = {};
           else if (sgrp==='In Progress') { statusCounts.prog++; ptsProg+=story.points; }
           else if (sgrp==='Ready/Open') { statusCounts.open++; ptsOpen+=story.points; }
           else { statusCounts.other++; ptsOther+=story.points; }
+          if (!story.points) unestimated++;
         });
         let totalEstimate = ptsDone+ptsProg+ptsOpen+ptsOther;
         let backlog = ptsProg+ptsOpen+ptsOther;
@@ -793,6 +795,7 @@ let teamFilters = {};
         let stories = epicStories[epicKey];
         if (!stories || !stories.length) return;
         let ptsDone=0, ptsProg=0, ptsOpen=0, ptsOther=0;
+        let unestimated = 0;
         stories.forEach(story => {
           let teams = (story.team||'').split(',').map(t=>t.trim()).filter(Boolean);
           if (teams.length && !teams.some(t=>teamFilters[t])) return;
@@ -801,6 +804,7 @@ let teamFilters = {};
           else if (sgrp==='In Progress') { ptsProg+=story.points; }
           else if (sgrp==='Ready/Open') { ptsOpen+=story.points; }
           else { ptsOther+=story.points; }
+          if (!story.points) unestimated++;
         });
         let totalEstimate = ptsDone+ptsProg+ptsOpen+ptsOther;
         let backlog = ptsProg+ptsOpen+ptsOther;
