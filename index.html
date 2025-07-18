@@ -592,7 +592,7 @@ let teamFilters = {};
         let currKeys = new Set(currStories.map(s=>s.key));
         let newStories = currStories.filter(s=>!baseKeys.has(s.key));
         let removedStories = baseStories.filter(s=>!currKeys.has(s.key));
-        let unestimated = currStories.filter(s=>s.points===0 && statusGroup(s.status)!=='Done').length;
+
         let baseDone = baseStories.filter(s=>statusGroup(s.status)==="Done").map(s=>s.points).reduce((a,b)=>a+b,0);
         let doneSince = ptsDone - baseDone;
         let estimateBaseline = baseStories.map(s=>s.points).reduce((a,b)=>a+b,0);
@@ -624,7 +624,7 @@ let teamFilters = {};
                 </table>
               </div>
               <div style="margin-bottom:8px;">
-                <b>Required allocation to finish in ${targetSprints} sprints:</b>
+                <b>Required allocation${unestimated>0?'+':''} to finish in ${targetSprints} sprints:</b>
                 <ul style="margin:3px 0 0 0;padding-left:1.3em;">
                   ${(() => {
                     const fmt = pct => {
@@ -821,7 +821,7 @@ let teamFilters = {};
         let currKeys = new Set(currStories.map(s=>s.key));
         let newStories = currStories.filter(s=>!baseKeys.has(s.key));
         let removedStories = baseStories.filter(s=>!currKeys.has(s.key));
-        let unestimated = currStories.filter(s=>s.points===0 && statusGroup(s.status)!=='Done').length;
+
         let baseDone = baseStories.filter(s=>statusGroup(s.status)==="Done").map(s=>s.points).reduce((a,b)=>a+b,0);
         let doneSince = ptsDone - baseDone;
         let estimateBaseline = baseStories.map(s=>s.points).reduce((a,b)=>a+b,0);
@@ -846,7 +846,7 @@ let teamFilters = {};
           return 'Over 100%';
         };
         pdf.text(
-          `Team allocation: ${alloc}%   |   Required for ${targetSprints} sprints: ` +
+          `Team allocation: ${alloc}%   |   Required for ${targetSprints} sprints${unestimated>0?'+':''}: ` +
           `75% conf: ${fmtReq("75")}  / 95% conf: ${fmtReq("95")}`, 45, y
         );
         y += 13;
