@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <title>Stakeholder PI Status Report – MCW with Allocation</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css" />
   <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
@@ -16,8 +17,9 @@
     .btn:disabled { background: #aaa; }
     .sprint-row label { margin-right: 1.2em; }
     .section-title { font-size: 1.1em; font-weight: 600; margin: 1.7em 0 0.5em 0; }
-    .epic-summary-block { margin:2em 0 2.5em 0; border-radius:14px; background: #f3f4f6; box-shadow: 0 1px 6px #e0e7ef70; padding: 24px 24px 18px 24px; }
+    .epic-summary-block { margin:2em 0 2.5em 0; border-radius:14px; background: #f3f4f6; box-shadow: 0 1px 6px #e0e7ef70; padding: 24px 24px 18px 24px; position:relative; }
     .epic-risk { border:2px solid #e11d48; box-shadow:0 0 6px #e11d48; }
+    .epic-select-checkbox { position:absolute; bottom:8px; right:8px; }
     .epic-header { font-size: 1.15em; font-weight: 600; color: #374151; }
     .allocation-bar { height: 18px; border-radius: 8px; background: #6366f1; display:inline-block; vertical-align:middle;}
     .prob-table { border-collapse:collapse; margin:12px 0 18px 0;}
@@ -792,6 +794,7 @@ let teamChoices = null;
               <span class="story-status-new">New story</span>
               <span class="story-status-open">Open/In Progress</span>
             </div>
+          <input type="checkbox" class="epic-select-checkbox" data-epic="${epicKey}" checked>
           </div>
         </div>
         `;
@@ -836,197 +839,21 @@ let teamChoices = null;
     function exportPDF() {
       const { jsPDF } = window.jspdf;
       const pdf = new jsPDF({ unit:'pt', format:'a4' });
-      let y = 38;
-      pdf.setFont('helvetica', 'bold');
-      pdf.setFontSize(23);
-      pdf.text("Stakeholder PI Status Report", 45, y); y+=22;
-      pdf.setFont('helvetica','normal');
-      pdf.setFontSize(12);
-      pdf.text(`Generated: ${new Date().toLocaleString()}`, 45, y); y+=13;
-      pdf.text(`Board: ${boardNum}   |   Sprint: ${selectedSprintName||''}`, 45, y); y+=23;
-
-      // Velocity history
-      pdf.setFont('helvetica','bold');
-      pdf.setFontSize(14);
-      pdf.text("Velocity history (last 6 sprints):", 45, y); y+=15;
-      pdf.setFont('helvetica','normal');
-      pdf.setFontSize(11);
-      pdf.text(velocityArr.join(", "), 45, y); y+=18;
-      const velList = velocityArr.filter(v=>v>0);
-      avgVelocity = velList.reduce((a,b)=>a+b,0)/velList.length;
-      pdf.setLineWidth(0.3);
-      pdf.line(45, y, 530, y); y+=8;
-      const legendItems = [
-        ['Done this sprint', '#b2ebf2'],
-        ['Done before', '#c8e6c9'],
-        ['New story', '#fff59d'],
-        ['Open/In Progress', '#e0e7ff']
-      ];
-      pdf.setFont('helvetica','normal');
-      pdf.setFontSize(11);
-      legendItems.forEach(item => {
-        const rgb = hexToRgb(item[1]);
-        pdf.setFillColor(rgb.r, rgb.g, rgb.b);
-        pdf.rect(45, y-7, 10, 10, 'F');
-        pdf.setTextColor(51,51,51);
-        pdf.text(item[0], 60, y);
-        y += 12;
-      });
-      pdf.setTextColor(51,51,51);
-
-      let totalAlloc = Object.values(epicAllocations).reduce((a,b)=>a+b,0);
-      let allocWarn = '';
-      if (totalAlloc < 99) allocWarn = `Warning: Not all team capacity assigned (${totalAlloc}% total)`;
-      else if (totalAlloc > 101) allocWarn = `Warning: Allocations exceed 100% (${totalAlloc}%)`;
-      else allocWarn = `Team allocation: ${totalAlloc}%`;
-      pdf.setFont('helvetica','normal');
-      pdf.setTextColor(totalAlloc>101?225:16, totalAlloc>101?29:153, totalAlloc>101?72:105);
-      pdf.text(allocWarn, 45, y); y+=18;
-      pdf.setTextColor(51,51,51);
-
-      let totalReq75 = 0, totalReq95 = 0;
-      Object.values(epicRequiredAlloc).forEach(r => {
-        totalReq75 += r["75"] != null ? r["75"] : 101;
-        totalReq95 += r["95"] != null ? r["95"] : 101;
-      });
-      totalReq75 = Math.round(totalReq75);
-      totalReq95 = Math.round(totalReq95);
-      let reqWarn = (totalReq75 > 100 || totalReq95 > 100)
-        ? 'Required allocations exceed team capacity. Not all epics likely to finish.'
-        : 'Required allocations within team capacity.';
-      pdf.text(`Required allocation for ${targetSprints} sprints - 75%: ${totalReq75}%  |  95%: ${totalReq95}%`, 45, y); y+=13;
-      pdf.text(reqWarn, 45, y); y+=18;
-
-      Object.keys(epicStories).forEach((epicKey, idx) => {
-        let stories = epicStories[epicKey];
-        if (!stories || !stories.length) return;
-        let ptsDone=0, ptsProg=0, ptsOpen=0, ptsOther=0;
-        let unestimated = 0;
-        stories.forEach(story => {
-          let teams = (story.team||'').split(',').map(t=>t.trim()).filter(Boolean);
-          if (teams.length && !teams.some(t=>teamFilters[t])) return;
-          let sgrp = statusGroup(story.status);
-          if (sgrp==='Done') { ptsDone+=story.points; }
-          else if (sgrp==='In Progress') { ptsProg+=story.points; }
-          else if (sgrp==='Ready/Open') { ptsOpen+=story.points; }
-          else { ptsOther+=story.points; }
-          if (!story.points && sgrp!=='Done') unestimated++;
-        });
-        let totalEstimate = ptsDone+ptsProg+ptsOpen+ptsOther;
-        let backlog = ptsProg+ptsOpen+ptsOther;
-        let alloc = epicAllocations[epicKey];
-        let required = epicRequiredAlloc[epicKey];
-        let mc = epicForecastResults[epicKey];
-        let probRows = [[50,mc[Math.floor(0.5*mc.length)]],[75,mc[Math.floor(0.75*mc.length)]],[95,mc[Math.floor(0.95*mc.length)]]];
-
-        let baseStories = (epicStoriesBaseline[epicKey]||[]).filter(st => {
-          let teams = (st.team||'').split(',').map(t=>t.trim()).filter(Boolean);
-          return teams.length ? teams.some(t=>teamFilters[t]) : true;
-        });
-        let baseKeys = new Set(baseStories.map(s=>s.key));
-        let currStories = stories.filter(s => {
-          let teams = (s.team||'').split(',').map(t=>t.trim()).filter(Boolean);
-          return teams.length ? teams.some(t=>teamFilters[t]) : true;
-        });
-        let currKeys = new Set(currStories.map(s=>s.key));
-        let newStories = currStories.filter(s=>!baseKeys.has(s.key));
-        let removedStories = baseStories.filter(s=>!currKeys.has(s.key));
-
-        let baseDone = baseStories.filter(s=>statusGroup(s.status)==="Done").map(s=>s.points).reduce((a,b)=>a+b,0);
-        let doneSince = ptsDone - baseDone;
-        let estimateBaseline = baseStories.map(s=>s.points).reduce((a,b)=>a+b,0);
-        let deltaEstimate = totalEstimate - estimateBaseline;
-
-        y+=12;
-        if (y>760) { pdf.addPage(); y=38;}
-        pdf.setFont('helvetica','bold');
-        pdf.setFontSize(13.5);
-        pdf.text(`${epicKey}: ${allEpics[epicKey]||''}`, 45, y); y+=13;
-        pdf.setFont('helvetica','normal');
-        pdf.setFontSize(11);
-
-        pdf.text(`Done: ${ptsDone}    In Progress: ${ptsProg}    Open: ${ptsOpen+ptsOther}    Total: ${totalEstimate} SP    Backlog: ${backlog} SP    Unestimated: ${unestimated}`, 45, y); y+=15;
-
-        const fmtReq = pct => {
-          const sp = epicRequiredSP[epicKey][pct];
-          if (sp != null) {
-            const plus = unestimated>0?'+':'';
-            return `${sp}${plus} SP/sprint (${required[pct]}${plus}%)`;
-          }
-          return 'Over 100%';
-        };
-        pdf.text(
-          `Team allocation: ${alloc}%   |   Required for ${targetSprints} sprints${unestimated>0?'+':''}: ` +
-          `75% conf: ${fmtReq("75")}  / 95% conf: ${fmtReq("95")}`, 45, y
-        );
-        y += 13;
-        const fmtPrevReq = pct => {
-          const sp = (epicRequiredSPPrev[epicKey]||{})[pct];
-          return sp != null ? `${sp} SP` : 'n/a';
-        };
-        pdf.text(`Last sprint required: 75% ${fmtPrevReq("75")}  / 95% ${fmtPrevReq("95")}`, 45, y);
-        y += 13;
-
-        pdf.text(`Probability forecast (sprints needed):`, 45, y); y+=12;
-        probRows.forEach(r=>{
-          pdf.text(`${r[0]}%: ${r[1]} sprints`, 70, y); y+=11;
-        });
-        y+=2;
-        pdf.text((probRows[1][1] > targetSprints ?
-          "At 75% confidence: NOT likely to finish in "+targetSprints+" sprints. More allocation/velocity needed."
-          :
-          "On track to finish in "+targetSprints+" sprints at 75% confidence."
-        ), 45, y); y+=13;
-
-        pdf.setFont('helvetica','bold');
-        pdf.text("Changes since last sprint:", 45, y); y+=12;
-        pdf.setFont('helvetica','normal');
-        pdf.text([
-          `Story points completed: ${doneSince}`,
-          `New stories: ${newStories.length} (${newStories.reduce((a,b)=>a+b.points,0)} SP)`,
-          `Removed stories: ${removedStories.length} (${removedStories.reduce((a,b)=>a+b.points,0)} SP)`,
-          `Scope change: ${
-            deltaEstimate===0 ? "No change"
-            : (deltaEstimate>0?'Increased (+'
-              +deltaEstimate+')':'Reduced ('+deltaEstimate+')')
-          }`
-        ].join("    "), 55, y); y+=16;
-
-        const currSprintObj = sprints.find(s => String(s.id) === String(selectedSprintId));
-        const newSet = new Set(newStories.map(s=>s.key));
-        const lanes = [
-          ['Done this sprint', stories.filter(st => getStoryRowClass(st, currSprintObj)==='story-status-current')],
-          ['In Progress', stories.filter(st => statusGroup(st.status)==='In Progress')],
-          ['Open', stories.filter(st => statusGroup(st.status)==='Ready/Open')]
-        ];
-        lanes.forEach(l => {
-          if (!l[1].length) return;
-          pdf.setFont('helvetica','bold');
-          pdf.text(l[0]+':', 55, y); y+=11;
-          pdf.setFont('helvetica','normal');
-          l[1].forEach(st => {
-            const tags = [];
-            if (newSet.has(st.key)) tags.push('New');
-            let line = `- ${st.key} (${st.points} SP)`;
-            if (tags.length) line += ' ['+tags.join(', ')+']';
-            pdf.text(line, 65, y); y+=11;
-            if (y>760) { pdf.addPage(); y=38; }
-          });
-        });
-        if (removedStories.length) {
-          pdf.setFont('helvetica','bold');
-          pdf.text('Removed since last sprint:', 55, y); y+=11;
-          pdf.setFont('helvetica','normal');
-          removedStories.forEach(st => {
-            pdf.text(`- ${st.key} (${st.points} SP${st.resolution?' - '+st.resolution:''})`, 65, y); y+=11;
-            if (y>760) { pdf.addPage(); y=38; }
-          });
+      const blocks = Array.from(document.querySelectorAll('.epic-summary-block'))
+        .filter(b => b.querySelector('.epic-select-checkbox')?.checked);
+      if (!blocks.length) return alert('Select at least one epic for PDF');
+      const margin = 20;
+      (async () => {
+        for (let i=0; i<blocks.length; i++) {
+          const canvas = await html2canvas(blocks[i]);
+          const img = canvas.toDataURL('image/png');
+          const width = pdf.internal.pageSize.getWidth() - margin*2;
+          const height = canvas.height * width / canvas.width;
+          if (i>0) pdf.addPage();
+          pdf.addImage(img, 'PNG', margin, margin, width, height);
         }
-
-        pdf.setLineWidth(0.2); pdf.line(45, y, 530, y); y+=8;
-      });
-
-      pdf.save(`Stakeholder_StatusReport_${selectedSprintName||''}.pdf`);
+        pdf.save('Stakeholder_StatusReport.pdf');
+      })();
     }
   </script>
 </body>
