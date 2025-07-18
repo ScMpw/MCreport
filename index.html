@@ -86,6 +86,7 @@
         <button class="btn" onclick="exportPDF()">Download PDF Report</button>
       </div>
       <div id="filterOptions" style="margin-bottom:15px;"></div>
+      <div id="requiredSummary" style="margin-bottom:15px;"></div>
       <div id="epicSummary"></div>
     </div>
   </div>
@@ -402,7 +403,7 @@ let teamFilters = {};
         cb.addEventListener('change',()=>{ storyFilters[cb.dataset.filter]=cb.checked; applyStoryFilters(); });
       });
       document.querySelectorAll('#filterOptions input[data-team]').forEach(cb=>{
-        cb.addEventListener('change',()=>{ teamFilters[cb.dataset.team]=cb.checked; applyStoryFilters(); });
+        cb.addEventListener('change',()=>{ teamFilters[cb.dataset.team]=cb.checked; renderEpicSummary(true); });
       });
     }
 
@@ -466,7 +467,7 @@ let teamFilters = {};
     }
 
     // --- MAIN REPORT RENDER ---
-    function renderEpicSummary() {
+    function renderEpicSummary(skipHistory = false) {
       targetSprints = Number(document.getElementById('targetSprintsInput').value) || 4;
       let velocity = velocityArr.filter(v=>v>0);
       if (velocity.length<3) {
@@ -478,7 +479,12 @@ let teamFilters = {};
       let totalBacklog = 0;
       Object.keys(epicStories).forEach(epicKey => {
         let stories = epicStories[epicKey]||[];
-        let backlog = stories.filter(st => !isDone(st.status)).reduce((a,b)=>a+b.points,0);
+        let backlog = stories.filter(st => {
+          if (isDone(st.status)) return false;
+          let teams = (st.team||'').split(',').map(t=>t.trim()).filter(Boolean);
+          if (teams.length && !teams.some(t=>teamFilters[t])) return false;
+          return true;
+        }).reduce((a,b)=>a+b.points,0);
         epicBacklogs[epicKey] = backlog;
         totalBacklog += backlog;
       });
@@ -486,9 +492,9 @@ let teamFilters = {};
       Object.keys(epicStories).forEach(epicKey => {
         epicAllocations[epicKey] = totalBacklog ? Math.round(100*epicBacklogs[epicKey]/totalBacklog) : 0;
       });
-        updateHistoricTotals();
-        renderFilterOptions();
-        applyStoryFilters();
+      if (!skipHistory) updateHistoricTotals();
+      renderFilterOptions();
+      applyStoryFilters();
       epicForecastResults = {};
       epicRequiredAlloc = {};
       epicRequiredSP = {};
@@ -539,6 +545,20 @@ let teamFilters = {};
       if (totalAlloc < 99) allocWarn = `<span class="warn">Warning: Not all team capacity is assigned to listed epics (${totalAlloc}% total).</span>`;
       else if (totalAlloc > 101) allocWarn = `<span class="warn">Warning: Allocations exceed 100% of capacity! (${totalAlloc}%)</span>`;
       else allocWarn = `<span class="success">Team allocation: ${totalAlloc}%</span>`;
+
+      let totalReq75 = 0, totalReq95 = 0;
+      Object.values(epicRequiredAlloc).forEach(r => {
+        totalReq75 += r["75"] != null ? r["75"] : 101;
+        totalReq95 += r["95"] != null ? r["95"] : 101;
+      });
+      totalReq75 = Math.round(totalReq75);
+      totalReq95 = Math.round(totalReq95);
+      let reqWarn = (totalReq75 > 100 || totalReq95 > 100)
+        ? `<span class="warn">Required allocations exceed team capacity. Not all epics likely to finish.</span>`
+        : `<span class="success">Required allocations within team capacity.</span>`;
+      document.getElementById('requiredSummary').innerHTML =
+        `<div><b>Sum of required allocation for ${targetSprints} sprints:</b> `+
+        `75% = ${totalReq75}% &nbsp; | &nbsp; 95% = ${totalReq95}%<br>${reqWarn}</div>`;
       // The total allocation info is still calculated for simulations but no longer displayed in the UI
       let html = '';
 
@@ -548,11 +568,13 @@ let teamFilters = {};
         let statusCounts = {done:0,prog:0,open:0,other:0};
         let ptsDone=0, ptsProg=0, ptsOpen=0, ptsOther=0;
         stories.forEach(story => {
+          let teams = (story.team||'').split(',').map(t=>t.trim()).filter(Boolean);
+          if (teams.length && !teams.some(t=>teamFilters[t])) return;
           let sgrp = statusGroup(story.status);
-          if (sgrp==='Done') { statusCounts.done++; ptsDone+=story.points;}
-          else if (sgrp==='In Progress') { statusCounts.prog++; ptsProg+=story.points;}
-          else if (sgrp==='Ready/Open') { statusCounts.open++; ptsOpen+=story.points;}
-          else { statusCounts.other++; ptsOther+=story.points;}
+          if (sgrp==='Done') { statusCounts.done++; ptsDone+=story.points; }
+          else if (sgrp==='In Progress') { statusCounts.prog++; ptsProg+=story.points; }
+          else if (sgrp==='Ready/Open') { statusCounts.open++; ptsOpen+=story.points; }
+          else { statusCounts.other++; ptsOther+=story.points; }
         });
         let totalEstimate = ptsDone+ptsProg+ptsOpen+ptsOther;
         let backlog = ptsProg+ptsOpen+ptsOther;
@@ -561,10 +583,17 @@ let teamFilters = {};
         let mc = epicForecastResults[epicKey];
         let probRows = [[50,mc[Math.floor(0.5*mc.length)]],[75,mc[Math.floor(0.75*mc.length)]],[95,mc[Math.floor(0.95*mc.length)]]];
 
-        let baseStories = (epicStoriesBaseline[epicKey]||[]);
+        let baseStories = (epicStoriesBaseline[epicKey]||[]).filter(st => {
+          let teams = (st.team||'').split(',').map(t=>t.trim()).filter(Boolean);
+          return teams.length ? teams.some(t=>teamFilters[t]) : true;
+        });
         let baseKeys = new Set(baseStories.map(s=>s.key));
-        let currKeys = new Set(stories.map(s=>s.key));
-        let newStories = stories.filter(s=>!baseKeys.has(s.key));
+        let currStories = stories.filter(s => {
+          let teams = (s.team||'').split(',').map(t=>t.trim()).filter(Boolean);
+          return teams.length ? teams.some(t=>teamFilters[t]) : true;
+        });
+        let currKeys = new Set(currStories.map(s=>s.key));
+        let newStories = currStories.filter(s=>!baseKeys.has(s.key));
         let removedStories = baseStories.filter(s=>!currKeys.has(s.key));
         let baseDone = baseStories.filter(s=>statusGroup(s.status)==="Done").map(s=>s.points).reduce((a,b)=>a+b,0);
         let doneSince = ptsDone - baseDone;
@@ -746,16 +775,31 @@ let teamFilters = {};
       pdf.text(allocWarn, 45, y); y+=18;
       pdf.setTextColor(51,51,51);
 
+      let totalReq75 = 0, totalReq95 = 0;
+      Object.values(epicRequiredAlloc).forEach(r => {
+        totalReq75 += r["75"] != null ? r["75"] : 101;
+        totalReq95 += r["95"] != null ? r["95"] : 101;
+      });
+      totalReq75 = Math.round(totalReq75);
+      totalReq95 = Math.round(totalReq95);
+      let reqWarn = (totalReq75 > 100 || totalReq95 > 100)
+        ? 'Required allocations exceed team capacity. Not all epics likely to finish.'
+        : 'Required allocations within team capacity.';
+      pdf.text(`Required allocation for ${targetSprints} sprints - 75%: ${totalReq75}%  |  95%: ${totalReq95}%`, 45, y); y+=13;
+      pdf.text(reqWarn, 45, y); y+=18;
+
       Object.keys(epicStories).forEach((epicKey, idx) => {
         let stories = epicStories[epicKey];
         if (!stories || !stories.length) return;
         let ptsDone=0, ptsProg=0, ptsOpen=0, ptsOther=0;
         stories.forEach(story => {
+          let teams = (story.team||'').split(',').map(t=>t.trim()).filter(Boolean);
+          if (teams.length && !teams.some(t=>teamFilters[t])) return;
           let sgrp = statusGroup(story.status);
-          if (sgrp==='Done') { ptsDone+=story.points;}
-          else if (sgrp==='In Progress') { ptsProg+=story.points;}
-          else if (sgrp==='Ready/Open') { ptsOpen+=story.points;}
-          else { ptsOther+=story.points;}
+          if (sgrp==='Done') { ptsDone+=story.points; }
+          else if (sgrp==='In Progress') { ptsProg+=story.points; }
+          else if (sgrp==='Ready/Open') { ptsOpen+=story.points; }
+          else { ptsOther+=story.points; }
         });
         let totalEstimate = ptsDone+ptsProg+ptsOpen+ptsOther;
         let backlog = ptsProg+ptsOpen+ptsOther;
@@ -764,10 +808,17 @@ let teamFilters = {};
         let mc = epicForecastResults[epicKey];
         let probRows = [[50,mc[Math.floor(0.5*mc.length)]],[75,mc[Math.floor(0.75*mc.length)]],[95,mc[Math.floor(0.95*mc.length)]]];
 
-        let baseStories = (epicStoriesBaseline[epicKey]||[]);
+        let baseStories = (epicStoriesBaseline[epicKey]||[]).filter(st => {
+          let teams = (st.team||'').split(',').map(t=>t.trim()).filter(Boolean);
+          return teams.length ? teams.some(t=>teamFilters[t]) : true;
+        });
         let baseKeys = new Set(baseStories.map(s=>s.key));
-        let currKeys = new Set(stories.map(s=>s.key));
-        let newStories = stories.filter(s=>!baseKeys.has(s.key));
+        let currStories = stories.filter(s => {
+          let teams = (s.team||'').split(',').map(t=>t.trim()).filter(Boolean);
+          return teams.length ? teams.some(t=>teamFilters[t]) : true;
+        });
+        let currKeys = new Set(currStories.map(s=>s.key));
+        let newStories = currStories.filter(s=>!baseKeys.has(s.key));
         let removedStories = baseStories.filter(s=>!currKeys.has(s.key));
         let baseDone = baseStories.filter(s=>statusGroup(s.status)==="Done").map(s=>s.points).reduce((a,b)=>a+b,0);
         let doneSince = ptsDone - baseDone;
