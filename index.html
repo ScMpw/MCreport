@@ -573,7 +573,7 @@ let teamFilters = {};
           else if (sgrp==='In Progress') { statusCounts.prog++; ptsProg+=story.points; }
           else if (sgrp==='Ready/Open') { statusCounts.open++; ptsOpen+=story.points; }
           else { statusCounts.other++; ptsOther+=story.points; }
-          if (!story.points) unestimated++;
+          if (!story.points && sgrp!=='Done') unestimated++;
         });
         let totalEstimate = ptsDone+ptsProg+ptsOpen+ptsOther;
         let backlog = ptsProg+ptsOpen+ptsOther;
@@ -804,7 +804,7 @@ let teamFilters = {};
           else if (sgrp==='In Progress') { ptsProg+=story.points; }
           else if (sgrp==='Ready/Open') { ptsOpen+=story.points; }
           else { ptsOther+=story.points; }
-          if (!story.points) unestimated++;
+          if (!story.points && sgrp!=='Done') unestimated++;
         });
         let totalEstimate = ptsDone+ptsProg+ptsOpen+ptsOther;
         let backlog = ptsProg+ptsOpen+ptsOther;
