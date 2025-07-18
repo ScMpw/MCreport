@@ -96,7 +96,7 @@ let allEpics = {}, epicStories = {}, epicStoriesBaseline = {};
 let velocityArr = [];
 let avgVelocity = 0;
 let selectedSprintId = '', selectedSprintName = '', targetSprints = 4;
-let baselineSprintId = '', baselineIsFirstPI = false;
+let baselineSprintId = '';
 let epicAllocations = {}, epicBacklogs = {}, epicRequiredAlloc = {}, epicRequiredSP = {};
 let epicForecastResults = {};
 let historicData = [];
@@ -277,13 +277,8 @@ let teamFilters = {};
       if (!selectedSprintId) return alert("Select a sprint.");
       if (!boardTeams.length) await fetchBoardTeam();
       let currSprintObj = sprints.find(s => String(s.id) === String(selectedSprintId));
-      let allPIClosed = closedSprintsSorted.filter(s =>
-        s.name.includes(currSprintObj.name.split(' ')[0])
-      );
-      let firstPISprint = allPIClosed[0];
       let currIdx = closedSprintsSorted.findIndex(s => String(s.id) === String(selectedSprintId));
       let baselineIdx = currIdx > 0 ? currIdx - 1 : 0;
-      baselineIsFirstPI = (closedSprintsSorted[baselineIdx].id === firstPISprint.id);
       baselineSprintId = closedSprintsSorted[baselineIdx].id;
       let jql = encodeURIComponent(`sprint = ${selectedSprintId} ORDER BY key`);
       let url = `https://${jiraDomain}/rest/api/3/search?jql=${jql}&fields=summary,parent,customfield_10002,customfield_10005,customfield_12600,status,issuetype&maxResults=500`;
@@ -305,7 +300,7 @@ let teamFilters = {};
       epicStories = {};
       await Promise.all(Array.from(epicKeysSet).map(async epicKey => {
         let eq = encodeURIComponent(`"Epic Link" = ${epicKey}`);
-        let urlEpic = `https://${jiraDomain}/rest/api/3/search?jql=${eq}&fields=summary,status,assignee,customfield_10002,customfield_12600,created,resolutiondate,issuetype,customfield_10005&maxResults=500`;
+        let urlEpic = `https://${jiraDomain}/rest/api/3/search?jql=${eq}&fields=summary,status,resolution,assignee,customfield_10002,customfield_12600,created,resolutiondate,issuetype,customfield_10005&maxResults=500`;
         try {
           const resp = await fetch(urlEpic, { credentials: "include" });
           const data = await resp.json();
@@ -313,6 +308,7 @@ let teamFilters = {};
             key: story.key,
             summary: story.fields.summary,
             status: story.fields.status && story.fields.status.name,
+            resolution: story.fields.resolution && story.fields.resolution.name,
             assignee: story.fields.assignee && story.fields.assignee.displayName,
             points: Number(story.fields.customfield_10002) || 0,
             team: (story.fields.customfield_12600 || []).join(', '),
@@ -325,7 +321,7 @@ let teamFilters = {};
       epicStoriesBaseline = {};
       await Promise.all(Array.from(epicKeysSet).map(async epicKey => {
         let eq = encodeURIComponent(`"Epic Link" = ${epicKey}`);
-        let urlEpic = `https://${jiraDomain}/rest/api/3/search?jql=${eq}&fields=summary,status,assignee,customfield_10002,customfield_12600,created,resolutiondate,issuetype,customfield_10005&maxResults=500`;
+        let urlEpic = `https://${jiraDomain}/rest/api/3/search?jql=${eq}&fields=summary,status,resolution,assignee,customfield_10002,customfield_12600,created,resolutiondate,issuetype,customfield_10005&maxResults=500`;
         try {
           const resp = await fetch(urlEpic, { credentials: "include" });
           const data = await resp.json();
@@ -338,6 +334,7 @@ let teamFilters = {};
             key: story.key,
             summary: story.fields.summary,
             status: story.fields.status && story.fields.status.name,
+            resolution: story.fields.resolution && story.fields.resolution.name,
             assignee: story.fields.assignee && story.fields.assignee.displayName,
             points: Number(story.fields.customfield_10002) || 0,
             team: (story.fields.customfield_12600 || []).join(', '),
@@ -649,7 +646,7 @@ let teamFilters = {};
               </div>
             </div>
             <div>
-              <div class="pdf-section-title" style="margin-top:0;">Changes since ${baselineIsFirstPI ? "PI start" : "last sprint"}:</div>
+              <div class="pdf-section-title" style="margin-top:0;">Changes since last sprint:</div>
               <div class="change-block">
                 <ul>
                   <li>Story points completed: <b>${doneSince}</b></li>
@@ -698,7 +695,7 @@ let teamFilters = {};
               ${removedStories.length?`
                 <div class="story-lane removed-lane">
                   <div class="story-lane-header">Removed since last sprint</div>
-                  ${removedStories.map(st=>`<div class="story-card story-status-other" data-teams="${st.team}"><b>${st.key}</b> (${st.points} SP)</div>`).join('')}
+                  ${removedStories.map(st=>`<div class="story-card story-status-other" data-teams="${st.team}"><b>${st.key}</b> (${st.points} SP)${st.resolution?` - ${st.resolution}`:''}</div>`).join('')}
                 </div>
               `:''}
             </div>
@@ -857,7 +854,7 @@ let teamFilters = {};
         ), 45, y); y+=13;
 
         pdf.setFont('helvetica','bold');
-        pdf.text("Changes since "+(baselineIsFirstPI ? "PI start" : "last sprint")+":", 45, y); y+=12;
+        pdf.text("Changes since last sprint:", 45, y); y+=12;
         pdf.setFont('helvetica','normal');
         pdf.text([
           `Story points completed: ${doneSince}`,
@@ -896,7 +893,7 @@ let teamFilters = {};
           pdf.text('Removed since last sprint:', 55, y); y+=11;
           pdf.setFont('helvetica','normal');
           removedStories.forEach(st => {
-            pdf.text(`- ${st.key} (${st.points} SP)`, 65, y); y+=11;
+            pdf.text(`- ${st.key} (${st.points} SP${st.resolution?' - '+st.resolution:''})`, 65, y); y+=11;
             if (y>760) { pdf.addPage(); y=38; }
           });
         }
