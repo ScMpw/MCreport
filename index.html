@@ -592,6 +592,7 @@ let teamFilters = {};
         let currKeys = new Set(currStories.map(s=>s.key));
         let newStories = currStories.filter(s=>!baseKeys.has(s.key));
         let removedStories = baseStories.filter(s=>!currKeys.has(s.key));
+        let unestimated = currStories.filter(s=>s.points===0 && statusGroup(s.status)!=='Done').length;
         let baseDone = baseStories.filter(s=>statusGroup(s.status)==="Done").map(s=>s.points).reduce((a,b)=>a+b,0);
         let doneSince = ptsDone - baseDone;
         let estimateBaseline = baseStories.map(s=>s.points).reduce((a,b)=>a+b,0);
@@ -607,7 +608,7 @@ let teamFilters = {};
             <span class="status-pill pill-done">${ptsDone} Done</span>
             <span class="status-pill pill-prog">${ptsProg} In Progress</span>
             <span class="status-pill pill-open">${ptsOpen+ptsOther} Open</span>
-            &nbsp; <b>Total:</b> ${totalEstimate} SP &nbsp; | &nbsp; <b>Backlog:</b> ${backlog} SP
+            &nbsp; <b>Total:</b> ${totalEstimate} SP &nbsp; | &nbsp; <b>Backlog:</b> ${backlog} SP &nbsp; | &nbsp; <b>Unestimated:</b> ${unestimated}
           </div>
           <div class="info-grid">
             <div>
@@ -628,8 +629,11 @@ let teamFilters = {};
                   ${(() => {
                     const fmt = pct => {
                       const sp = epicRequiredSP[epicKey][pct];
-                      return sp != null ? `${sp} SP/sprint (${required[pct]}%)`
-                                        : '<span class="warn">Over 100%</span>';
+                      if (sp != null) {
+                        const plus = unestimated>0?'+':'';
+                        return `${sp}${plus} SP/sprint (${required[pct]}${plus}%)`;
+                      }
+                      return '<span class="warn">Over 100%</span>';
                     };
                     return [`<li>75% confidence: ${fmt("75")}</li>`,
                             `<li>95% confidence: ${fmt("95")}</li>`].join('');
@@ -817,6 +821,7 @@ let teamFilters = {};
         let currKeys = new Set(currStories.map(s=>s.key));
         let newStories = currStories.filter(s=>!baseKeys.has(s.key));
         let removedStories = baseStories.filter(s=>!currKeys.has(s.key));
+        let unestimated = currStories.filter(s=>s.points===0 && statusGroup(s.status)!=='Done').length;
         let baseDone = baseStories.filter(s=>statusGroup(s.status)==="Done").map(s=>s.points).reduce((a,b)=>a+b,0);
         let doneSince = ptsDone - baseDone;
         let estimateBaseline = baseStories.map(s=>s.points).reduce((a,b)=>a+b,0);
@@ -830,11 +835,15 @@ let teamFilters = {};
         pdf.setFont('helvetica','normal');
         pdf.setFontSize(11);
 
-        pdf.text(`Done: ${ptsDone}    In Progress: ${ptsProg}    Open: ${ptsOpen+ptsOther}    Total: ${totalEstimate} SP    Backlog: ${backlog} SP`, 45, y); y+=15;
+        pdf.text(`Done: ${ptsDone}    In Progress: ${ptsProg}    Open: ${ptsOpen+ptsOther}    Total: ${totalEstimate} SP    Backlog: ${backlog} SP    Unestimated: ${unestimated}`, 45, y); y+=15;
 
         const fmtReq = pct => {
           const sp = epicRequiredSP[epicKey][pct];
-          return sp != null ? `${sp} SP/sprint (${required[pct]}%)` : 'Over 100%';
+          if (sp != null) {
+            const plus = unestimated>0?'+':'';
+            return `${sp}${plus} SP/sprint (${required[pct]}${plus}%)`;
+          }
+          return 'Over 100%';
         };
         pdf.text(
           `Team allocation: ${alloc}%   |   Required for ${targetSprints} sprints: ` +
