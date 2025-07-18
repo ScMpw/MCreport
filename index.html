@@ -403,7 +403,7 @@ let teamFilters = {};
         cb.addEventListener('change',()=>{ storyFilters[cb.dataset.filter]=cb.checked; applyStoryFilters(); });
       });
       document.querySelectorAll('#filterOptions input[data-team]').forEach(cb=>{
-        cb.addEventListener('change',()=>{ teamFilters[cb.dataset.team]=cb.checked; applyStoryFilters(); });
+        cb.addEventListener('change',()=>{ teamFilters[cb.dataset.team]=cb.checked; renderEpicSummary(true); });
       });
     }
 
@@ -467,7 +467,7 @@ let teamFilters = {};
     }
 
     // --- MAIN REPORT RENDER ---
-    function renderEpicSummary() {
+    function renderEpicSummary(skipHistory = false) {
       targetSprints = Number(document.getElementById('targetSprintsInput').value) || 4;
       let velocity = velocityArr.filter(v=>v>0);
       if (velocity.length<3) {
@@ -479,7 +479,12 @@ let teamFilters = {};
       let totalBacklog = 0;
       Object.keys(epicStories).forEach(epicKey => {
         let stories = epicStories[epicKey]||[];
-        let backlog = stories.filter(st => !isDone(st.status)).reduce((a,b)=>a+b.points,0);
+        let backlog = stories.filter(st => {
+          if (isDone(st.status)) return false;
+          let teams = (st.team||'').split(',').map(t=>t.trim()).filter(Boolean);
+          if (teams.length && !teams.some(t=>teamFilters[t])) return false;
+          return true;
+        }).reduce((a,b)=>a+b.points,0);
         epicBacklogs[epicKey] = backlog;
         totalBacklog += backlog;
       });
@@ -487,9 +492,9 @@ let teamFilters = {};
       Object.keys(epicStories).forEach(epicKey => {
         epicAllocations[epicKey] = totalBacklog ? Math.round(100*epicBacklogs[epicKey]/totalBacklog) : 0;
       });
-        updateHistoricTotals();
-        renderFilterOptions();
-        applyStoryFilters();
+      if (!skipHistory) updateHistoricTotals();
+      renderFilterOptions();
+      applyStoryFilters();
       epicForecastResults = {};
       epicRequiredAlloc = {};
       epicRequiredSP = {};
@@ -563,11 +568,13 @@ let teamFilters = {};
         let statusCounts = {done:0,prog:0,open:0,other:0};
         let ptsDone=0, ptsProg=0, ptsOpen=0, ptsOther=0;
         stories.forEach(story => {
+          let teams = (story.team||'').split(',').map(t=>t.trim()).filter(Boolean);
+          if (teams.length && !teams.some(t=>teamFilters[t])) return;
           let sgrp = statusGroup(story.status);
-          if (sgrp==='Done') { statusCounts.done++; ptsDone+=story.points;}
-          else if (sgrp==='In Progress') { statusCounts.prog++; ptsProg+=story.points;}
-          else if (sgrp==='Ready/Open') { statusCounts.open++; ptsOpen+=story.points;}
-          else { statusCounts.other++; ptsOther+=story.points;}
+          if (sgrp==='Done') { statusCounts.done++; ptsDone+=story.points; }
+          else if (sgrp==='In Progress') { statusCounts.prog++; ptsProg+=story.points; }
+          else if (sgrp==='Ready/Open') { statusCounts.open++; ptsOpen+=story.points; }
+          else { statusCounts.other++; ptsOther+=story.points; }
         });
         let totalEstimate = ptsDone+ptsProg+ptsOpen+ptsOther;
         let backlog = ptsProg+ptsOpen+ptsOther;
@@ -576,10 +583,17 @@ let teamFilters = {};
         let mc = epicForecastResults[epicKey];
         let probRows = [[50,mc[Math.floor(0.5*mc.length)]],[75,mc[Math.floor(0.75*mc.length)]],[95,mc[Math.floor(0.95*mc.length)]]];
 
-        let baseStories = (epicStoriesBaseline[epicKey]||[]);
+        let baseStories = (epicStoriesBaseline[epicKey]||[]).filter(st => {
+          let teams = (st.team||'').split(',').map(t=>t.trim()).filter(Boolean);
+          return teams.length ? teams.some(t=>teamFilters[t]) : true;
+        });
         let baseKeys = new Set(baseStories.map(s=>s.key));
-        let currKeys = new Set(stories.map(s=>s.key));
-        let newStories = stories.filter(s=>!baseKeys.has(s.key));
+        let currStories = stories.filter(s => {
+          let teams = (s.team||'').split(',').map(t=>t.trim()).filter(Boolean);
+          return teams.length ? teams.some(t=>teamFilters[t]) : true;
+        });
+        let currKeys = new Set(currStories.map(s=>s.key));
+        let newStories = currStories.filter(s=>!baseKeys.has(s.key));
         let removedStories = baseStories.filter(s=>!currKeys.has(s.key));
         let baseDone = baseStories.filter(s=>statusGroup(s.status)==="Done").map(s=>s.points).reduce((a,b)=>a+b,0);
         let doneSince = ptsDone - baseDone;
@@ -779,11 +793,13 @@ let teamFilters = {};
         if (!stories || !stories.length) return;
         let ptsDone=0, ptsProg=0, ptsOpen=0, ptsOther=0;
         stories.forEach(story => {
+          let teams = (story.team||'').split(',').map(t=>t.trim()).filter(Boolean);
+          if (teams.length && !teams.some(t=>teamFilters[t])) return;
           let sgrp = statusGroup(story.status);
-          if (sgrp==='Done') { ptsDone+=story.points;}
-          else if (sgrp==='In Progress') { ptsProg+=story.points;}
-          else if (sgrp==='Ready/Open') { ptsOpen+=story.points;}
-          else { ptsOther+=story.points;}
+          if (sgrp==='Done') { ptsDone+=story.points; }
+          else if (sgrp==='In Progress') { ptsProg+=story.points; }
+          else if (sgrp==='Ready/Open') { ptsOpen+=story.points; }
+          else { ptsOther+=story.points; }
         });
         let totalEstimate = ptsDone+ptsProg+ptsOpen+ptsOther;
         let backlog = ptsProg+ptsOpen+ptsOther;
@@ -792,10 +808,17 @@ let teamFilters = {};
         let mc = epicForecastResults[epicKey];
         let probRows = [[50,mc[Math.floor(0.5*mc.length)]],[75,mc[Math.floor(0.75*mc.length)]],[95,mc[Math.floor(0.95*mc.length)]]];
 
-        let baseStories = (epicStoriesBaseline[epicKey]||[]);
+        let baseStories = (epicStoriesBaseline[epicKey]||[]).filter(st => {
+          let teams = (st.team||'').split(',').map(t=>t.trim()).filter(Boolean);
+          return teams.length ? teams.some(t=>teamFilters[t]) : true;
+        });
         let baseKeys = new Set(baseStories.map(s=>s.key));
-        let currKeys = new Set(stories.map(s=>s.key));
-        let newStories = stories.filter(s=>!baseKeys.has(s.key));
+        let currStories = stories.filter(s => {
+          let teams = (s.team||'').split(',').map(t=>t.trim()).filter(Boolean);
+          return teams.length ? teams.some(t=>teamFilters[t]) : true;
+        });
+        let currKeys = new Set(currStories.map(s=>s.key));
+        let newStories = currStories.filter(s=>!baseKeys.has(s.key));
         let removedStories = baseStories.filter(s=>!currKeys.has(s.key));
         let baseDone = baseStories.filter(s=>statusGroup(s.status)==="Done").map(s=>s.points).reduce((a,b)=>a+b,0);
         let doneSince = ptsDone - baseDone;
