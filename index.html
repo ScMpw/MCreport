@@ -97,7 +97,8 @@ let velocityArr = [];
 let avgVelocity = 0;
 let selectedSprintId = '', selectedSprintName = '', targetSprints = 4;
 let baselineSprintId = '';
-let epicAllocations = {}, epicBacklogs = {}, epicRequiredAlloc = {}, epicRequiredSP = {};
+let epicAllocations = {}, epicBacklogs = {}, epicRequiredAlloc = {}, epicRequiredSP = {},
+    epicRequiredSPPrev = {};
 let epicForecastResults = {};
 let historicData = [];
 let storyFilters = { current:true, previous:true, new:true, open:true, removed:true };
@@ -495,6 +496,7 @@ let teamFilters = {};
       epicForecastResults = {};
       epicRequiredAlloc = {};
       epicRequiredSP = {};
+      epicRequiredSPPrev = {};
       Object.keys(epicStories).forEach(epicKey => {
         let stories = epicStories[epicKey]||[];
         let backlogPts = epicBacklogs[epicKey];
@@ -531,7 +533,39 @@ let teamFilters = {};
           if (allocNeeded["75"] && allocNeeded["95"]) break;
         }
         epicRequiredAlloc[epicKey] = allocNeeded;
-        epicRequiredSP[epicKey] = {
+      epicRequiredSP[epicKey] = {
+        "75": allocNeeded["75"] ? Math.round(avgVelocity * allocNeeded["75"] / 100) : null,
+        "95": allocNeeded["95"] ? Math.round(avgVelocity * allocNeeded["95"] / 100) : null
+      };
+    });
+
+      Object.keys(epicStoriesBaseline).forEach(epicKey => {
+        let stories = epicStoriesBaseline[epicKey] || [];
+        let backlogPts = stories.filter(st => {
+          if (isDone(st.status)) return false;
+          let teams = (st.team||'').split(',').map(t=>t.trim()).filter(Boolean);
+          if (teams.length && !teams.some(t=>teamFilters[t])) return false;
+          return true;
+        }).reduce((a,b)=>a+b.points,0);
+        let allocNeeded = { "75": null, "95": null };
+        for (let pct=1;pct<=100;pct++) {
+          let testVels = velocity.map(v=>v*pct/100);
+          let runs = [];
+          for (let i=0;i<600;i++) {
+            let b = backlogPts, s=0;
+            while (b>0 && s<100) {
+              let v = testVels[Math.floor(Math.random()*testVels.length)];
+              if (v<1) v=1;
+              b -= v; s++;
+            }
+            runs.push(s);
+          }
+          runs.sort((a,b)=>a-b);
+          if (allocNeeded["75"] === null && runs[Math.floor(0.75*runs.length)]<=targetSprints) allocNeeded["75"] = pct;
+          if (allocNeeded["95"] === null && runs[Math.floor(0.95*runs.length)]<=targetSprints) allocNeeded["95"] = pct;
+          if (allocNeeded["75"] && allocNeeded["95"]) break;
+        }
+        epicRequiredSPPrev[epicKey] = {
           "75": allocNeeded["75"] ? Math.round(avgVelocity * allocNeeded["75"] / 100) : null,
           "95": allocNeeded["95"] ? Math.round(avgVelocity * allocNeeded["95"] / 100) : null
         };
@@ -637,8 +671,14 @@ let teamFilters = {};
                       }
                       return '<span class="warn">Over 100%</span>';
                     };
-                    return [`<li>75% confidence: ${fmt("75")}</li>`,
-                            `<li>95% confidence: ${fmt("95")}</li>`].join('');
+                    const prev = pct => {
+                      const sp = (epicRequiredSPPrev[epicKey]||{})[pct];
+                      return sp != null ? `${sp} SP` : 'n/a';
+                    };
+                    return [
+                      `<li>75% confidence: ${fmt("75")} <span style="font-size:0.9em;color:#555;">(last sprint: ${prev("75")})</span></li>`,
+                      `<li>95% confidence: ${fmt("95")} <span style="font-size:0.9em;color:#555;">(last sprint: ${prev("95")})</span></li>`
+                    ].join('');
                   })()}
                 </ul>
               </div>
@@ -853,6 +893,12 @@ let teamFilters = {};
           `Team allocation: ${alloc}%   |   Required for ${targetSprints} sprints${unestimated>0?'+':''}: ` +
           `75% conf: ${fmtReq("75")}  / 95% conf: ${fmtReq("95")}`, 45, y
         );
+        y += 13;
+        const fmtPrevReq = pct => {
+          const sp = (epicRequiredSPPrev[epicKey]||{})[pct];
+          return sp != null ? `${sp} SP` : 'n/a';
+        };
+        pdf.text(`Last sprint required: 75% ${fmtPrevReq("75")}  / 95% ${fmtPrevReq("95")}`, 45, y);
         y += 13;
 
         pdf.text(`Probability forecast (sprints needed):`, 45, y); y+=12;
