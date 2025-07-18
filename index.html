@@ -5,6 +5,8 @@
   <title>Stakeholder PI Status Report – MCW with Allocation</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
   <style>
     body { background: #f7f8fa; font-family: 'Inter', Arial, sans-serif; margin: 0; padding: 0; }
     .main { max-width: 950px; margin: 30px auto 40px auto; background: #fff; border-radius: 18px; box-shadow: 0 2px 12px #d1d5db70; padding: 36px 32px; }
@@ -66,6 +68,8 @@
       border:1px solid #9ca3af;
       font-weight:600;
     }
+    /* Choices.js dropdown width */
+    .choices__list--dropdown { min-width: 240px; }
     @media (max-width: 800px) {
       .main {padding:14px;}
       .info-grid {grid-template-columns:1fr;}
@@ -116,6 +120,8 @@ let historicData = [];
 let storyFilters = { current:true, previous:true, new:true, open:true, removed:true };
 let boardTeams = [];
 let teamFilters = {};
+let statusChoices = null;
+let teamChoices = null;
 
 
     function loadHistoricData() {
@@ -395,25 +401,48 @@ let teamFilters = {};
 
 
     function renderFilterOptions() {
-      const html = [
+      if (statusChoices) { statusChoices.destroy(); statusChoices = null; }
+      if (teamChoices) { teamChoices.destroy(); teamChoices = null; }
+
+      const statusOpts = [
         ['current','Done this sprint'],
         ['previous','Done before'],
         ['new','New story'],
         ['open','Open/In Progress'],
         ['removed','Removed']
-      ].map(f=>`<label style="margin-right:10px;"><input type="checkbox" data-filter="${f[0]}" ${storyFilters[f[0]]?'checked':''}> ${f[1]}</label>`).join('');
-      const teamsHtml = Object.keys(teamFilters).sort().map(t=>
-        `<label style="margin-right:10px;"><input type="checkbox" data-team="${t}" ${teamFilters[t]?'checked':''}> ${t}</label>`
-      ).join('');
+      ];
+
+      const statusSelectHtml =
+        '<select id="statusSelect" multiple>'+
+        statusOpts.map(o=>`<option value="${o[0]}" ${storyFilters[o[0]]?'selected':''}>${o[1]}</option>`).join('')+
+        '</select>';
+
+      const teamSelectHtml =
+        '<select id="teamSelect" multiple>'+
+        Object.keys(teamFilters).sort().map(t=>`<option value="${t}" ${teamFilters[t]?'selected':''}>${t}</option>`).join('')+
+        '</select>';
+
       document.getElementById('filterOptions').innerHTML =
         '<span class="section-title" style="display:block;margin-top:0;">Story Map Filters:</span>'+
-        html+
-        (teamsHtml?'<br><span class="section-title" style="display:block;margin-top:0.8em;">Team Filter:</span>'+teamsHtml:'');
-      document.querySelectorAll('#filterOptions input[data-filter]').forEach(cb=>{
-        cb.addEventListener('change',()=>{ storyFilters[cb.dataset.filter]=cb.checked; applyStoryFilters(); });
+        statusSelectHtml+
+        (Object.keys(teamFilters).length ? '<br><span class="section-title" style="display:block;margin-top:0.8em;">Team Filter:</span>'+teamSelectHtml : '');
+
+      const statusEl = document.getElementById('statusSelect');
+      const teamEl = document.getElementById('teamSelect');
+
+      statusChoices = new Choices(statusEl, { removeItemButton:true, shouldSort:false });
+      if (teamEl) teamChoices = new Choices(teamEl, { removeItemButton:true, searchResultLimit:15, shouldSort:true });
+
+      statusEl.addEventListener('change', ()=>{
+        const sel = new Set(statusChoices.getValue(true));
+        statusOpts.forEach(o=>{ storyFilters[o[0]] = sel.has(o[0]); });
+        applyStoryFilters();
       });
-      document.querySelectorAll('#filterOptions input[data-team]').forEach(cb=>{
-        cb.addEventListener('change',()=>{ teamFilters[cb.dataset.team]=cb.checked; renderEpicSummary(true); });
+
+      if (teamEl) teamEl.addEventListener('change', ()=>{
+        const sel = new Set(teamChoices.getValue(true));
+        Object.keys(teamFilters).forEach(t=>{ teamFilters[t] = sel.has(t); });
+        renderEpicSummary(true);
       });
     }
 
