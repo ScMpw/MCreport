@@ -104,3 +104,16 @@ smallest percentage where the 75% or 95% percentile does not exceed the
 target is reported as the required allocation (and converted into story
 points using the average velocity).
 
+To calculate this requirement the algorithm iterates over candidate
+allocations from 1&nbsp;% to 100&nbsp;%. For each candidate **p** the
+historic velocity array is scaled by `p/100` to create a set of possible
+sprint velocities. Five thousand runs are executed using that scaled
+array and the resulting sprint counts are sorted. If both the 75th and
+95th percentile of those counts are less than or equal to the target
+sprints, **p** is accepted as the minimum capacity needed. The resulting
+percentage is then multiplied by the average of the historic velocities
+to express the requirement in story points per sprint. When no
+percentage meets the target within 100&nbsp;%, the report shows the value
+as over 100&nbsp;% to signal that finishing in the chosen timeframe is
+unlikely with current velocity.
+
