@@ -563,7 +563,7 @@ let teamChoices = null;
         let alloc = epicAllocations[epicKey];
         let allocVels = velocity.map(v=>v*alloc/100);
         let mcRuns = [];
-        for (let i=0; i<8000; i++) {
+        for (let i=0; i<10000; i++) {
           let b = backlogPts, s=0;
           while (b>0 && s<100) {
             let v = allocVels[Math.floor(Math.random()*allocVels.length)];
@@ -578,7 +578,7 @@ let teamChoices = null;
         for (let pct=1;pct<=100;pct++) {
           let testVels = velocity.map(v=>v*pct/100);
           let runs = [];
-          for (let i=0;i<600;i++) {
+          for (let i=0;i<5000;i++) {
             let b = backlogPts, s=0;
             while (b>0 && s<100) {
               let v = testVels[Math.floor(Math.random()*testVels.length)];
@@ -611,7 +611,7 @@ let teamChoices = null;
         for (let pct=1;pct<=100;pct++) {
           let testVels = velocity.map(v=>v*pct/100);
           let runs = [];
-          for (let i=0;i<600;i++) {
+          for (let i=0;i<5000;i++) {
             let b = backlogPts, s=0;
             while (b>0 && s<100) {
               let v = testVels[Math.floor(Math.random()*testVels.length)];
