@@ -250,24 +250,25 @@ let teamChoices = null;
       // Log all fetched sprints
       console.log("Fetched sprints:", allSprintsArr.length, allSprintsArr.map(s => s.name + ' (' + (s.startDate ? s.startDate.substr(0,10) : "undefined") + ')'));
 
-      sprints = allSprintsArr.slice(); // DO NOT reverse or sort
+      sprints = allSprintsArr.slice(); // keep original order; dropdown reverses
       closedSprintsSorted = sprints.filter(s => s.state === "closed" && s.endDate)
                                    .sort((a, b) => new Date(b.endDate) - new Date(a.endDate));
       populateSprintDropdown();
     }
 
-    // --- SPRINT DROPDOWN: show all sprints as fetched, no sorting ---
+    // --- SPRINT DROPDOWN: show all sprints in reverse order ---
     function populateSprintDropdown() {
       const sel = document.getElementById('sprintSelect');
       sel.innerHTML = '';
-      sprints.forEach(sprint => {
+      for (let i = sprints.length - 1; i >= 0; i--) {
+        const sprint = sprints[i];
         const opt = document.createElement('option');
         opt.value = sprint.id;
         let name = sprint.name || "(no name)";
         if (sprint.startDate) name += " (" + sprint.startDate.substr(0, 10) + ")";
         opt.textContent = (sprint.state === "active" ? "🟢 " : "") + name;
         sel.appendChild(opt);
-      });
+      }
       document.getElementById('sprintRow').style.display = '';
     }
 
