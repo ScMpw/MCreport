@@ -223,7 +223,7 @@ let teamChoices = null;
 
       let allSprintsArr = [];
       let startAt = 0;
-      const maxResults = 100;
+      const maxResults = 50; // Jira API typically caps sprint pages at 50
       let total = null;
 
       while (true) {
@@ -241,8 +241,8 @@ let teamChoices = null;
           if (data.values && data.values.length) {
             allSprintsArr = allSprintsArr.concat(data.values);
             total = data.total;
-            startAt += maxResults;
-            if (allSprintsArr.length >= total) break;
+            startAt += data.values.length; // advance by number returned
+            if (data.isLast || allSprintsArr.length >= total) break;
           } else {
             break;
           }
