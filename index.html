@@ -374,7 +374,7 @@ let teamChoices = null;
         });
       });
       teamFilters = {};
-      allTeams.forEach(t => { teamFilters[t] = boardTeams.length ? boardTeams.includes(t) : true; });
+      allTeams.forEach(t => { teamFilters[t] = false; });
       // --- FETCH HISTORICAL VELOCITY FROM JIRA REPORT ---
       velocityArr = await fetchVelocityFromReport(jiraDomain, boardNum);
       document.getElementById('configSection').style.display = '';
@@ -403,12 +403,6 @@ let teamChoices = null;
     }
 
 
-    function clearTeamFilter() {
-
-      renderEpicSummary(true);
-    }
-
-
     function renderFilterOptions() {
       if (statusChoices) { statusChoices.destroy(); statusChoices = null; }
       if (teamChoices) { teamChoices.destroy(); teamChoices = null; }
@@ -434,7 +428,7 @@ let teamChoices = null;
       document.getElementById('filterOptions').innerHTML =
         '<span class="section-title" style="display:block;margin-top:0;">Story Map Filters:</span>'+
         statusSelectHtml+
-        (Object.keys(teamFilters).length ? '<br><span class="section-title" style="display:block;margin-top:0.8em;">Team Filter:</span>'+teamSelectHtml+' <button class="btn" onclick="clearTeamFilter()">Remove All</button>' : '');
+        (Object.keys(teamFilters).length ? '<br><span class="section-title" style="display:block;margin-top:0.8em;">Team Filter:</span>'+teamSelectHtml : '');
 
       const statusEl = document.getElementById('statusSelect');
       const teamEl = document.getElementById('teamSelect');
