@@ -19,7 +19,8 @@
     .section-title { font-size: 1.1em; font-weight: 600; margin: 1.7em 0 0.5em 0; }
     .epic-summary-block { margin:2em 0 2.5em 0; border-radius:14px; background: #f3f4f6; box-shadow: 0 1px 6px #e0e7ef70; padding: 24px 24px 18px 24px; position:relative; }
     .epic-risk { border:2px solid #e11d48; box-shadow:0 0 6px #e11d48; }
-    .epic-select-checkbox { position:absolute; bottom:8px; right:8px; }
+    .epic-select-label { position:absolute; bottom:8px; right:8px; font-size:0.9em; }
+    .epic-select-checkbox { margin-right:4px; }
     .epic-header { font-size: 1.15em; font-weight: 600; color: #374151; }
     .allocation-bar { height: 18px; border-radius: 8px; background: #6366f1; display:inline-block; vertical-align:middle;}
     .prob-table { border-collapse:collapse; margin:12px 0 18px 0;}
@@ -753,6 +754,7 @@ let teamChoices = null;
               </div>
             </div>
           </div>
+          <label class="epic-select-label"><input type="checkbox" class="epic-select-checkbox" data-epic="${epicKey}" checked> Include in PDF</label>
           <button class="btn details-toggle" onclick="toggleEpicDetails(this, '${storyMapId}')">Show Details</button>
           <div id="${storyMapId}" style="display:none; margin-top:10px;">
             <div class="story-map">
@@ -795,7 +797,6 @@ let teamChoices = null;
               <span class="story-status-new">New story</span>
               <span class="story-status-open">Open/In Progress</span>
             </div>
-          <input type="checkbox" class="epic-select-checkbox" data-epic="${epicKey}" checked>
           </div>
         </div>
         `;
