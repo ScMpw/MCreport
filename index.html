@@ -33,7 +33,6 @@
     .pill-prog { background:#f59e0b; color:#fff; }
     .pill-blocked { background:#ef4444; color:#fff; }
     .pill-open { background:#3b82f6; color:#fff; }
-    .pill-other { background:#6b7280; color:#fff; }
     .warn { color:#e11d48; font-weight: 600;}
     .success { color:#059669; font-weight:600;}
     .allocation-row {margin-bottom: 12px;}
@@ -299,8 +298,8 @@ let teamChoices = null;
         if (st.includes('progress') || st.includes('development')) return 'story-status-inprogress';
         return 'story-status-open';
       }
-      return "story-status-other";
-    }
+      return 'story-status-open';
+   }
 
     // --- MAIN DATA FETCH (Epics/Stories/Velocity) ---
     async function fetchAll() {
@@ -478,8 +477,8 @@ let teamChoices = null;
       function updateEpicStatusCounts() {
         const currSprintObj = sprints.find(s => String(s.id) === String(selectedSprintId));
         Object.keys(epicStories).forEach(epicKey => {
-          let done=0, prog=0, open=0, blocked=0, other=0;
-          let ptsDone=0, ptsProg=0, ptsOpen=0, ptsBlocked=0, ptsOther=0;
+          let done=0, prog=0, open=0, blocked=0;
+          let ptsDone=0, ptsProg=0, ptsOpen=0, ptsBlocked=0;
           (epicStories[epicKey]||[]).forEach(story => {
             let show=true;
             let cls = getStoryRowClass(story, currSprintObj);
@@ -497,7 +496,7 @@ let teamChoices = null;
             else if (grp==='In Progress') { prog++; ptsProg+=story.points; }
             else if (grp==='Open') { open++; ptsOpen+=story.points; }
             else if (grp==='Blocked') { blocked++; ptsBlocked+=story.points; }
-            else { other++; ptsOther+=story.points; }
+            
           });
           const block=document.getElementById(`storyMap_${epicKey.replace(/[^a-zA-Z0-9]/g,'')}`);
           if (!block) return;
@@ -510,7 +509,7 @@ let teamChoices = null;
           if (doneSpan) doneSpan.textContent=`${done} Done (${ptsDone} SP)`;
           if (progSpan) progSpan.textContent=`${prog} In Progress (${ptsProg} SP)`;
           if (blockedSpan) blockedSpan.textContent=`${blocked} Blocked (${ptsBlocked} SP)`;
-          if (openSpan) openSpan.textContent=`${open+other} Open (${ptsOpen+ptsOther} SP)`;
+          if (openSpan) openSpan.textContent=`${open} Open (${ptsOpen} SP)`;
         });
       }
 
@@ -655,8 +654,8 @@ let teamChoices = null;
       Object.keys(epicStories).forEach((epicKey, idx) => {
         let stories = epicStories[epicKey];
         if (!stories || !stories.length) return;
-        let statusCounts = {done:0,prog:0,open:0,blocked:0,other:0};
-        let ptsDone=0, ptsProg=0, ptsOpen=0, ptsBlocked=0, ptsOther=0;
+        let statusCounts = {done:0,prog:0,open:0,blocked:0};
+        let ptsDone=0, ptsProg=0, ptsOpen=0, ptsBlocked=0;
         let unestimated = 0;
         stories.forEach(story => {
           let teams = (story.team||'').split(',').map(t=>t.trim()).filter(Boolean);
@@ -666,11 +665,11 @@ let teamChoices = null;
           else if (sgrp==='In Progress') { statusCounts.prog++; ptsProg+=story.points; }
           else if (sgrp==='Open') { statusCounts.open++; ptsOpen+=story.points; }
           else if (sgrp==='Blocked') { statusCounts.blocked++; ptsBlocked+=story.points; }
-          else { statusCounts.other++; ptsOther+=story.points; }
+          
           if (!story.points && sgrp!=='Done') unestimated++;
         });
-        let totalEstimate = ptsDone+ptsProg+ptsOpen+ptsBlocked+ptsOther;
-        let backlog = ptsProg+ptsOpen+ptsBlocked+ptsOther;
+        let totalEstimate = ptsDone+ptsProg+ptsOpen+ptsBlocked;
+        let backlog = ptsProg+ptsOpen+ptsBlocked;
         let alloc = epicAllocations[epicKey];
         let required = epicRequiredAlloc[epicKey];
         let mc = epicForecastResults[epicKey];
@@ -704,7 +703,7 @@ let teamChoices = null;
             <span class="status-pill pill-done">${statusCounts.done} Done (${ptsDone} SP)</span>
             <span class="status-pill pill-prog">${statusCounts.prog} In Progress (${ptsProg} SP)</span>
             <span class="status-pill pill-blocked">${statusCounts.blocked} Blocked (${ptsBlocked} SP)</span>
-            <span class="status-pill pill-open">${statusCounts.open+statusCounts.other} Open (${ptsOpen+ptsOther} SP)</span>
+            <span class="status-pill pill-open">${statusCounts.open} Open (${ptsOpen} SP)</span>
             &nbsp; <b>Total:</b> ${totalEstimate} SP &nbsp; | &nbsp; <b>Backlog:</b> ${backlog} SP &nbsp; | &nbsp; <b>Unestimated:</b> ${unestimated}
           </div>
           <div class="info-grid">
@@ -812,7 +811,6 @@ let teamChoices = null;
               <span class="story-status-current">Done this sprint</span>
               <span class="story-status-new">New story</span>
               <span class="removed-lane">Removed since last sprint</span>
-              <span class="story-status-other">Other</span>
             </div>
           </div>
         </div>
@@ -842,8 +840,7 @@ let teamChoices = null;
       if (s.includes("done") || s.includes("closed")) return "Done";
       if (s.includes("block")) return "Blocked";
       if (s.includes("progress") || s.includes("development")) return "In Progress";
-      if (s === "ready" || s === "open" || s === "todo") return "Open";
-      return "Other";
+      return "Open";
     }
 
     function hexToRgb(hex) {
