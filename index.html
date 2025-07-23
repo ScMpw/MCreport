@@ -403,6 +403,11 @@ let teamChoices = null;
     }
 
 
+    function clearTeamFilter() {
+      Object.keys(teamFilters).forEach(t => { teamFilters[t] = false; });
+      renderEpicSummary(true);
+    }
+
 
     function renderFilterOptions() {
       if (statusChoices) { statusChoices.destroy(); statusChoices = null; }
@@ -429,7 +434,7 @@ let teamChoices = null;
       document.getElementById('filterOptions').innerHTML =
         '<span class="section-title" style="display:block;margin-top:0;">Story Map Filters:</span>'+
         statusSelectHtml+
-        (Object.keys(teamFilters).length ? '<br><span class="section-title" style="display:block;margin-top:0.8em;">Team Filter:</span>'+teamSelectHtml : '');
+        (Object.keys(teamFilters).length ? '<br><span class="section-title" style="display:block;margin-top:0.8em;">Team Filter:</span>'+teamSelectHtml+' <button class="btn" onclick="clearTeamFilter()">Remove All</button>' : '');
 
       const statusEl = document.getElementById('statusSelect');
       const teamEl = document.getElementById('teamSelect');
