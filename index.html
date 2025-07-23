@@ -346,6 +346,7 @@ let teamChoices = null;
             created: story.fields.created,
             resolved: story.fields.resolutiondate,
             sprint: (story.fields.customfield_10005||[]).map(s=>s.name).join(', '),
+            issuetype: story.fields.issuetype && story.fields.issuetype.name,
           }));
         } catch (e) { epicStories[epicKey] = []; }
       }));
@@ -372,6 +373,7 @@ let teamChoices = null;
             created: story.fields.created,
             resolved: story.fields.resolutiondate,
             sprint: (story.fields.customfield_10005||[]).map(s=>s.name).join(', '),
+            issuetype: story.fields.issuetype && story.fields.issuetype.name,
           }));
         } catch (e) { epicStoriesBaseline[epicKey] = []; }
       }));
@@ -789,6 +791,7 @@ let teamChoices = null;
                       const tags = [];
                       if (newSet.has(st.key)) tags.push('New');
                       if (c==='story-status-current') tags.push('Done now');
+                      if (st.issuetype) tags.push(st.issuetype);
                       return `<div class="story-card ${c}" data-teams="${st.team}">
                         <div><b>${st.key}</b> (${st.points} SP)</div>
                         <div>${st.summary}</div>
@@ -803,7 +806,7 @@ let teamChoices = null;
               ${removedStories.length?`
                 <div class="story-lane removed-lane">
                   <div class="story-lane-header">Removed since last sprint</div>
-                  ${removedStories.map(st=>`<div class="story-card story-status-other" data-teams="${st.team}"><b>${st.key}</b> (${st.points} SP)${st.resolution?` - ${st.resolution}`:''}</div>`).join('')}
+                  ${removedStories.map(st=>`<div class="story-card story-status-other" data-teams="${st.team}"><b>${st.key}</b> (${st.points} SP)${st.resolution?` - ${st.resolution}`:''}${st.issuetype?`<div class="tags"><span class="story-tag">${st.issuetype}</span></div>`:''}</div>`).join('')}
                 </div>
               `:''}
             </div>
