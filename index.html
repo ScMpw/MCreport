@@ -47,11 +47,11 @@
     .story-table th, .story-table td { border: 1px solid #e5e7eb; padding: 4px 7px; font-size: 0.98em; text-align:left; }
     .story-table th { background: #e0e7ef; }
     .story-status-current { background: #b3e5fc; }
-    .story-status-previous { background: #dcedc8; }
+    .story-status-previous { background: none; }
     .story-status-new { background: #fff9c4; }
-    .story-status-open { background: #f8bbd0; }
-    .story-status-inprogress { background: #ffe0b2; }
-    .story-status-blocked { background: #fecaca; }
+    .story-status-open { background: none; }
+    .story-status-inprogress { background: none; }
+    .story-status-blocked { background: none; }
     .story-status-other { background: #e0e0e0; }
     .story-map { display:flex; gap:12px; overflow-x:auto; }
     .story-lane { flex:1; min-width:180px; background:#fafafa; border:1px solid #e5e7eb; border-radius:6px; padding:6px; }
@@ -59,11 +59,11 @@
     .story-lane-header { font-weight:600; margin-bottom:4px; font-size:0.96em; color:#374151; }
     .story-card { border:1px solid #e5e7eb; border-radius:4px; padding:4px 5px; margin-bottom:6px; background:white; font-size:0.92em; }
     .story-card.story-status-current { background:#b3e5fc; }
-    .story-card.story-status-previous { background:#dcedc8; }
+    .story-card.story-status-previous { background:none; }
     .story-card.story-status-new { background:#fff9c4; }
-    .story-card.story-status-open { background:#f8bbd0; }
-    .story-card.story-status-inprogress { background:#ffe0b2; }
-    .story-card.story-status-blocked { background:#fecaca; }
+    .story-card.story-status-open { background:none; }
+    .story-card.story-status-inprogress { background:none; }
+    .story-card.story-status-blocked { background:none; }
     .story-card.story-status-other { background:#e0e0e0; }
     .story-card .tags { margin-top:2px; }
     .story-tag { font-size:0.75em; background:#d1d5db; color:#111; border-radius:3px; padding:1px 4px; margin-right:3px; }
@@ -808,11 +808,7 @@ let teamChoices = null;
             </div>
             <div class="story-map-legend" style="font-size:0.95em;margin-top:8px;">
               <span class="story-status-current">Done this sprint</span>
-              <span class="story-status-previous">Done before</span>
               <span class="story-status-new">New story</span>
-              <span class="story-status-inprogress">In Progress</span>
-              <span class="story-status-open">Open</span>
-              <span class="story-status-blocked">Blocked</span>
               <span class="removed-lane">Removed since last sprint</span>
               <span class="story-status-other">Other</span>
             </div>
