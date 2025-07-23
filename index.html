@@ -648,8 +648,9 @@ let teamChoices = null;
         ? `<span class="warn">Required allocations exceed team capacity. Not all epics likely to finish.</span>`
         : `<span class="success">Required allocations within team capacity.</span>`;
       document.getElementById('requiredSummary').innerHTML =
-        `<div><b>Sum of required allocation for ${targetSprints} sprints:</b> `+
-        `75% = ${totalReq75}% &nbsp; | &nbsp; 95% = ${totalReq95}%<br>${reqWarn}</div>`;
+        `<div><b>Sum of required allocation to finish in ${targetSprints} sprints:</b> `+
+        `${totalReq75}% at 75% confidence &nbsp; | &nbsp; ${totalReq95}% at 95% confidence`+
+        `<br>${reqWarn}</div>`;
       // The total allocation info is still calculated for simulations but no longer displayed in the UI
       let html = '';
 
