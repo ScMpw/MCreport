@@ -55,7 +55,8 @@
     .story-status-other { background: #e0e0e0; }
     .story-map { display:flex; gap:12px; overflow-x:auto; }
     .story-lane { flex:1; min-width:180px; background:#fafafa; border:1px solid #e5e7eb; border-radius:6px; padding:6px; }
-    .removed-lane { background:#fbe8eb; }
+    .removed-lane { background:#ffe4e6; }
+    .removed-lane .story-card.story-status-other { background:#ffd6dc; }
     .story-lane-header { font-weight:600; margin-bottom:4px; font-size:0.96em; color:#374151; }
     .story-card { border:1px solid #e5e7eb; border-radius:4px; padding:4px 5px; margin-bottom:6px; background:white; font-size:0.92em; }
     .story-card.story-status-current { background:#b3e5fc; }
@@ -469,7 +470,7 @@ let teamChoices = null;
         document.querySelectorAll('.story-card').forEach(el=>{
           if (el.style.display==='none') return;
           let teams = (el.dataset.teams||'').split(',').map(t=>t.trim()).filter(Boolean);
-          if (teams.length && !teams.some(t=>teamFilters[t])) el.style.display='none';
+          if (!teams.length || !teams.some(t=>teamFilters[t])) el.style.display='none';
         });
         updateEpicStatusCounts();
       }
@@ -478,6 +479,7 @@ let teamChoices = null;
         const currSprintObj = sprints.find(s => String(s.id) === String(selectedSprintId));
         Object.keys(epicStories).forEach(epicKey => {
           let done=0, prog=0, open=0, blocked=0, other=0;
+          let ptsDone=0, ptsProg=0, ptsOpen=0, ptsBlocked=0, ptsOther=0;
           (epicStories[epicKey]||[]).forEach(story => {
             let show=true;
             let cls = getStoryRowClass(story, currSprintObj);
@@ -487,15 +489,15 @@ let teamChoices = null;
             else if ((cls==='story-status-open' || cls==='story-status-inprogress' || cls==='story-status-blocked' || cls==='story-status-other') && !storyFilters.open) show=false;
             if (show) {
               let teams=(story.team||'').split(',').map(t=>t.trim()).filter(Boolean);
-              if (teams.length && !teams.some(t=>teamFilters[t])) show=false;
+              if (!teams.length || !teams.some(t=>teamFilters[t])) show=false;
             }
             if (!show) return;
             let grp=statusGroup(story.status);
-            if (grp==='Done') done++;
-            else if (grp==='In Progress') prog++;
-            else if (grp==='Open') open++;
-            else if (grp==='Blocked') blocked++;
-            else other++;
+            if (grp==='Done') { done++; ptsDone+=story.points; }
+            else if (grp==='In Progress') { prog++; ptsProg+=story.points; }
+            else if (grp==='Open') { open++; ptsOpen+=story.points; }
+            else if (grp==='Blocked') { blocked++; ptsBlocked+=story.points; }
+            else { other++; ptsOther+=story.points; }
           });
           const block=document.getElementById(`storyMap_${epicKey.replace(/[^a-zA-Z0-9]/g,'')}`);
           if (!block) return;
@@ -505,10 +507,10 @@ let teamChoices = null;
           const progSpan=container.querySelector('.pill-prog');
           const blockedSpan=container.querySelector('.pill-blocked');
           const openSpan=container.querySelector('.pill-open');
-          if (doneSpan) doneSpan.textContent=`${done} Done`;
-          if (progSpan) progSpan.textContent=`${prog} In Progress`;
-          if (blockedSpan) blockedSpan.textContent=`${blocked} Blocked`;
-          if (openSpan) openSpan.textContent=`${open+other} Open`;
+          if (doneSpan) doneSpan.textContent=`${done} Done (${ptsDone} SP)`;
+          if (progSpan) progSpan.textContent=`${prog} In Progress (${ptsProg} SP)`;
+          if (blockedSpan) blockedSpan.textContent=`${blocked} Blocked (${ptsBlocked} SP)`;
+          if (openSpan) openSpan.textContent=`${open+other} Open (${ptsOpen+ptsOther} SP)`;
         });
       }
 
@@ -537,7 +539,7 @@ let teamChoices = null;
         let backlog = stories.filter(st => {
           if (isDone(st.status)) return false;
           let teams = (st.team||'').split(',').map(t=>t.trim()).filter(Boolean);
-          if (teams.length && !teams.some(t=>teamFilters[t])) return false;
+          if (!teams.length || !teams.some(t=>teamFilters[t])) return false;
           return true;
         }).reduce((a,b)=>a+b.points,0);
         epicBacklogs[epicKey] = backlog;
@@ -601,7 +603,7 @@ let teamChoices = null;
         let backlogPts = stories.filter(st => {
           if (isDone(st.status)) return false;
           let teams = (st.team||'').split(',').map(t=>t.trim()).filter(Boolean);
-          if (teams.length && !teams.some(t=>teamFilters[t])) return false;
+          if (!teams.length || !teams.some(t=>teamFilters[t])) return false;
           return true;
         }).reduce((a,b)=>a+b.points,0);
         let allocNeeded = { "75": null, "95": null };
@@ -658,7 +660,7 @@ let teamChoices = null;
         let unestimated = 0;
         stories.forEach(story => {
           let teams = (story.team||'').split(',').map(t=>t.trim()).filter(Boolean);
-          if (teams.length && !teams.some(t=>teamFilters[t])) return;
+          if (!teams.length || !teams.some(t=>teamFilters[t])) return;
           let sgrp = statusGroup(story.status);
           if (sgrp==='Done') { statusCounts.done++; ptsDone+=story.points; }
           else if (sgrp==='In Progress') { statusCounts.prog++; ptsProg+=story.points; }
@@ -676,12 +678,12 @@ let teamChoices = null;
 
         let baseStories = (epicStoriesBaseline[epicKey]||[]).filter(st => {
           let teams = (st.team||'').split(',').map(t=>t.trim()).filter(Boolean);
-          return teams.length ? teams.some(t=>teamFilters[t]) : true;
+          return teams.length ? teams.some(t=>teamFilters[t]) : false;
         });
         let baseKeys = new Set(baseStories.map(s=>s.key));
         let currStories = stories.filter(s => {
           let teams = (s.team||'').split(',').map(t=>t.trim()).filter(Boolean);
-          return teams.length ? teams.some(t=>teamFilters[t]) : true;
+          return teams.length ? teams.some(t=>teamFilters[t]) : false;
         });
         let currKeys = new Set(currStories.map(s=>s.key));
         let newStories = currStories.filter(s=>!baseKeys.has(s.key));
@@ -699,10 +701,10 @@ let teamChoices = null;
         <div class="epic-summary-block ${risk?'epic-risk':''}">
           <div class="epic-header">${epicKey}: ${allEpics[epicKey]||''}</div>
           <div style="margin-top:4px;margin-bottom:10px;">
-            <span class="status-pill pill-done">${ptsDone} Done</span>
-            <span class="status-pill pill-prog">${ptsProg} In Progress</span>
-            <span class="status-pill pill-blocked">${ptsBlocked} Blocked</span>
-            <span class="status-pill pill-open">${ptsOpen+ptsOther} Open</span>
+            <span class="status-pill pill-done">${statusCounts.done} Done (${ptsDone} SP)</span>
+            <span class="status-pill pill-prog">${statusCounts.prog} In Progress (${ptsProg} SP)</span>
+            <span class="status-pill pill-blocked">${statusCounts.blocked} Blocked (${ptsBlocked} SP)</span>
+            <span class="status-pill pill-open">${statusCounts.open+statusCounts.other} Open (${ptsOpen+ptsOther} SP)</span>
             &nbsp; <b>Total:</b> ${totalEstimate} SP &nbsp; | &nbsp; <b>Backlog:</b> ${backlog} SP &nbsp; | &nbsp; <b>Unestimated:</b> ${unestimated}
           </div>
           <div class="info-grid">
@@ -775,10 +777,10 @@ let teamChoices = null;
               ${(() => {
                 const newSet = new Set(newStories.map(s=>s.key));
                 const lanes = [
-                  ['Done', stories.filter(s=>statusGroup(s.status)==='Done')],
-                  ['In Progress', stories.filter(s=>statusGroup(s.status)==='In Progress')],
-                  ['Open', stories.filter(s=>statusGroup(s.status)==='Open')],
-                  ['Blocked', stories.filter(s=>statusGroup(s.status)==='Blocked')]
+                  ['Done', currStories.filter(s=>statusGroup(s.status)==='Done')],
+                  ['In Progress', currStories.filter(s=>statusGroup(s.status)==='In Progress')],
+                  ['Open', currStories.filter(s=>statusGroup(s.status)==='Open')],
+                  ['Blocked', currStories.filter(s=>statusGroup(s.status)==='Blocked')]
                 ];
                 return lanes.map(l => `
                   <div class="story-lane">
