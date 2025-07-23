@@ -76,3 +76,31 @@ Key scenarios include:
 - **Monte Carlo Simulation** – Computational method using repeated random sampling to compute probable outcomes.
 - **Jira** – Atlassian's issue and project tracking system.
 
+
+## 13. Monte Carlo Simulation Logic
+The report estimates how many sprints each epic requires by repeatedly
+simulating future sprints using the velocity history provided by the
+user. For an epic with backlog `B` story points and allocation `a` (as a
+percentage of team capacity), a single simulation run proceeds as:
+
+1. Set remaining backlog `b = B` and sprint counter `s = 0`.
+2. While `b > 0` and `s < 100`:
+   - Pick a velocity `v` at random from the array of historic velocities.
+   - Apply the epic allocation so the effective velocity becomes
+     `v_eff = max(v * a / 100, 1)`.
+   - Reduce the backlog `b = b - v_eff` and increment `s`.
+3. Record the number of sprints `s` for this run.
+
+Eight thousand runs are executed for each epic. After sorting the list of
+`s` values, the 50th, 75th and 95th percentiles provide the simulated
+sprint counts at different confidence levels. Formally, if `S` is the
+sorted vector of results and `N` its length, the estimate for probability
+`p` is `S[floor(p * N)]`.
+
+The tool also determines how much capacity an epic needs to finish within
+a target sprint count. For each allocation percentage between 1% and
+100%, 600 simulations are run as above using that allocation. The
+smallest percentage where the 75% or 95% percentile does not exceed the
+target is reported as the required allocation (and converted into story
+points using the average velocity).
+
