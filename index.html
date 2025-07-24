@@ -360,8 +360,10 @@ let teamChoices = null;
           epicStoriesBaseline[epicKey] = (data.issues || [])
             .filter(story => {
               let created = new Date(story.fields.created);
+              let resolved = story.fields.resolutiondate ? new Date(story.fields.resolutiondate) : null;
               let baseSprint = closedSprintsSorted.find(s=>s.id==baselineSprintId);
-              return created <= new Date(baseSprint.endDate);
+              let end = baseSprint ? new Date(baseSprint.endDate) : null;
+              return created <= end && (!resolved || resolved > end);
             }).map(story => ({
             key: story.key,
             summary: story.fields.summary,
@@ -533,6 +535,8 @@ let teamChoices = null;
         return;
       }
       avgVelocity = velocity.reduce((a,b)=>a+b,0)/velocity.length;
+      const baselineSprintObj = closedSprintsSorted.find(s=>s.id==baselineSprintId);
+      const baselineEnd = baselineSprintObj ? new Date(baselineSprintObj.endDate) : null;
       epicBacklogs = {};
       let totalBacklog = 0;
       Object.keys(epicStories).forEach(epicKey => {
@@ -602,9 +606,10 @@ let teamChoices = null;
       Object.keys(epicStoriesBaseline).forEach(epicKey => {
         let stories = epicStoriesBaseline[epicKey] || [];
         let backlogPts = stories.filter(st => {
-          if (isDone(st.status)) return false;
           let teams = (st.team||'').split(',').map(t=>t.trim()).filter(Boolean);
           if (!teams.length || !teams.some(t=>teamFilters[t])) return false;
+          let res = st.resolved ? new Date(st.resolved) : null;
+          if (baselineEnd && res && res <= baselineEnd) return false;
           return true;
         }).reduce((a,b)=>a+b.points,0);
         let allocNeeded = { "75": null, "95": null };
@@ -691,7 +696,12 @@ let teamChoices = null;
         let newStories = currStories.filter(s=>!baseKeys.has(s.key));
         let removedStories = baseStories.filter(s=>!currKeys.has(s.key));
 
-        let baseDone = baseStories.filter(s=>statusGroup(s.status)==="Done").map(s=>s.points).reduce((a,b)=>a+b,0);
+        let baseDone = (epicStories[epicKey]||[]).filter(s=>{
+          let teams = (s.team||'').split(',').map(t=>t.trim()).filter(Boolean);
+          if (!teams.length || !teams.some(t=>teamFilters[t])) return false;
+          let res = s.resolved ? new Date(s.resolved) : null;
+          return baselineEnd && res && res <= baselineEnd;
+        }).map(s=>s.points).reduce((a,b)=>a+b,0);
         let doneSince = ptsDone - baseDone;
         let estimateBaseline = baseStories.map(s=>s.points).reduce((a,b)=>a+b,0);
 
