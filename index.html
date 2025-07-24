@@ -309,8 +309,12 @@ let teamChoices = null;
       if (!boardTeams.length) await fetchBoardTeam();
       let currSprintObj = sprints.find(s => String(s.id) === String(selectedSprintId));
       let currIdx = closedSprintsSorted.findIndex(s => String(s.id) === String(selectedSprintId));
-      let baselineIdx = currIdx > 0 ? currIdx - 1 : 0;
-      baselineSprintId = closedSprintsSorted[baselineIdx].id;
+      let baselineIdx = (currIdx >= 0 && currIdx + 1 < closedSprintsSorted.length)
+        ? currIdx + 1
+        : -1;
+      baselineSprintId = baselineIdx >= 0 && closedSprintsSorted[baselineIdx]
+        ? closedSprintsSorted[baselineIdx].id
+        : '';
       let jql = encodeURIComponent(`sprint = ${selectedSprintId} ORDER BY key`);
       let url = `https://${jiraDomain}/rest/api/3/search?jql=${jql}&fields=summary,parent,customfield_10002,customfield_10005,customfield_12600,status,issuetype&maxResults=500`;
       let epicKeysSet = new Set();
