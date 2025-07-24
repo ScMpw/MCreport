@@ -716,7 +716,7 @@ let teamChoices = null;
         let doneSince = ptsDone - baseDone;
         let estimateBaseline = baseStories.map(s=>s.points).reduce((a,b)=>a+b,0);
 
-        let deltaEstimate = totalEstimate - estimateBaseline;
+        let deltaEstimate = backlog - estimateBaseline;
         const storyMapId = `storyMap_${epicKey.replace(/[^a-zA-Z0-9]/g, '')}`;
         const risk = ((required["75"] && required["75"]-alloc>15) || scopeIncreaseConsistent(epicKey));
         html += `
