@@ -697,7 +697,13 @@ let teamChoices = null;
           return teams.length ? teams.some(t=>teamFilters[t]) : false;
         });
         let currKeys = new Set(currStories.map(s=>s.key));
-        let newStories = currStories.filter(s=>!baseKeys.has(s.key));
+        const sprintStart = currSprintObj && currSprintObj.startDate ? new Date(currSprintObj.startDate) : null;
+        const sprintEnd = currSprintObj && currSprintObj.endDate ? new Date(currSprintObj.endDate) : null;
+        let newStories = currStories.filter(s => {
+          if (!s.created) return false;
+          const created = new Date(s.created);
+          return sprintStart && sprintEnd && created >= sprintStart && created < sprintEnd;
+        });
         let removedStories = baseStories.filter(s=>!currKeys.has(s.key));
 
         let baseDone = (epicStories[epicKey]||[]).filter(s=>{
