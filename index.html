@@ -98,6 +98,7 @@
       </label>
       <button class="btn" onclick="fetchAll()">Load Data</button>
     </div>
+    <div id="loadingMessage" style="display:none; font-weight:bold; margin:10px 0;"></div>
 
     <div id="configSection" style="display:none;">
       <div class="section-title">Velocity History (editable, last 6 closed sprints):</div>
@@ -130,6 +131,19 @@ let boardTeams = [];
 let teamFilters = {};
 let statusChoices = null;
 let teamChoices = null;
+
+function showLoading(msg) {
+  const el = document.getElementById('loadingMessage');
+  if (el) {
+    el.textContent = msg || 'Loading...';
+    el.style.display = '';
+  }
+}
+
+function hideLoading() {
+  const el = document.getElementById('loadingMessage');
+  if (el) el.style.display = 'none';
+}
 
 
     function loadHistoricData() {
@@ -219,6 +233,7 @@ let teamChoices = null;
       boardNum = document.getElementById('boardNum').value.trim();
       if (!jiraDomain || !boardNum) return alert("Enter Jira domain and board number.");
 
+      showLoading('Fetching sprints...');
       await fetchBoardTeam();
 
       let allSprintsArr = [];
@@ -235,6 +250,7 @@ let teamChoices = null;
             const text = await resp.text();
             console.error("API Error Response:", resp.status, text);
             alert("API returned an error. See console for details.");
+            hideLoading();
             return;
           }
           const data = await resp.json();
@@ -249,6 +265,7 @@ let teamChoices = null;
         } catch (e) {
           console.error(e);
           alert("Failed to fetch sprints. CORS? Are you logged into Jira?");
+          hideLoading();
           return;
         }
       }
@@ -260,6 +277,7 @@ let teamChoices = null;
       closedSprintsSorted = sprints.filter(s => s.state === "closed" && s.endDate)
                                    .sort((a, b) => new Date(b.endDate) - new Date(a.endDate));
       populateSprintDropdown();
+      hideLoading();
     }
 
     // --- SPRINT DROPDOWN: show all sprints in reverse order ---
@@ -306,6 +324,7 @@ let teamChoices = null;
       selectedSprintId = document.getElementById('sprintSelect').value;
       selectedSprintName = document.getElementById('sprintSelect').selectedOptions[0].textContent;
       if (!selectedSprintId) return alert("Select a sprint.");
+      showLoading('Loading sprint data...');
       if (!boardTeams.length) await fetchBoardTeam();
       let currSprintObj = sprints.find(s => String(s.id) === String(selectedSprintId));
       let currIdx = closedSprintsSorted.findIndex(s => String(s.id) === String(selectedSprintId));
@@ -331,7 +350,7 @@ let teamChoices = null;
             }
           }
         }
-      } catch (e) { alert("Error fetching stories for selected sprint"); return; }
+      } catch (e) { alert("Error fetching stories for selected sprint"); hideLoading(); return; }
       epicStories = {};
       await Promise.all(Array.from(epicKeysSet).map(async epicKey => {
         let eq = encodeURIComponent(`"Epic Link" = ${epicKey}`);
@@ -396,6 +415,7 @@ let teamChoices = null;
       document.getElementById('configSection').style.display = '';
       renderVelocityInputs();
       renderEpicSummary();
+      hideLoading();
     }
 
     // --- VELOCITY INPUTS ---
