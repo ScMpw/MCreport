@@ -613,7 +613,7 @@ function addTooltipListeners() {
       });
       epicAllocations = {};
       Object.keys(epicStories).forEach(epicKey => {
-        epicAllocations[epicKey] = totalBacklog ? Math.round(100*epicBacklogs[epicKey]/totalBacklog) : 0;
+        epicAllocations[epicKey] = totalBacklog ? Math.ceil(100*epicBacklogs[epicKey]/totalBacklog) : 0;
       });
       if (!skipHistory) updateHistoricTotals();
       renderFilterOptions();
@@ -659,8 +659,8 @@ function addTooltipListeners() {
         }
         epicRequiredAlloc[epicKey] = allocNeeded;
       epicRequiredSP[epicKey] = {
-        "75": allocNeeded["75"] ? Math.round(avgVelocity * allocNeeded["75"] / 100) : null,
-        "95": allocNeeded["95"] ? Math.round(avgVelocity * allocNeeded["95"] / 100) : null
+        "75": allocNeeded["75"] ? Math.ceil(avgVelocity * allocNeeded["75"] / 100) : null,
+        "95": allocNeeded["95"] ? Math.ceil(avgVelocity * allocNeeded["95"] / 100) : null
       };
     });
 
@@ -692,8 +692,8 @@ function addTooltipListeners() {
           if (allocNeeded["75"] && allocNeeded["95"]) break;
         }
         epicRequiredSPPrev[epicKey] = {
-          "75": allocNeeded["75"] ? Math.round(avgVelocity * allocNeeded["75"] / 100) : null,
-          "95": allocNeeded["95"] ? Math.round(avgVelocity * allocNeeded["95"] / 100) : null
+          "75": allocNeeded["75"] ? Math.ceil(avgVelocity * allocNeeded["75"] / 100) : null,
+          "95": allocNeeded["95"] ? Math.ceil(avgVelocity * allocNeeded["95"] / 100) : null
         };
       });
 
@@ -708,8 +708,8 @@ function addTooltipListeners() {
         totalReq75 += r["75"] != null ? r["75"] : 101;
         totalReq95 += r["95"] != null ? r["95"] : 101;
       });
-      totalReq75 = Math.round(totalReq75);
-      totalReq95 = Math.round(totalReq95);
+      totalReq75 = Math.ceil(totalReq75);
+      totalReq95 = Math.ceil(totalReq95);
       let reqWarn = (totalReq75 > 100 || totalReq95 > 100)
         ? `<span class="warn">Required allocations exceed team capacity. Not all epics likely to finish.</span>`
         : `<span class="success">Required allocations within team capacity.</span>`;
