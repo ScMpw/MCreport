@@ -628,6 +628,12 @@ function addTooltipListeners() {
       Object.keys(epicStories).forEach(epicKey => {
         let stories = epicStories[epicKey]||[];
         let backlogPts = epicBacklogs[epicKey];
+        if (backlogPts <= 0) {
+          epicForecastResults[epicKey] = [0];
+          epicRequiredAlloc[epicKey] = { "75": 0, "95": 0 };
+          epicRequiredSP[epicKey] = { "75": 0, "95": 0 };
+          return;
+        }
         let alloc = epicAllocations[epicKey];
         let allocVels = velocity.map(v=>v*alloc/100);
         let mcRuns = [];
@@ -676,6 +682,10 @@ function addTooltipListeners() {
           if (baselineEnd && res && res <= baselineEnd) return false;
           return true;
         }).reduce((a,b)=>a+b.points,0);
+        if (backlogPts <= 0) {
+          epicRequiredSPPrev[epicKey] = { "75": 0, "95": 0 };
+          return;
+        }
         let allocNeeded = { "75": null, "95": null };
         for (let pct=1;pct<=100;pct++) {
           let testVels = velocity.map(v=>v*pct/100);
