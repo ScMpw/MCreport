@@ -499,9 +499,9 @@ function addTooltipListeners() {
         '</select>';
 
       document.getElementById('filterOptions').innerHTML =
-        '<span class="section-title" style="display:block;margin-top:0;">Story Map Filters:</span>'+
+        '<span class="section-title" style="display:block;margin-top:0;">Story Map Filters:<span class="info-icon" data-tip="Toggle visibility of stories by status in the story map.">&#9432;<span class="tooltip"></span></span></span>'+
         statusSelectHtml+
-        (Object.keys(teamFilters).length ? '<br><span class="section-title" style="display:block;margin-top:0.8em;">Team Filter:</span>'+teamSelectHtml : '');
+        (Object.keys(teamFilters).length ? '<br><span class="section-title" style="display:block;margin-top:0.8em;">Team Filter:<span class="info-icon" data-tip="Filter stories shown by their assigned teams.">&#9432;<span class="tooltip"></span></span></span>'+teamSelectHtml : '');
 
       const statusEl = document.getElementById('statusSelect');
       const teamEl = document.getElementById('teamSelect');
@@ -832,19 +832,19 @@ function addTooltipListeners() {
               </div>
             </div>
             <div>
-              <div class="pdf-section-title" style="margin-top:0;">Changes since last sprint:</div>
+                <div class="pdf-section-title" style="margin-top:0;">Changes since last sprint:<span class="info-icon" data-tip="Summary of completed, new and removed stories plus overall scope change since the previous sprint.">&#9432;<span class="tooltip"></span></span></div>
               <div class="change-block">
                 <ul>
-                  <li>Story points completed: <b>${doneSince}</b><span class="info-icon" data-tip="Total story points resolved during this sprint.">&#9432;<span class="tooltip"></span></span></li>
-                  <li>New stories: <b>${newStories.length}</b> (${newStories.reduce((a,b)=>a+b.points,0)} SP)<span class="info-icon" data-tip="Issues created within the sprint and their combined estimate.">&#9432;<span class="tooltip"></span></span></li>
-                  <li>Removed stories: <b>${removedStories.length}</b> (${removedStories.reduce((a,b)=>a+b.points,0)} SP)<span class="info-icon" data-tip="Stories taken out of the epic since last sprint. Points indicate removed estimate.">&#9432;<span class="tooltip"></span></span></li>
+                  <li>Story points completed: <b>${doneSince}</b></li>
+                  <li>New stories: <b>${newStories.length}</b> (${newStories.reduce((a,b)=>a+b.points,0)} SP)</li>
+                  <li>Removed stories: <b>${removedStories.length}</b> (${removedStories.reduce((a,b)=>a+b.points,0)} SP)</li>
                   <li>
                     Scope change: ${
                       deltaEstimate===0 ? "No change"
                       : (deltaEstimate>0?'<span class="warn">Increased (+'
                         +deltaEstimate+')</span>':'<span class="success">Reduced ('+deltaEstimate+')</span>')
                     }
-                    <span class="info-icon" data-tip="Net change in backlog points compared with the previous sprint.">&#9432;<span class="tooltip"></span></span>
+                    
                   </li>
                 </ul>
               </div>
