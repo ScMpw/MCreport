@@ -76,6 +76,29 @@
       border:1px solid #9ca3af;
       font-weight:600;
     }
+    .info-icon {
+      cursor:pointer;
+      font-size:0.9em;
+      color:#555;
+      margin-left:4px;
+      position:relative;
+      user-select:none;
+    }
+    .info-icon .tooltip {
+      display:none;
+      position:absolute;
+      top:1.2em;
+      left:0;
+      background:#333;
+      color:#fff;
+      padding:3px 6px;
+      border-radius:4px;
+      font-size:0.82em;
+      max-width:220px;
+      white-space:normal;
+      z-index:20;
+    }
+    .info-icon.active .tooltip { display:block; }
     /* Choices.js dropdown width */
     .choices__list--dropdown { min-width: 240px; }
     @media (max-width: 800px) {
@@ -143,6 +166,20 @@ function showLoading(msg) {
 function hideLoading() {
   const el = document.getElementById('loadingMessage');
   if (el) el.style.display = 'none';
+}
+
+function addTooltipListeners() {
+  document.querySelectorAll('.info-icon').forEach(icon => {
+    icon.addEventListener('click', e => {
+      e.stopPropagation();
+      const tip = icon.querySelector('.tooltip');
+      if (tip) tip.textContent = icon.dataset.tip || '';
+      icon.classList.toggle('active');
+    });
+  });
+  document.addEventListener('click', () => {
+    document.querySelectorAll('.info-icon.active').forEach(i => i.classList.remove('active'));
+  });
 }
 
 
@@ -779,8 +816,8 @@ function hideLoading() {
                       return sp != null ? `${sp} SP` : 'n/a';
                     };
                     return [
-                      `<li>75% confidence: ${fmt("75")} <span style="font-size:0.9em;color:#555;">(last sprint: ${prev("75")})</span></li>`,
-                      `<li>95% confidence: ${fmt("95")} <span style="font-size:0.9em;color:#555;">(last sprint: ${prev("95")})</span></li>`
+                      `<li>75% confidence: ${fmt("75")} <span style="font-size:0.9em;color:#555;">(last sprint: ${prev("75")})</span><span class="info-icon" data-tip="Estimated capacity per sprint for a 75% chance of finishing on time. Calculated using Monte Carlo simulations.">&#9432;<span class="tooltip"></span></span></li>`,
+                      `<li>95% confidence: ${fmt("95")} <span style="font-size:0.9em;color:#555;">(last sprint: ${prev("95")})</span><span class="info-icon" data-tip="Capacity needed for a 95% likelihood of completion within the target sprints. Based on Monte Carlo results.">&#9432;<span class="tooltip"></span></span></li>`
                     ].join('');
                   })()}
                 </ul>
@@ -798,15 +835,16 @@ function hideLoading() {
               <div class="pdf-section-title" style="margin-top:0;">Changes since last sprint:</div>
               <div class="change-block">
                 <ul>
-                  <li>Story points completed: <b>${doneSince}</b></li>
-                  <li>New stories: <b>${newStories.length}</b> (${newStories.reduce((a,b)=>a+b.points,0)} SP)</li>
-                  <li>Removed stories: <b>${removedStories.length}</b> (${removedStories.reduce((a,b)=>a+b.points,0)} SP)</li>
+                  <li>Story points completed: <b>${doneSince}</b><span class="info-icon" data-tip="Total story points resolved during this sprint.">&#9432;<span class="tooltip"></span></span></li>
+                  <li>New stories: <b>${newStories.length}</b> (${newStories.reduce((a,b)=>a+b.points,0)} SP)<span class="info-icon" data-tip="Issues created within the sprint and their combined estimate.">&#9432;<span class="tooltip"></span></span></li>
+                  <li>Removed stories: <b>${removedStories.length}</b> (${removedStories.reduce((a,b)=>a+b.points,0)} SP)<span class="info-icon" data-tip="Stories taken out of the epic since last sprint. Points indicate removed estimate.">&#9432;<span class="tooltip"></span></span></li>
                   <li>
                     Scope change: ${
                       deltaEstimate===0 ? "No change"
                       : (deltaEstimate>0?'<span class="warn">Increased (+'
                         +deltaEstimate+')</span>':'<span class="success">Reduced ('+deltaEstimate+')</span>')
                     }
+                    <span class="info-icon" data-tip="Net change in backlog points compared with the previous sprint.">&#9432;<span class="tooltip"></span></span>
                   </li>
                 </ul>
               </div>
@@ -862,6 +900,7 @@ function hideLoading() {
       });
       document.getElementById('epicSummary').innerHTML = html;
       applyStoryFilters();
+      addTooltipListeners();
     }
 
     function toggleEpicDetails(btn, id) {
