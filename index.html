@@ -113,7 +113,6 @@
     <div>
       <label>Jira Domain: <input id="jiraDomain" value="aldi-sued.atlassian.net" size="28"></label>
       <label>Board Number:
-        <span class="info-icon" data-tip="Jira board ID used to fetch sprint data.">&#9432;<span class="tooltip"></span></span>
         <input id="boardNum" size="5">
       </label>
       <button class="btn" onclick="fetchAllSprints()">Fetch Sprints</button>
@@ -127,7 +126,7 @@
     <div id="loadingMessage" style="display:none; font-weight:bold; margin:10px 0;"></div>
 
     <div id="configSection" style="display:none;">
-      <div class="section-title">Velocity History (editable, last 6 closed sprints):<span class="info-icon" data-tip="Past sprint velocities used for Monte Carlo simulations.">&#9432;<span class="tooltip"></span></span></div>
+      <div class="section-title">Velocity History (editable, last 6 closed sprints):</div>
       <div id="velocityWrap"></div>
       <div style="margin:0.9em 0 1.6em 0;">
         <label>Target Sprints for Delivery:
