@@ -112,7 +112,10 @@
     <h1>Stakeholder PI Status Report (Monte Carlo, Resource Allocation)</h1>
     <div>
       <label>Jira Domain: <input id="jiraDomain" value="aldi-sued.atlassian.net" size="28"></label>
-      <label>Board Number: <input id="boardNum" size="5"></label>
+      <label>Board Number:
+        <span class="info-icon" data-tip="Jira board ID used to fetch sprint data.">&#9432;<span class="tooltip"></span></span>
+        <input id="boardNum" size="5">
+      </label>
       <button class="btn" onclick="fetchAllSprints()">Fetch Sprints</button>
     </div>
     <div class="sprint-row" id="sprintRow" style="display:none; margin:1.1em 0;">
@@ -124,7 +127,7 @@
     <div id="loadingMessage" style="display:none; font-weight:bold; margin:10px 0;"></div>
 
     <div id="configSection" style="display:none;">
-      <div class="section-title">Velocity History (editable, last 6 closed sprints):</div>
+      <div class="section-title">Velocity History (editable, last 6 closed sprints):<span class="info-icon" data-tip="Past sprint velocities used for Monte Carlo simulations.">&#9432;<span class="tooltip"></span></span></div>
       <div id="velocityWrap"></div>
       <div style="margin:0.9em 0 1.6em 0;">
         <label>Target Sprints for Delivery:
@@ -194,6 +197,7 @@ function addTooltipListeners() {
 
     loadHistoricData();
     renderFilterOptions();
+    addTooltipListeners();
 
     // --- NEW: FETCH JIRA VELOCITY REPORT (Greenhopper REST API) ---
     async function fetchVelocityFromReport(jiraDomain, boardNum) {
@@ -714,7 +718,7 @@ function addTooltipListeners() {
         ? `<span class="warn">Required allocations exceed team capacity. Not all epics likely to finish.</span>`
         : `<span class="success">Required allocations within team capacity.</span>`;
       document.getElementById('requiredSummary').innerHTML =
-        `<div><b>Sum of required allocation to finish in ${targetSprints} sprints:</b> `+
+        `<div><b>Sum of required allocation to finish in ${targetSprints} sprints:</b><span class="info-icon" data-tip="Combined team capacity needed across all epics to meet the target sprint goal.">&#9432;<span class="tooltip"></span></span> `+
         `${totalReq75}% at 75% confidence &nbsp; | &nbsp; ${totalReq95}% at 95% confidence`+
         `<br>${reqWarn}</div>`;
       // The total allocation info is still calculated for simulations but no longer displayed in the UI
@@ -789,7 +793,7 @@ function addTooltipListeners() {
           <div class="info-grid">
             <div>
               <div style="margin-bottom:4px;">
-                <b>Team allocation for this epic:</b> 
+                <b>Team allocation for this epic:</b><span class="info-icon" data-tip="Percentage of team capacity dedicated to this epic.">&#9432;<span class="tooltip"></span></span>
                 <span style="font-size:1.1em;font-weight:600;">${alloc}%</span>
                 <div class="allocation-bar" style="width:${2*alloc}px"></div>
               </div>
@@ -816,8 +820,8 @@ function addTooltipListeners() {
                       return sp != null ? `${sp} SP` : 'n/a';
                     };
                     return [
-                      `<li>75% confidence: ${fmt("75")} <span style="font-size:0.9em;color:#555;">(last sprint: ${prev("75")})</span></li>`,
-                      `<li>95% confidence: ${fmt("95")} <span style="font-size:0.9em;color:#555;">(last sprint: ${prev("95")})</span></li>`
+                      `<li>75% confidence: ${fmt("75")} <span style="font-size:0.9em;color:#555;">(last sprint: ${prev("75")})</span><span class="info-icon" data-tip="Estimated capacity per sprint for a 75% chance of finishing on time. Calculated using Monte Carlo simulations.">&#9432;<span class="tooltip"></span></span></li>`,
+                      `<li>95% confidence: ${fmt("95")} <span style="font-size:0.9em;color:#555;">(last sprint: ${prev("95")})</span><span class="info-icon" data-tip="Capacity needed for a 95% likelihood of completion within the target sprints. Based on Monte Carlo results.">&#9432;<span class="tooltip"></span></span></li>`
                     ].join('');
                   })()}
                 </ul>
