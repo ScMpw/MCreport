@@ -198,6 +198,33 @@ function addTooltipListeners() {
     renderFilterOptions();
     addTooltipListeners();
 
+    // --- Fetch cycle time for a single issue via changelog ---
+    async function fetchIssueCycleTime(key) {
+      const url = `https://${jiraDomain}/rest/api/3/issue/${key}?expand=changelog&fields=created,resolutiondate`;
+      try {
+        const r = await fetch(url, { credentials: "include" });
+        if (!r.ok) return 0;
+        const data = await r.json();
+        let dev = null, closed = null;
+        const histories = data.changelog?.histories || [];
+        for (let h of histories) {
+          for (let item of h.items || []) {
+            if (item.field === "status") {
+              const to = (item.toString || "").toLowerCase();
+              if (!dev && to.includes("in development")) dev = h.created;
+              if (!closed && to.includes("closed")) closed = h.created;
+            }
+          }
+          if (dev && closed) break;
+        }
+        if (!dev) dev = data.fields.created;
+        if (!closed) closed = data.fields.resolutiondate;
+        if (!dev || !closed) return 0;
+        const diff = (new Date(closed) - new Date(dev)) / 86400000;
+        return diff > 0 ? diff : 0;
+      } catch (e) { return 0; }
+    }
+
     // --- NEW: FETCH JIRA CYCLE TIME DATA (avg days per issue) ---
     async function fetchCycleTimeFromReport(jiraDomain, boardNum) {
       const url = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/velocity?rapidViewId=${boardNum}`;
@@ -221,13 +248,10 @@ function addTooltipListeners() {
           if (!r.ok) return 0;
           const d = await r.json();
           const issues = d.contents?.completedIssues || [];
-          const times = issues.map(it => {
-            const created = it.created || it.creationDate || it.createdDate;
-            const resolved = it.resolutionDate || it.completedDate || it.resolvedDate;
-            return created && resolved ? (new Date(resolved) - new Date(created))/86400000 : 0;
-          }).filter(t => t>0);
-          if (!times.length) return 0;
-          return times.reduce((a,b)=>a+b,0)/times.length;
+          const times = await Promise.all(issues.map(it => fetchIssueCycleTime(it.key || it.id)));
+          const vals = times.filter(t=>t>0);
+          if (!vals.length) return 0;
+          return vals.reduce((a,b)=>a+b,0)/vals.length;
         } catch (e) { return 0; }
       }));
       console.log('Most recent 6 sprint cycleTimes:', cycleTimes, closed.map(s=>s.name));
