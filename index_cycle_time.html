@@ -145,7 +145,6 @@
         <button class="btn" onclick="exportPDF()">Download PDF Report</button>
       </div>
       <div id="filterOptions" style="margin-bottom:15px;"></div>
-      <div id="requiredSummary" style="margin-bottom:15px;"></div>
       <div id="epicSummary"></div>
     </div>
   </div>
@@ -160,8 +159,7 @@ document.getElementById('versionSelect').value = 'index_cycle_time.html';
 function switchVersion(page) {
   if (page !== 'index_cycle_time.html') location.href = page;
 }
-let epicAllocations = {}, epicBacklogs = {}, epicRequiredAlloc = {}, epicRequiredIssues = {},
-    epicRequiredIssuesPrev = {};
+let epicAllocations = {}, epicBacklogs = {};
 let epicForecastResults = {};
 let historicData = [];
 let storyFilters = { current:true, previous:true, new:true, open:true, removed:true };
@@ -659,16 +657,11 @@ function addTooltipListeners() {
       renderFilterOptions();
       applyStoryFilters();
       epicForecastResults = {};
-      epicRequiredAlloc = {};
-      epicRequiredIssues = {};
-      epicRequiredIssuesPrev = {};
       Object.keys(epicStories).forEach(epicKey => {
         let stories = epicStories[epicKey]||[];
         let backlogPts = epicBacklogs[epicKey];
         if (backlogPts <= 0) {
           epicForecastResults[epicKey] = [0];
-          epicRequiredAlloc[epicKey] = { "75": 0, "95": 0 };
-          epicRequiredIssues[epicKey] = { "75": 0, "95": 0 };
           return;
         }
         let alloc = epicAllocations[epicKey];
@@ -703,49 +696,10 @@ function addTooltipListeners() {
           if (allocNeeded["95"] === null && runs[Math.floor(0.95*runs.length)]<=targetSprints) allocNeeded["95"] = pct;
           if (allocNeeded["75"] && allocNeeded["95"]) break;
         }
-        epicRequiredAlloc[epicKey] = allocNeeded;
-      epicRequiredIssues[epicKey] = {
-        "75": allocNeeded["75"] ? Math.ceil(avgIssuesPerSprint * allocNeeded["75"] / 100) : null,
-        "95": allocNeeded["95"] ? Math.ceil(avgIssuesPerSprint * allocNeeded["95"] / 100) : null
-      };
-    });
-
-      Object.keys(epicStoriesBaseline).forEach(epicKey => {
-        let stories = epicStoriesBaseline[epicKey] || [];
-        let backlogPts = stories.filter(st => {
-          let teams = (st.team||'').split(',').map(t=>t.trim()).filter(Boolean);
-          if (!teams.length || !teams.some(t=>teamFilters[t])) return false;
-          let res = st.resolved ? new Date(st.resolved) : null;
-          if (baselineEnd && res && res <= baselineEnd) return false;
-          return true;
-        }).length;
-        if (backlogPts <= 0) {
-          epicRequiredIssuesPrev[epicKey] = { "75": 0, "95": 0 };
-          return;
-        }
-        let allocNeeded = { "75": null, "95": null };
-        for (let pct=1;pct<=100;pct++) {
-          let testCTs = cycleTime.map(v=>v*100/pct);
-          let runs = [];
-          for (let i=0;i<5000;i++) {
-            let b = backlogPts, days=0;
-            while (b>0 && days/avgSprintDays<100) {
-              let v = testCTs[Math.floor(Math.random()*testCTs.length)];
-              if (v<0.1) v=0.1;
-              days += v; b--;
-            }
-            runs.push(days/avgSprintDays);
-          }
-          runs.sort((a,b)=>a-b);
-          if (allocNeeded["75"] === null && runs[Math.floor(0.75*runs.length)]<=targetSprints) allocNeeded["75"] = pct;
-          if (allocNeeded["95"] === null && runs[Math.floor(0.95*runs.length)]<=targetSprints) allocNeeded["95"] = pct;
-          if (allocNeeded["75"] && allocNeeded["95"]) break;
-        }
-        epicRequiredIssuesPrev[epicKey] = {
-          "75": allocNeeded["75"] ? Math.ceil(avgIssuesPerSprint * allocNeeded["75"] / 100) : null,
-          "95": allocNeeded["95"] ? Math.ceil(avgIssuesPerSprint * allocNeeded["95"] / 100) : null
-        };
+        // Required allocation per epic removed
       });
+
+      // Baseline required allocation calculations removed
 
       let totalAlloc = Object.values(epicAllocations).reduce((a,b)=>a+b,0);
       let allocWarn = '';
@@ -753,21 +707,7 @@ function addTooltipListeners() {
       else if (totalAlloc > 101) allocWarn = `<span class="warn">Warning: Allocations exceed 100% of capacity! (${totalAlloc}%)</span>`;
       else allocWarn = `<span class="success">Team allocation: ${totalAlloc}%</span>`;
 
-      let totalReq75 = 0, totalReq95 = 0;
-      Object.values(epicRequiredAlloc).forEach(r => {
-        totalReq75 += r["75"] != null ? r["75"] : 101;
-        totalReq95 += r["95"] != null ? r["95"] : 101;
-      });
-      totalReq75 = Math.ceil(totalReq75);
-      totalReq95 = Math.ceil(totalReq95);
-      let reqWarn = (totalReq75 > 100 || totalReq95 > 100)
-        ? `<span class="warn">Required allocations exceed team capacity. Not all epics likely to finish.</span>`
-        : `<span class="success">Required allocations within team capacity.</span>`;
-      document.getElementById('requiredSummary').innerHTML =
-        `<div><b>Sum of required allocation to finish in ${targetSprints} sprints:</b><span class="info-icon" data-tip="Combined team capacity needed across all epics to meet the target sprint goal.">&#9432;<span class="tooltip"></span></span> `+
-        `${totalReq75}% at 75% confidence &nbsp; | &nbsp; ${totalReq95}% at 95% confidence`+
-        `<br>${reqWarn}</div>`;
-      // The total allocation info is still calculated for simulations but no longer displayed in the UI
+      // Required allocation summary removed
       let html = '';
 
       Object.keys(epicStories).forEach((epicKey, idx) => {
@@ -790,7 +730,6 @@ function addTooltipListeners() {
         let totalEstimate = ptsDone+ptsProg+ptsOpen+ptsBlocked;
         let backlog = ptsProg+ptsOpen+ptsBlocked;
         let alloc = epicAllocations[epicKey];
-        let required = epicRequiredAlloc[epicKey];
         let mc = epicForecastResults[epicKey];
         let probRows = [[50,mc[Math.floor(0.5*mc.length)]],[75,mc[Math.floor(0.75*mc.length)]],[95,mc[Math.floor(0.95*mc.length)]]];
 
@@ -825,7 +764,7 @@ function addTooltipListeners() {
 
         let deltaEstimate = backlog - estimateBaseline;
         const storyMapId = `storyMap_${epicKey.replace(/[^a-zA-Z0-9]/g, '')}`;
-        const risk = ((required["75"] && required["75"]-alloc>15) || scopeIncreaseConsistent(epicKey));
+        const risk = scopeIncreaseConsistent(epicKey);
         html += `
         <div class="epic-summary-block ${risk?'epic-risk':''}">
           <div class="epic-header">${epicKey}: ${allEpics[epicKey]||''}</div>
@@ -849,29 +788,7 @@ function addTooltipListeners() {
                   ${probRows.map(r=>`<tr><td>${r[0]}%</td><td>${r[1]}</td></tr>`).join('')}
                 </table>
               </div>
-              <div style="margin-bottom:8px;">
-                <b>Required allocation${unestimated>0?'+':''} to finish in ${targetSprints} sprints:</b>
-                <ul style="margin:3px 0 0 0;padding-left:1.3em;">
-                  ${(() => {
-                    const fmt = pct => {
-                      const sp = epicRequiredIssues[epicKey][pct];
-                      if (sp != null) {
-                        const plus = unestimated>0?'+':'';
-                        return `${sp}${plus} issues/sprint (${required[pct]}${plus}%)`;
-                      }
-                      return '<span class="warn">Over 100%</span>';
-                    };
-                    const prev = pct => {
-                      const sp = (epicRequiredIssuesPrev[epicKey]||{})[pct];
-                      return sp != null ? `${sp} issues` : 'n/a';
-                    };
-                    return [
-                      `<li>75% confidence: ${fmt("75")} <span style="font-size:0.9em;color:#555;">(last sprint: ${prev("75")})</span><span class="info-icon" data-tip="Estimated capacity per sprint for a 75% chance of finishing on time. Calculated using Monte Carlo simulations.">&#9432;<span class="tooltip"></span></span></li>`,
-                      `<li>95% confidence: ${fmt("95")} <span style="font-size:0.9em;color:#555;">(last sprint: ${prev("95")})</span><span class="info-icon" data-tip="Capacity needed for a 95% likelihood of completion within the target sprints. Based on Monte Carlo results.">&#9432;<span class="tooltip"></span></span></li>`
-                    ].join('');
-                  })()}
-                </ul>
-              </div>
+              <!-- Required allocation section removed -->
               <div style="font-size:0.99em;">
                 ${probRows[1][1] > targetSprints ?
                   `<span class="warn">At 75% confidence, this epic is <b>not likely</b> to finish in ${targetSprints} sprints.<br>
