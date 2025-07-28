@@ -141,6 +141,7 @@
         <label>Target Weeks for Delivery:
           <input id="targetWeeksInput" type="number" min="1" max="20" value="4" style="width:60px">
         </label>
+        <label>Sprint Length (weeks): <input id="sprintLengthInput" type="number" min="1" max="8" value="2" style="width:60px"></label>
         <button class="btn" onclick="renderEpicSummary()">Update Report</button>
         <button class="btn" onclick="exportPDF()">Download PDF Report</button>
       </div>
@@ -153,9 +154,11 @@
 let jiraDomain = '', boardNum = '', sprints = [], closedSprintsSorted = [];
 let allEpics = {}, epicStories = {}, epicStoriesBaseline = {};
 let cycleTimeArr = new Array(12).fill(0);
+let cycleTimeIssues = new Array(12).fill([]);
 let medianCycleTime = 0;
 let selectedSprintId = '', selectedSprintName = '', targetWeeks = 4;
 let baselineSprintId = '';
+let sprintLength = 2;
 document.getElementById('versionSelect').value = 'index_cycle_time.html';
 function switchVersion(page) {
   if (page !== 'index_cycle_time.html') location.href = page;
@@ -274,7 +277,7 @@ function addTooltipListeners() {
           startAt += 100;
           if (startAt >= (data.total || 0)) break;
         }
-        const weeks = new Array(12).fill(0).map(()=>[]);
+        const weeks = new Array(12).fill(0).map(()=>({cts:[], keys:[]}));
         const current = weekStart(new Date());
         for (const it of issues) {
           const dateStr = it.fields && it.fields.resolutiondate;
@@ -283,17 +286,22 @@ function addTooltipListeners() {
           const diff = Math.floor((current - w) / (7*24*60*60*1000));
           if (diff >= 0 && diff < 12) {
             const ct = await fetchIssueCycleTime(it.key);
-            if (ct>0) weeks[11-diff].push(ct);
+            if (ct>0) {
+              weeks[11-diff].cts.push(ct);
+              weeks[11-diff].keys.push(it.key);
+            }
           }
         }
-          const medians = weeks.map(arr => {
-            if (!arr.length) return 0;
-            arr.sort((a,b)=>a-b);
-            const mid = Math.floor(arr.length/2);
-            return Math.floor(arr.length % 2
-              ? arr[mid]
-              : (arr[mid-1] + arr[mid]) / 2);
-          });
+        const medians = [];
+        cycleTimeIssues = [];
+        weeks.forEach(w => {
+          const arr = w.cts;
+          cycleTimeIssues.push(w.keys);
+          if (!arr.length) { medians.push(0); return; }
+          arr.sort((a,b)=>a-b);
+          const mid = Math.floor(arr.length/2);
+          medians.push(Math.floor(arr.length % 2 ? arr[mid] : (arr[mid-1] + arr[mid]) / 2));
+        });
         console.log('Weekly cycle time (median):', medians);
         return medians;
       } catch (e) {
@@ -526,9 +534,12 @@ function addTooltipListeners() {
 
     // --- CYCLE TIME INPUTS ---
     function renderCycleTimeInputs() {
-      let vhtml = cycleTimeArr.map((v, i) =>
-        `<input class="editarr" type="number" min="0" value="${v}" onchange="editCycleTime(this,${i})">`).join(', ');
+      let vhtml = cycleTimeArr.map((v, i) => {
+        const issues = (cycleTimeIssues[i] || []).join(', ');
+        return `<span style="white-space:nowrap;"><input class="editarr" type="number" min="0" value="${v}" onchange="editCycleTime(this,${i})"><span class="info-icon" data-tip="${issues}">&#9432;<span class="tooltip"></span></span></span>`;
+      }).join(', ');
       document.getElementById('cycleTimeWrap').innerHTML = vhtml;
+      addTooltipListeners();
     }
     function editCycleTime(inp, idx) { cycleTimeArr[idx] = Number(inp.value) || 0; }
 
@@ -659,6 +670,7 @@ function addTooltipListeners() {
     // --- MAIN REPORT RENDER ---
     function renderEpicSummary(skipHistory = false) {
       targetWeeks = Number(document.getElementById('targetWeeksInput').value) || 4;
+      sprintLength = Number(document.getElementById("sprintLengthInput").value) || 1;
       let cycleTime = cycleTimeArr.filter(v=>v>0);
       if (cycleTime.length<3) {
         document.getElementById('epicSummary').innerHTML = '<div class="warn">Please set at least 3 recent cycleTime values.</div>';
@@ -741,8 +753,8 @@ function addTooltipListeners() {
         }
         epicRequiredAlloc[epicKey] = allocNeeded;
         epicRequiredIssues[epicKey] = {
-          "75": allocNeeded["75"] ? Math.ceil(avgIssuesPerWeek * allocNeeded["75"] / 100) : null,
-          "95": allocNeeded["95"] ? Math.ceil(avgIssuesPerWeek * allocNeeded["95"] / 100) : null
+          "75": allocNeeded["75"] ? Math.ceil(avgIssuesPerWeek * sprintLength * allocNeeded["75"] / 100) : null,
+          "95": allocNeeded["95"] ? Math.ceil(avgIssuesPerWeek * sprintLength * allocNeeded["95"] / 100) : null
         };
     });
 
@@ -779,8 +791,8 @@ function addTooltipListeners() {
           if (allocNeeded["75"] && allocNeeded["95"]) break;
         }
         epicRequiredIssuesPrev[epicKey] = {
-          "75": allocNeeded["75"] ? Math.ceil(avgIssuesPerWeek * allocNeeded["75"] / 100) : null,
-          "95": allocNeeded["95"] ? Math.ceil(avgIssuesPerWeek * allocNeeded["95"] / 100) : null
+          "75": allocNeeded["75"] ? Math.ceil(avgIssuesPerWeek * sprintLength * allocNeeded["75"] / 100) : null,
+          "95": allocNeeded["95"] ? Math.ceil(avgIssuesPerWeek * sprintLength * allocNeeded["95"] / 100) : null
         };
 
       });
@@ -831,7 +843,11 @@ function addTooltipListeners() {
         let alloc = epicAllocations[epicKey];
         let required = epicRequiredAlloc[epicKey];
         let mc = epicForecastResults[epicKey];
-        let probRows = [[50,mc[Math.floor(0.5*mc.length)]],[75,mc[Math.floor(0.75*mc.length)]],[95,mc[Math.floor(0.95*mc.length)]]];
+        let probRows = [
+          [50, Math.ceil(mc[Math.floor(0.5*mc.length)])],
+          [75, Math.ceil(mc[Math.floor(0.75*mc.length)])],
+          [95, Math.ceil(mc[Math.floor(0.95*mc.length)])]
+        ];
 
         let baseStories = (epicStoriesBaseline[epicKey]||[]).filter(st => {
           let teams = (st.team||'').split(',').map(t=>t.trim()).filter(Boolean);
@@ -891,7 +907,7 @@ function addTooltipListeners() {
                       const sp = (epicRequiredIssues[epicKey] || {})[pct];
                       if (sp != null) {
                         const plus = unestimated>0?'+':'';
-                        return `${sp}${plus} Items per Sprint (${required[pct]}${plus}%)`;
+                        return `${sp}${plus} Items per ${sprintLength}w Sprint (${required[pct]}${plus}%)`;
                       }
                       return '<span class="warn">Over 100%</span>';
                     };
