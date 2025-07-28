@@ -135,11 +135,11 @@
     <div id="loadingMessage" style="display:none; font-weight:bold; margin:10px 0;"></div>
 
     <div id="configSection" style="display:none;">
-      <div class="section-title">Cycle Time History (days, last 6 closed sprints):</div>
+      <div class="section-title">Cycle Time History (days, last 12 weeks):</div>
       <div id="cycleTimeWrap"></div>
       <div style="margin:0.9em 0 1.6em 0;">
-        <label>Target Sprints for Delivery:
-          <input id="targetSprintsInput" type="number" min="1" max="20" value="4" style="width:60px">
+        <label>Target Weeks for Delivery:
+          <input id="targetWeeksInput" type="number" min="1" max="20" value="4" style="width:60px">
         </label>
         <button class="btn" onclick="renderEpicSummary()">Update Report</button>
         <button class="btn" onclick="exportPDF()">Download PDF Report</button>
@@ -151,9 +151,9 @@
   <script>
 let jiraDomain = '', boardNum = '', sprints = [], closedSprintsSorted = [];
 let allEpics = {}, epicStories = {}, epicStoriesBaseline = {};
-let cycleTimeArr = [];
+let cycleTimeArr = new Array(12).fill(0);
 let avgCycleTime = 0;
-let selectedSprintId = '', selectedSprintName = '', targetSprints = 4;
+let selectedSprintId = '', selectedSprintName = '', targetWeeks = 4;
 let baselineSprintId = '';
 document.getElementById('versionSelect').value = 'index_cycle_time.html';
 function switchVersion(page) {
@@ -238,35 +238,60 @@ function addTooltipListeners() {
 
     // --- NEW: FETCH JIRA CYCLE TIME DATA (avg days per issue) ---
     async function fetchCycleTimeFromReport(jiraDomain, boardNum) {
-      const url = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/velocity?rapidViewId=${boardNum}`;
-      const resp = await fetch(url, { credentials: "include" });
-      if (!resp.ok) {
-        alert("Failed to fetch cycleTime report. Are you logged in to Jira?");
+      function weekStart(dt) {
+        const d = new Date(dt);
+        const day = d.getDay();
+        const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+        d.setDate(diff); d.setHours(0,0,0,0);
+        return d;
+      }
+      try {
+        const cfgUrl = `https://${jiraDomain}/rest/agile/1.0/board/${boardNum}/configuration`;
+        const cfgResp = await fetch(cfgUrl, { credentials: "include" });
+        if (!cfgResp.ok) throw new Error('cfg');
+        const cfg = await cfgResp.json();
+        const filterId = cfg.filter && cfg.filter.id;
+        let boardJql = '';
+        if (filterId) {
+          const fResp = await fetch(`https://${jiraDomain}/rest/api/3/filter/${filterId}`, { credentials: "include" });
+          if (fResp.ok) {
+            const fd = await fResp.json();
+            boardJql = fd.jql || '';
+          }
+        }
+        const jql = `${boardJql ? '('+boardJql+') AND ' : ''}statusCategory = Done AND resolutiondate >= startOfWeek(-11)`;
+        const enc = encodeURIComponent(jql);
+        let startAt = 0;
+        let issues = [];
+        while (true) {
+          const url = `https://${jiraDomain}/rest/api/3/search?jql=${enc}&fields=key,resolutiondate&startAt=${startAt}&maxResults=100`;
+          const resp = await fetch(url, { credentials: "include" });
+          if (!resp.ok) break;
+          const data = await resp.json();
+          issues = issues.concat(data.issues || []);
+          startAt += 100;
+          if (startAt >= (data.total || 0)) break;
+        }
+        const weeks = new Array(12).fill(0).map(()=>[]);
+        const current = weekStart(new Date());
+        for (const it of issues) {
+          const dateStr = it.fields && it.fields.resolutiondate;
+          if (!dateStr) continue;
+          const w = weekStart(dateStr);
+          const diff = Math.floor((current - w) / (7*24*60*60*1000));
+          if (diff >= 0 && diff < 12) {
+            const ct = await fetchIssueCycleTime(it.key);
+            if (ct>0) weeks[11-diff].push(ct);
+          }
+        }
+        const avgs = weeks.map(arr => arr.length ? Number((arr.reduce((a,b)=>a+b,0)/arr.length).toFixed(2)) : 0);
+        console.log('Weekly cycle time:', avgs);
+        return avgs;
+      } catch (e) {
+        console.error('Failed to fetch cycle time', e);
+        alert('Failed to fetch cycle time report. Are you logged in to Jira?');
         return [];
       }
-      const data = await resp.json();
-      let closed = (data.sprints || []).filter(s => s.state === "CLOSED");
-      closed.sort((a, b) => {
-        const ad = a.endDate || a.completeDate || a.startDate || '';
-        const bd = b.endDate || b.completeDate || b.startDate || '';
-        return ad && bd ? new Date(bd) - new Date(ad) : 0;
-      });
-      closed = closed.slice(0, 6);
-      const cycleTimes = await Promise.all(closed.map(async s => {
-        const surl = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/sprintreport?rapidViewId=${boardNum}&sprintId=${s.id}`;
-        try {
-          const r = await fetch(surl, { credentials: "include" });
-          if (!r.ok) return 0;
-          const d = await r.json();
-          const issues = d.contents?.completedIssues || [];
-          const times = await Promise.all(issues.map(it => fetchIssueCycleTime(it.key || it.id)));
-          const vals = times.filter(t=>t>0);
-          if (!vals.length) return 0;
-          return vals.reduce((a,b)=>a+b,0)/vals.length;
-        } catch (e) { return 0; }
-      }));
-      console.log('Most recent 6 sprint cycleTimes:', cycleTimes, closed.map(s=>s.name));
-      return cycleTimes;
     }
 
     async function fetchBoardTeam() {
@@ -624,16 +649,14 @@ function addTooltipListeners() {
 
     // --- MAIN REPORT RENDER ---
     function renderEpicSummary(skipHistory = false) {
-      targetSprints = Number(document.getElementById('targetSprintsInput').value) || 4;
+      targetWeeks = Number(document.getElementById('targetWeeksInput').value) || 4;
       let cycleTime = cycleTimeArr.filter(v=>v>0);
       if (cycleTime.length<3) {
         document.getElementById('epicSummary').innerHTML = '<div class="warn">Please set at least 3 recent cycleTime values.</div>';
         return;
       }
       avgCycleTime = cycleTime.reduce((a,b)=>a+b,0)/cycleTime.length;
-      const sprintDaysArr = closedSprintsSorted.slice(0,6).map(s=>{ return (s.startDate&&s.endDate)?(new Date(s.endDate)-new Date(s.startDate))/86400000:null; }).filter(Boolean);
-      const avgSprintDays = sprintDaysArr.length ? sprintDaysArr.reduce((a,b)=>a+b,0)/sprintDaysArr.length : 14;
-      const avgIssuesPerSprint = avgSprintDays / avgCycleTime;
+      const avgIssuesPerWeek = 7 / avgCycleTime;
       const baselineSprintObj = closedSprintsSorted.find(s=>s.id==baselineSprintId);
       const baselineEnd = baselineSprintObj ? new Date(baselineSprintObj.endDate) : null;
       epicBacklogs = {};
@@ -694,15 +717,15 @@ function addTooltipListeners() {
             runs.push(weeks);
           }
           runs.sort((a,b)=>a-b);
-          if (allocNeeded["75"] === null && runs[Math.floor(0.75*runs.length)]<=targetSprints) allocNeeded["75"] = pct;
-          if (allocNeeded["95"] === null && runs[Math.floor(0.95*runs.length)]<=targetSprints) allocNeeded["95"] = pct;
+          if (allocNeeded["75"] === null && runs[Math.floor(0.75*runs.length)]<=targetWeeks) allocNeeded["75"] = pct;
+          if (allocNeeded["95"] === null && runs[Math.floor(0.95*runs.length)]<=targetWeeks) allocNeeded["95"] = pct;
           if (allocNeeded["75"] && allocNeeded["95"]) break;
         }
-        epicRequiredAlloc[epicKey] = allocNeeded;
-      epicRequiredIssues[epicKey] = {
-        "75": allocNeeded["75"] ? Math.ceil(avgIssuesPerSprint * allocNeeded["75"] / 100) : null,
-        "95": allocNeeded["95"] ? Math.ceil(avgIssuesPerSprint * allocNeeded["95"] / 100) : null
-      };
+        // epicRequiredAlloc[epicKey] = allocNeeded;
+        // epicRequiredIssues[epicKey] = {
+        //   "75": allocNeeded["75"] ? Math.ceil(avgIssuesPerWeek * allocNeeded["75"] / 100) : null,
+        //   "95": allocNeeded["95"] ? Math.ceil(avgIssuesPerWeek * allocNeeded["95"] / 100) : null
+        // };
     });
 
       Object.keys(epicStoriesBaseline).forEach(epicKey => {
@@ -715,7 +738,7 @@ function addTooltipListeners() {
           return true;
         }).length;
         if (backlogPts <= 0) {
-          epicRequiredIssuesPrev[epicKey] = { "75": 0, "95": 0 };
+          // epicRequiredIssuesPrev[epicKey] = { "75": 0, "95": 0 };
           return;
         }
         let allocNeeded = { "75": null, "95": null };
@@ -733,14 +756,14 @@ function addTooltipListeners() {
             runs.push(weeks);
           }
           runs.sort((a,b)=>a-b);
-          if (allocNeeded["75"] === null && runs[Math.floor(0.75*runs.length)]<=targetSprints) allocNeeded["75"] = pct;
-          if (allocNeeded["95"] === null && runs[Math.floor(0.95*runs.length)]<=targetSprints) allocNeeded["95"] = pct;
+          if (allocNeeded["75"] === null && runs[Math.floor(0.75*runs.length)]<=targetWeeks) allocNeeded["75"] = pct;
+          if (allocNeeded["95"] === null && runs[Math.floor(0.95*runs.length)]<=targetWeeks) allocNeeded["95"] = pct;
           if (allocNeeded["75"] && allocNeeded["95"]) break;
         }
-        epicRequiredIssuesPrev[epicKey] = {
-          "75": allocNeeded["75"] ? Math.ceil(avgIssuesPerSprint * allocNeeded["75"] / 100) : null,
-          "95": allocNeeded["95"] ? Math.ceil(avgIssuesPerSprint * allocNeeded["95"] / 100) : null
-        };
+        // epicRequiredIssuesPrev[epicKey] = {
+        //   "75": allocNeeded["75"] ? Math.ceil(avgIssuesPerWeek * allocNeeded["75"] / 100) : null,
+        //   "95": allocNeeded["95"] ? Math.ceil(avgIssuesPerWeek * allocNeeded["95"] / 100) : null
+        // };
         // Required allocation per epic removed
 
       });
@@ -836,11 +859,11 @@ function addTooltipListeners() {
               </div>
               <!-- Required allocation section removed -->
               <div style="font-size:0.99em;">
-                ${probRows[1][1] > targetSprints ?
-                  `<span class="warn">At 75% confidence, this epic is <b>not likely</b> to finish in ${targetSprints} sprints.<br>
+                ${probRows[1][1] > targetWeeks ?
+                  `<span class="warn">At 75% confidence, this epic is <b>not likely</b> to finish in ${targetWeeks} weeks.<br>
                   More allocation or cycleTime needed.</span>`
                   :
-                  `<span class="success">On track to finish in ${targetSprints} sprints at 75% confidence.</span>`
+                  `<span class="success">On track to finish in ${targetWeeks} weeks at 75% confidence.</span>`
                 }
               </div>
             </div>
