@@ -135,7 +135,7 @@
     <div id="loadingMessage" style="display:none; font-weight:bold; margin:10px 0;"></div>
 
     <div id="configSection" style="display:none;">
-      <div class="section-title">Throughput History (issues per sprint, last 6 closed sprints):</div>
+      <div class="section-title">Throughput History (issues per week, last 12 calendar weeks):</div>
       <div id="throughputWrap"></div>
       <div style="margin:0.9em 0 1.6em 0;">
         <label>Target Sprints for Delivery:
@@ -211,33 +211,59 @@ function addTooltipListeners() {
     renderFilterOptions();
     addTooltipListeners();
 
-    // --- NEW: FETCH JIRA THROUGHPUT DATA (completed issues per sprint) ---
+    // --- NEW: FETCH JIRA THROUGHPUT DATA (completed issues per week) ---
     async function fetchThroughputFromReport(jiraDomain, boardNum) {
-      const url = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/velocity?rapidViewId=${boardNum}`;
-      const resp = await fetch(url, { credentials: "include" });
-      if (!resp.ok) {
-        alert("Failed to fetch throughput report. Are you logged in to Jira?");
+      function weekStart(dt) {
+        const d = new Date(dt);
+        const day = d.getDay();
+        const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+        d.setDate(diff);
+        d.setHours(0,0,0,0);
+        return d;
+      }
+      try {
+        const cfgUrl = `https://${jiraDomain}/rest/agile/1.0/board/${boardNum}/configuration`;
+        const cfgResp = await fetch(cfgUrl, { credentials: "include" });
+        if (!cfgResp.ok) throw new Error('cfg');
+        const cfg = await cfgResp.json();
+        const filterId = cfg.filter && cfg.filter.id;
+        let boardJql = '';
+        if (filterId) {
+          const fResp = await fetch(`https://${jiraDomain}/rest/api/3/filter/${filterId}`, { credentials: "include" });
+          if (fResp.ok) {
+            const fd = await fResp.json();
+            boardJql = fd.jql || '';
+          }
+        }
+        const jql = `${boardJql ? '('+boardJql+') AND ' : ''}statusCategory = Done AND resolutiondate >= startOfWeek(-11)`;
+        const enc = encodeURIComponent(jql);
+        let startAt = 0;
+        let issues = [];
+        while (true) {
+          const url = `https://${jiraDomain}/rest/api/3/search?jql=${enc}&fields=resolutiondate&startAt=${startAt}&maxResults=100`;
+          const resp = await fetch(url, { credentials: "include" });
+          if (!resp.ok) break;
+          const data = await resp.json();
+          issues = issues.concat(data.issues || []);
+          startAt += 100;
+          if (startAt >= (data.total || 0)) break;
+        }
+        const counts = new Array(12).fill(0);
+        const current = weekStart(new Date());
+        issues.forEach(it => {
+          const dateStr = it.fields && it.fields.resolutiondate;
+          if (!dateStr) return;
+          const w = weekStart(dateStr);
+          const diff = Math.floor((current - w) / (7*24*60*60*1000));
+          if (diff >= 0 && diff < 12) counts[11-diff]++;
+        });
+        console.log('Weekly throughput:', counts);
+        return counts;
+      } catch (e) {
+        console.error('Failed to fetch throughput', e);
+        alert('Failed to fetch throughput report. Are you logged in to Jira?');
         return [];
       }
-      const data = await resp.json();
-      let closed = (data.sprints || []).filter(s => s.state === "CLOSED");
-      closed.sort((a, b) => {
-        const ad = a.endDate || a.completeDate || a.startDate || '';
-        const bd = b.endDate || b.completeDate || b.startDate || '';
-        return ad && bd ? new Date(bd) - new Date(ad) : 0;
-      });
-      closed = closed.slice(0, 6);
-      const throughputs = await Promise.all(closed.map(async s => {
-        const surl = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/sprintreport?rapidViewId=${boardNum}&sprintId=${s.id}`;
-        try {
-          const r = await fetch(surl, { credentials: "include" });
-          if (!r.ok) return 0;
-          const d = await r.json();
-          return (d.contents?.completedIssues || []).length || 0;
-        } catch (e) { return 0; }
-      }));
-      console.log('Most recent 6 sprint throughputs:', throughputs, closed.map(s=>s.name));
-      return throughputs;
     }
 
     async function fetchBoardTeam() {
@@ -598,7 +624,7 @@ function addTooltipListeners() {
       targetSprints = Number(document.getElementById('targetSprintsInput').value) || 4;
       let throughput = throughputArr.filter(v=>v>0);
       if (throughput.length<3) {
-        document.getElementById('epicSummary').innerHTML = '<div class="warn">Please set at least 3 recent throughput values.</div>';
+        document.getElementById('epicSummary').innerHTML = '<div class="warn">Please set at least 3 weeks of throughput data.</div>';
         return;
       }
       avgThroughput = throughput.reduce((a,b)=>a+b,0)/throughput.length;
