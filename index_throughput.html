@@ -110,6 +110,15 @@
 <body>
   <div class="main">
     <h1>Stakeholder PI Status Report (Monte Carlo, Resource Allocation)</h1>
+    <div style="margin-bottom:10px;">
+      <label>Version:
+        <select id="versionSelect" onchange="switchVersion(this.value)">
+          <option value="index.html">Velocity</option>
+          <option value="index_cycle_time.html">Cycle Time</option>
+          <option value="index_throughput.html">Throughput</option>
+        </select>
+      </label>
+    </div>
     <div>
       <label>Jira Domain: <input id="jiraDomain" value="aldi-sued.atlassian.net" size="28"></label>
       <label>Board Number:
@@ -147,6 +156,10 @@ let throughputArr = [];
 let avgThroughput = 0;
 let selectedSprintId = '', selectedSprintName = '', targetSprints = 4;
 let baselineSprintId = '';
+document.getElementById('versionSelect').value = 'index_throughput.html';
+function switchVersion(page) {
+  if (page !== 'index_throughput.html') location.href = page;
+}
 let epicAllocations = {}, epicBacklogs = {}, epicRequiredAlloc = {}, epicRequiredIssues = {},
     epicRequiredIssuesPrev = {};
 let epicForecastResults = {};
