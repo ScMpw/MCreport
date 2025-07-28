@@ -153,7 +153,7 @@
 let jiraDomain = '', boardNum = '', sprints = [], closedSprintsSorted = [];
 let allEpics = {}, epicStories = {}, epicStoriesBaseline = {};
 let cycleTimeArr = new Array(12).fill(0);
-let avgCycleTime = 0;
+let medianCycleTime = 0;
 let selectedSprintId = '', selectedSprintName = '', targetWeeks = 4;
 let baselineSprintId = '';
 document.getElementById('versionSelect').value = 'index_cycle_time.html';
@@ -657,8 +657,12 @@ function addTooltipListeners() {
         document.getElementById('epicSummary').innerHTML = '<div class="warn">Please set at least 3 recent cycleTime values.</div>';
         return;
       }
-      avgCycleTime = Math.floor(cycleTime.reduce((a,b)=>a+b,0)/cycleTime.length);
-      const avgIssuesPerWeek = 7 / avgCycleTime;
+      cycleTime.sort((a,b)=>a-b);
+      const mid = Math.floor(cycleTime.length/2);
+      medianCycleTime = cycleTime.length % 2
+        ? cycleTime[mid]
+        : Math.floor((cycleTime[mid-1] + cycleTime[mid]) / 2);
+      const avgIssuesPerWeek = 7 / medianCycleTime;
       const baselineSprintObj = closedSprintsSorted.find(s=>s.id==baselineSprintId);
       const baselineEnd = baselineSprintObj ? new Date(baselineSprintObj.endDate) : null;
       epicBacklogs = {};
@@ -690,6 +694,8 @@ function addTooltipListeners() {
         let backlogPts = epicBacklogs[epicKey];
         if (backlogPts <= 0) {
           epicForecastResults[epicKey] = [0];
+          epicRequiredAlloc[epicKey] = { "75": 0, "95": 0 };
+          epicRequiredIssues[epicKey] = { "75": 0, "95": 0 };
           return;
         }
         let alloc = epicAllocations[epicKey];
