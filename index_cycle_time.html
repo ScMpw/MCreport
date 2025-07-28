@@ -693,7 +693,7 @@ function addTooltipListeners() {
           return;
         }
         let alloc = epicAllocations[epicKey];
-        let allocCTs = cycleTime.map(v=>v*100/alloc);
+        let allocCTs = cycleTime.slice();
         let mcRuns = [];
         for (let i=0; i<10000; i++) {
           // track weeks instead of sprints
@@ -709,7 +709,7 @@ function addTooltipListeners() {
         epicForecastResults[epicKey] = mcRuns;
         let allocNeeded = { "75": null, "95": null };
         for (let pct=1;pct<=100;pct++) {
-          let testCTs = cycleTime.map(v=>v*100/pct);
+          let testCTs = cycleTime.slice();
           let runs = [];
           for (let i=0;i<5000;i++) {
             // baseline simulation in weeks
@@ -748,7 +748,7 @@ function addTooltipListeners() {
         }
         let allocNeeded = { "75": null, "95": null };
         for (let pct=1;pct<=100;pct++) {
-          let testCTs = cycleTime.map(v=>v*100/pct);
+          let testCTs = cycleTime.slice();
           let runs = [];
           for (let i=0;i<5000;i++) {
             // baseline simulation in weeks
