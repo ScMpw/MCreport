@@ -138,8 +138,8 @@
       <div class="section-title">Velocity History (editable, last 6 closed sprints):</div>
       <div id="velocityWrap"></div>
       <div style="margin:0.9em 0 1.6em 0;">
-        <label>Target Weeks for Delivery:
-          <input id="targetWeeksInput" type="number" min="1" max="20" value="4" style="width:60px">
+        <label>Target Sprints for Delivery:
+          <input id="targetSprintsInput" type="number" min="1" max="20" value="4" style="width:60px">
         </label>
         <button class="btn" onclick="renderEpicSummary()">Update Report</button>
         <button class="btn" onclick="exportPDF()">Download PDF Report</button>
@@ -154,7 +154,7 @@ let jiraDomain = '', boardNum = '', sprints = [], closedSprintsSorted = [];
 let allEpics = {}, epicStories = {}, epicStoriesBaseline = {};
 let velocityArr = [];
 let avgVelocity = 0;
-let selectedSprintId = '', selectedSprintName = '', targetWeeks = 4;
+let selectedSprintId = '', selectedSprintName = '', targetSprints = 4;
 let baselineSprintId = '';
 document.getElementById('versionSelect').value = 'index.html';
 function switchVersion(page) {
@@ -605,7 +605,7 @@ function addTooltipListeners() {
 
     // --- MAIN REPORT RENDER ---
     function renderEpicSummary(skipHistory = false) {
-      targetWeeks = Number(document.getElementById('targetWeeksInput').value) || 4;
+      targetSprints = Number(document.getElementById('targetSprintsInput').value) || 4;
       let velocity = velocityArr.filter(v=>v>0);
       if (velocity.length<3) {
         document.getElementById('epicSummary').innerHTML = '<div class="warn">Please set at least 3 recent velocity values.</div>';
@@ -675,8 +675,8 @@ function addTooltipListeners() {
             runs.push(s);
           }
           runs.sort((a,b)=>a-b);
-          if (allocNeeded["75"] === null && runs[Math.floor(0.75*runs.length)]<=targetWeeks) allocNeeded["75"] = pct;
-          if (allocNeeded["95"] === null && runs[Math.floor(0.95*runs.length)]<=targetWeeks) allocNeeded["95"] = pct;
+          if (allocNeeded["75"] === null && runs[Math.floor(0.75*runs.length)]<=targetSprints) allocNeeded["75"] = pct;
+          if (allocNeeded["95"] === null && runs[Math.floor(0.95*runs.length)]<=targetSprints) allocNeeded["95"] = pct;
           if (allocNeeded["75"] && allocNeeded["95"]) break;
         }
         epicRequiredAlloc[epicKey] = allocNeeded;
@@ -713,8 +713,8 @@ function addTooltipListeners() {
             runs.push(s);
           }
           runs.sort((a,b)=>a-b);
-          if (allocNeeded["75"] === null && runs[Math.floor(0.75*runs.length)]<=targetWeeks) allocNeeded["75"] = pct;
-          if (allocNeeded["95"] === null && runs[Math.floor(0.95*runs.length)]<=targetWeeks) allocNeeded["95"] = pct;
+          if (allocNeeded["75"] === null && runs[Math.floor(0.75*runs.length)]<=targetSprints) allocNeeded["75"] = pct;
+          if (allocNeeded["95"] === null && runs[Math.floor(0.95*runs.length)]<=targetSprints) allocNeeded["95"] = pct;
           if (allocNeeded["75"] && allocNeeded["95"]) break;
         }
         epicRequiredSPPrev[epicKey] = {
@@ -740,7 +740,7 @@ function addTooltipListeners() {
         ? `<span class="warn">Required allocations exceed team capacity. Not all epics likely to finish.</span>`
         : `<span class="success">Required allocations within team capacity.</span>`;
       document.getElementById('requiredSummary').innerHTML =
-        `<div><b>Sum of required allocation to finish in ${targetWeeks} weeks:</b><span class="info-icon" data-tip="Combined team capacity needed across all epics to meet the target week goal.">&#9432;<span class="tooltip"></span></span> `+
+        `<div><b>Sum of required allocation to finish in ${targetSprints} sprints:</b><span class="info-icon" data-tip="Combined team capacity needed across all epics to meet the target sprint goal.">&#9432;<span class="tooltip"></span></span> `+
         `${totalReq75}% at 75% confidence &nbsp; | &nbsp; ${totalReq95}% at 95% confidence`+
         `<br>${reqWarn}</div>`;
       // The total allocation info is still calculated for simulations but no longer displayed in the UI
@@ -821,12 +821,12 @@ function addTooltipListeners() {
               </div>
               <div>
                 <table class="prob-table">
-                  <tr><th>Confidence</th><th>Weeks Needed</th></tr>
+                  <tr><th>Confidence</th><th>Sprints Needed</th></tr>
                   ${probRows.map(r=>`<tr><td>${r[0]}%</td><td>${r[1]}</td></tr>`).join('')}
                 </table>
               </div>
               <div style="margin-bottom:8px;">
-                <b>Required allocation${unestimated>0?'+':''} to finish in ${targetWeeks} weeks:</b>
+                <b>Required allocation${unestimated>0?'+':''} to finish in ${targetSprints} sprints:</b>
                 <ul style="margin:3px 0 0 0;padding-left:1.3em;">
                   ${(() => {
                     const fmt = pct => {
@@ -843,17 +843,17 @@ function addTooltipListeners() {
                     };
                     return [
                       `<li>75% confidence: ${fmt("75")} <span style="font-size:0.9em;color:#555;">(last sprint: ${prev("75")})</span><span class="info-icon" data-tip="Estimated capacity per sprint for a 75% chance of finishing on time. Calculated using Monte Carlo simulations.">&#9432;<span class="tooltip"></span></span></li>`,
-                      `<li>95% confidence: ${fmt("95")} <span style="font-size:0.9em;color:#555;">(last sprint: ${prev("95")})</span><span class="info-icon" data-tip="Capacity needed for a 95% likelihood of completion within the target weeks. Based on Monte Carlo results.">&#9432;<span class="tooltip"></span></span></li>`
+                      `<li>95% confidence: ${fmt("95")} <span style="font-size:0.9em;color:#555;">(last sprint: ${prev("95")})</span><span class="info-icon" data-tip="Capacity needed for a 95% likelihood of completion within the target sprints. Based on Monte Carlo results.">&#9432;<span class="tooltip"></span></span></li>`
                     ].join('');
                   })()}
                 </ul>
               </div>
               <div style="font-size:0.99em;">
-                ${probRows[1][1] > targetWeeks ?
-                  `<span class="warn">At 75% confidence, this epic is <b>not likely</b> to finish in ${targetWeeks} weeks.<br>
+                ${probRows[1][1] > targetSprints ?
+                  `<span class="warn">At 75% confidence, this epic is <b>not likely</b> to finish in ${targetSprints} sprints.<br>
                   More allocation or velocity needed.</span>`
                   :
-                  `<span class="success">On track to finish in ${targetWeeks} weeks at 75% confidence.</span>`
+                  `<span class="success">On track to finish in ${targetSprints} sprints at 75% confidence.</span>`
                 }
               </div>
             </div>
