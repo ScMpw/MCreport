@@ -675,13 +675,14 @@ function addTooltipListeners() {
         let allocCTs = cycleTime.map(v=>v*100/alloc);
         let mcRuns = [];
         for (let i=0; i<10000; i++) {
-          let b = backlogPts, days=0;
-          while (b>0 && days/avgSprintDays<100) {
+          // track weeks instead of sprints
+          let b = backlogPts, weeks=0;
+          while (b>0 && weeks<100) {
             let v = allocCTs[Math.floor(Math.random()*allocCTs.length)];
             if (v<0.1) v=0.1;
-            days += v; b--;
+            weeks += v/7; b--;
           }
-          mcRuns.push(days/avgSprintDays);
+          mcRuns.push(weeks);
         }
         mcRuns.sort((a,b)=>a-b);
         epicForecastResults[epicKey] = mcRuns;
@@ -690,13 +691,14 @@ function addTooltipListeners() {
           let testCTs = cycleTime.map(v=>v*100/pct);
           let runs = [];
           for (let i=0;i<5000;i++) {
-            let b = backlogPts, days=0;
-            while (b>0 && days/avgSprintDays<100) {
+            // baseline simulation in weeks
+            let b = backlogPts, weeks=0;
+            while (b>0 && weeks<100) {
               let v = testCTs[Math.floor(Math.random()*testCTs.length)];
               if (v<0.1) v=0.1;
-              days += v; b--;
+              weeks += v/7; b--;
             }
-            runs.push(days/avgSprintDays);
+            runs.push(weeks);
           }
           runs.sort((a,b)=>a-b);
           if (allocNeeded["75"] === null && runs[Math.floor(0.75*runs.length)]<=targetSprints) allocNeeded["75"] = pct;
@@ -728,13 +730,14 @@ function addTooltipListeners() {
           let testCTs = cycleTime.map(v=>v*100/pct);
           let runs = [];
           for (let i=0;i<5000;i++) {
-            let b = backlogPts, days=0;
-            while (b>0 && days/avgSprintDays<100) {
+            // baseline simulation in weeks
+            let b = backlogPts, weeks=0;
+            while (b>0 && weeks<100) {
               let v = testCTs[Math.floor(Math.random()*testCTs.length)];
               if (v<0.1) v=0.1;
-              days += v; b--;
+              weeks += v/7; b--;
             }
-            runs.push(days/avgSprintDays);
+            runs.push(weeks);
           }
           runs.sort((a,b)=>a-b);
           if (allocNeeded["75"] === null && runs[Math.floor(0.75*runs.length)]<=targetSprints) allocNeeded["75"] = pct;
