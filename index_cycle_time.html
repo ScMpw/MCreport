@@ -286,7 +286,7 @@ function addTooltipListeners() {
             if (ct>0) weeks[11-diff].push(ct);
           }
         }
-        const avgs = weeks.map(arr => arr.length ? Number((arr.reduce((a,b)=>a+b,0)/arr.length).toFixed(2)) : 0);
+          const avgs = weeks.map(arr => arr.length ? Math.floor(arr.reduce((a,b)=>a+b,0)/arr.length) : 0);
         console.log('Weekly cycle time:', avgs);
         return avgs;
       } catch (e) {
@@ -875,7 +875,7 @@ function addTooltipListeners() {
                 <ul style="margin:3px 0 0 0;padding-left:1.3em;">
                   ${(() => {
                     const fmt = pct => {
-                      const sp = epicRequiredIssues[epicKey][pct];
+                      const sp = (epicRequiredIssues[epicKey] || {})[pct];
                       if (sp != null) {
                         const plus = unestimated>0?'+':'';
                         return `${sp}${plus} Items per Sprint (${required[pct]}${plus}%)`;
