@@ -286,9 +286,16 @@ function addTooltipListeners() {
             if (ct>0) weeks[11-diff].push(ct);
           }
         }
-          const avgs = weeks.map(arr => arr.length ? Math.floor(arr.reduce((a,b)=>a+b,0)/arr.length) : 0);
-        console.log('Weekly cycle time:', avgs);
-        return avgs;
+          const medians = weeks.map(arr => {
+            if (!arr.length) return 0;
+            arr.sort((a,b)=>a-b);
+            const mid = Math.floor(arr.length/2);
+            return Math.floor(arr.length % 2
+              ? arr[mid]
+              : (arr[mid-1] + arr[mid]) / 2);
+          });
+        console.log('Weekly cycle time (median):', medians);
+        return medians;
       } catch (e) {
         console.error('Failed to fetch cycle time', e);
         alert('Failed to fetch cycle time report. Are you logged in to Jira?');
