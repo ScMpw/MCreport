@@ -472,7 +472,9 @@ function addTooltipListeners() {
         try {
           const resp = await fetch(urlEpic, { credentials: "include" });
           const data = await resp.json();
-          epicStories[epicKey] = (data.issues || []).map(story => ({
+          epicStories[epicKey] = (data.issues || [])
+            .filter(story => validResolution(story.fields.resolution && story.fields.resolution.name))
+            .map(story => ({
             key: story.key,
             summary: story.fields.summary,
             status: story.fields.status && story.fields.status.name,
@@ -500,6 +502,7 @@ function addTooltipListeners() {
               let resolved = story.fields.resolutiondate ? new Date(story.fields.resolutiondate) : null;
               let baseSprint = closedSprintsSorted.find(s=>s.id==baselineSprintId);
               let end = baseSprint ? new Date(baseSprint.endDate) : null;
+              if (!validResolution(story.fields.resolution && story.fields.resolution.name)) return false;
               return created <= end && (!resolved || resolved > end);
             }).map(story => ({
             key: story.key,
@@ -1017,6 +1020,10 @@ function addTooltipListeners() {
     function isDone(status) {
       status = (status||'').toLowerCase();
       return status.includes("done") || status.includes("closed");
+    }
+    function validResolution(res) {
+      res = (res||'').toLowerCase();
+      return !res || res === 'done' || res === 'implemented/done' || res === 'implemented done';
     }
     function statusGroup(s) {
       s = (s||"").toLowerCase();
