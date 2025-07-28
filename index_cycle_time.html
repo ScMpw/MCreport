@@ -668,13 +668,14 @@ function addTooltipListeners() {
         let allocCTs = cycleTime.map(v=>v*100/alloc);
         let mcRuns = [];
         for (let i=0; i<10000; i++) {
-          let b = backlogPts, days=0;
-          while (b>0 && days/avgSprintDays<100) {
+          // track weeks instead of sprints
+          let b = backlogPts, weeks=0;
+          while (b>0 && weeks<100) {
             let v = allocCTs[Math.floor(Math.random()*allocCTs.length)];
             if (v<0.1) v=0.1;
-            days += v; b--;
+            weeks += v/7; b--;
           }
-          mcRuns.push(days/avgSprintDays);
+          mcRuns.push(weeks);
         }
         mcRuns.sort((a,b)=>a-b);
         epicForecastResults[epicKey] = mcRuns;
@@ -683,20 +684,65 @@ function addTooltipListeners() {
           let testCTs = cycleTime.map(v=>v*100/pct);
           let runs = [];
           for (let i=0;i<5000;i++) {
-            let b = backlogPts, days=0;
-            while (b>0 && days/avgSprintDays<100) {
+            // baseline simulation in weeks
+            let b = backlogPts, weeks=0;
+            while (b>0 && weeks<100) {
               let v = testCTs[Math.floor(Math.random()*testCTs.length)];
               if (v<0.1) v=0.1;
-              days += v; b--;
+              weeks += v/7; b--;
             }
-            runs.push(days/avgSprintDays);
+            runs.push(weeks);
           }
           runs.sort((a,b)=>a-b);
           if (allocNeeded["75"] === null && runs[Math.floor(0.75*runs.length)]<=targetSprints) allocNeeded["75"] = pct;
           if (allocNeeded["95"] === null && runs[Math.floor(0.95*runs.length)]<=targetSprints) allocNeeded["95"] = pct;
           if (allocNeeded["75"] && allocNeeded["95"]) break;
         }
+        epicRequiredAlloc[epicKey] = allocNeeded;
+      epicRequiredIssues[epicKey] = {
+        "75": allocNeeded["75"] ? Math.ceil(avgIssuesPerSprint * allocNeeded["75"] / 100) : null,
+        "95": allocNeeded["95"] ? Math.ceil(avgIssuesPerSprint * allocNeeded["95"] / 100) : null
+      };
+    });
+
+      Object.keys(epicStoriesBaseline).forEach(epicKey => {
+        let stories = epicStoriesBaseline[epicKey] || [];
+        let backlogPts = stories.filter(st => {
+          let teams = (st.team||'').split(',').map(t=>t.trim()).filter(Boolean);
+          if (!teams.length || !teams.some(t=>teamFilters[t])) return false;
+          let res = st.resolved ? new Date(st.resolved) : null;
+          if (baselineEnd && res && res <= baselineEnd) return false;
+          return true;
+        }).length;
+        if (backlogPts <= 0) {
+          epicRequiredIssuesPrev[epicKey] = { "75": 0, "95": 0 };
+          return;
+        }
+        let allocNeeded = { "75": null, "95": null };
+        for (let pct=1;pct<=100;pct++) {
+          let testCTs = cycleTime.map(v=>v*100/pct);
+          let runs = [];
+          for (let i=0;i<5000;i++) {
+            // baseline simulation in weeks
+            let b = backlogPts, weeks=0;
+            while (b>0 && weeks<100) {
+              let v = testCTs[Math.floor(Math.random()*testCTs.length)];
+              if (v<0.1) v=0.1;
+              weeks += v/7; b--;
+            }
+            runs.push(weeks);
+          }
+          runs.sort((a,b)=>a-b);
+          if (allocNeeded["75"] === null && runs[Math.floor(0.75*runs.length)]<=targetSprints) allocNeeded["75"] = pct;
+          if (allocNeeded["95"] === null && runs[Math.floor(0.95*runs.length)]<=targetSprints) allocNeeded["95"] = pct;
+          if (allocNeeded["75"] && allocNeeded["95"]) break;
+        }
+        epicRequiredIssuesPrev[epicKey] = {
+          "75": allocNeeded["75"] ? Math.ceil(avgIssuesPerSprint * allocNeeded["75"] / 100) : null,
+          "95": allocNeeded["95"] ? Math.ceil(avgIssuesPerSprint * allocNeeded["95"] / 100) : null
+        };
         // Required allocation per epic removed
+
       });
 
       // Baseline required allocation calculations removed
