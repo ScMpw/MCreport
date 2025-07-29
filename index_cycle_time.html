@@ -277,8 +277,7 @@ function addTooltipListeners() {
             boardJql = (fd.jql || '').replace(/ORDER BY[\s\S]*$/i, '').trim();
           }
         }
-        const excludeRes = ['"Won\'t Do"', 'Duplicate', '"Cannot Reproduce"', 'Rejected', 'Cancelled', '"Won\'t Fix"', 'Other'];
-        const jql = `${boardJql ? '('+boardJql+') AND ' : ''}issuetype in (Story,Bug,Task) AND statusCategory = Done AND resolutiondate >= startOfWeek(-11) AND resolution not in (${excludeRes.join(',')})`;
+        const jql = `${boardJql ? '('+boardJql+') AND ' : ''}issuetype in (Story,Bug,Task) AND statusCategory = Done AND resolutiondate >= startOfWeek(-11)`;
         const enc = encodeURIComponent(jql);
         let startAt = 0;
         let issues = [];
