@@ -153,6 +153,8 @@
 let jiraDomain = '', boardNum = '', sprints = [], closedSprintsSorted = [];
 let allEpics = {}, epicStories = {}, epicStoriesBaseline = {};
 let throughputArr = [];
+let throughputIssues = new Array(12).fill([]);
+let throughputWeekNums = new Array(12).fill(0);
 let avgThroughput = 0;
 let selectedSprintId = '', selectedSprintName = '', targetSprints = 4;
 let baselineSprintId = '';
@@ -181,6 +183,14 @@ function showLoading(msg) {
 function hideLoading() {
   const el = document.getElementById('loadingMessage');
   if (el) el.style.display = 'none';
+}
+
+function isoWeekNumber(dt) {
+  const d = new Date(Date.UTC(dt.getFullYear(), dt.getMonth(), dt.getDate()));
+  const day = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
 }
 
 function addTooltipListeners() {
@@ -248,15 +258,26 @@ function addTooltipListeners() {
           startAt += 100;
           if (startAt >= (data.total || 0)) break;
         }
-        const counts = new Array(12).fill(0);
+        const weeks = new Array(12).fill(0).map(()=>({count:0, keys:[]}));
         const current = weekStart(new Date());
+        throughputWeekNums = [];
+        for (let i=0;i<12;i++) {
+          const d = new Date(current);
+          d.setDate(d.getDate() - (11 - i) * 7);
+          throughputWeekNums.push(isoWeekNumber(d));
+        }
         issues.forEach(it => {
           const dateStr = it.fields && it.fields.resolutiondate;
           if (!dateStr) return;
           const w = weekStart(dateStr);
           const diff = Math.floor((current - w) / (7*24*60*60*1000));
-          if (diff >= 0 && diff < 12) counts[11-diff]++;
+          if (diff >= 0 && diff < 12) {
+            weeks[11-diff].count++;
+            weeks[11-diff].keys.push(it.key);
+          }
         });
+        throughputIssues = weeks.map(w=>w.keys);
+        const counts = weeks.map(w=>w.count);
         console.log('Weekly throughput:', counts);
         return counts;
       } catch (e) {
@@ -489,9 +510,13 @@ function addTooltipListeners() {
 
     // --- THROUGHPUT INPUTS ---
     function renderThroughputInputs() {
-      let vhtml = throughputArr.map((v, i) =>
-        `<input class="editarr" type="number" min="0" value="${v}" onchange="editThroughput(this,${i})">`).join(', ');
+      let vhtml = throughputArr.map((v, i) => {
+        const issues = (throughputIssues[i] || []).join(', ');
+        const wk = throughputWeekNums[i] || '';
+        return `<span style="white-space:nowrap;">KW ${wk}: <input class="editarr" type="number" min="0" value="${v}" onchange="editThroughput(this,${i})"><span class="info-icon" data-tip="${issues}" title="${issues}">&#9432;<span class="tooltip"></span></span></span>`;
+      }).join(', ');
       document.getElementById('throughputWrap').innerHTML = vhtml;
+      addTooltipListeners();
     }
     function editThroughput(inp, idx) { throughputArr[idx] = Number(inp.value) || 0; }
 
