@@ -570,7 +570,7 @@ function addTooltipListeners() {
       let vhtml = cycleTimeArr.map((v, i) => {
         const issues = (cycleTimeIssues[i] || []).join(', ');
         const wk = cycleWeekNums[i] || '';
-        return `<span style="white-space:nowrap;">KW ${wk}: <input class="editarr" type="number" min="0" value="${v}" onchange="editCycleTime(this,${i})"><span class="info-icon" data-tip="${issues}">&#9432;<span class="tooltip"></span></span></span>`;
+        return `<span style="white-space:nowrap;">KW ${wk}: <input class="editarr" type="number" min="0" value="${v}" onchange="editCycleTime(this,${i})"><span class="info-icon" data-tip="${issues}" title="${issues}">&#9432;<span class="tooltip"></span></span></span>`;
       }).join(', ');
       document.getElementById('cycleTimeWrap').innerHTML = vhtml;
       addTooltipListeners();
