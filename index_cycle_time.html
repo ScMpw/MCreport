@@ -155,6 +155,7 @@ let jiraDomain = '', boardNum = '', sprints = [], closedSprintsSorted = [];
 let allEpics = {}, epicStories = {}, epicStoriesBaseline = {};
 let cycleTimeArr = new Array(12).fill(0);
 let cycleTimeIssues = new Array(12).fill([]);
+let cycleWeekNums = new Array(12).fill(0);
 let medianCycleTime = 0;
 let selectedSprintId = '', selectedSprintName = '', targetWeeks = 4;
 let baselineSprintId = '';
@@ -184,6 +185,14 @@ function showLoading(msg) {
 function hideLoading() {
   const el = document.getElementById('loadingMessage');
   if (el) el.style.display = 'none';
+}
+
+function isoWeekNumber(dt) {
+  const d = new Date(Date.UTC(dt.getFullYear(), dt.getMonth(), dt.getDate()));
+  const day = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
 }
 
 function addTooltipListeners() {
@@ -292,6 +301,12 @@ function addTooltipListeners() {
         }
         const weeks = new Array(12).fill(0).map(()=>({cts:[], keys:[]}));
         const current = weekStart(new Date());
+        cycleWeekNums = [];
+        for (let i=0; i<12; i++) {
+          const d = new Date(current);
+          d.setDate(d.getDate() - (11 - i) * 7);
+          cycleWeekNums.push(isoWeekNumber(d));
+        }
         for (const it of issues) {
           const resName = it.fields && it.fields.resolution && it.fields.resolution.name;
           if (!validResolution(resName)) continue;
@@ -554,7 +569,8 @@ function addTooltipListeners() {
     function renderCycleTimeInputs() {
       let vhtml = cycleTimeArr.map((v, i) => {
         const issues = (cycleTimeIssues[i] || []).join(', ');
-        return `<span style="white-space:nowrap;"><input class="editarr" type="number" min="0" value="${v}" onchange="editCycleTime(this,${i})"><span class="info-icon" data-tip="${issues}">&#9432;<span class="tooltip"></span></span></span>`;
+        const wk = cycleWeekNums[i] || '';
+        return `<span style="white-space:nowrap;">KW ${wk}: <input class="editarr" type="number" min="0" value="${v}" onchange="editCycleTime(this,${i})"><span class="info-icon" data-tip="${issues}">&#9432;<span class="tooltip"></span></span></span>`;
       }).join(', ');
       document.getElementById('cycleTimeWrap').innerHTML = vhtml;
       addTooltipListeners();
