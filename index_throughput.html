@@ -242,7 +242,7 @@ function addTooltipListeners() {
           const fResp = await fetch(`https://${jiraDomain}/rest/api/3/filter/${filterId}`, { credentials: "include" });
           if (fResp.ok) {
             const fd = await fResp.json();
-            boardJql = fd.jql || '';
+            boardJql = (fd.jql || '').replace(/ORDER BY[\s\S]*$/i, '').trim();
           }
         }
         const jql = `${boardJql ? '('+boardJql+') AND ' : ''}statusCategory = Done AND resolutiondate >= startOfWeek(-11)`;
