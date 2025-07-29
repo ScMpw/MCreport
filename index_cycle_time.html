@@ -222,22 +222,32 @@ function addTooltipListeners() {
         if (!r.ok) return 0;
         const data = await r.json();
         let dev = null, closed = null;
+        const devKeys = [
+          'progress', 'development', 'implement', 'in dev',
+          'analysis', 'design', 'coding', 'qa', 'test', 'review'
+        ];
+        const doneKeys = [
+          'closed', 'done', 'complete', 'resolved', 'fixed'
+        ];
         const histories = data.changelog?.histories || [];
         for (let h of histories) {
           for (let item of h.items || []) {
             if (item.field === "status") {
               const to = (item.toString || "").toLowerCase();
-              if (!dev && (to.includes("development") || to.includes("progress"))) {
+              const t = to.toLowerCase();
+              if (!dev && devKeys.some(k => t.includes(k))) {
                 dev = h.created;
               }
-              if (!closed && (to.includes("closed") || to.includes("done"))) {
+              if (!closed && doneKeys.some(k => t.includes(k))) {
                 closed = h.created;
               }
             }
           }
           if (dev && closed) break;
         }
-        // require that the issue actually moved into development/in progress and then closed/done
+        if (!dev) dev = data.fields.created;
+        if (!closed) closed = data.fields.resolutiondate;
+        // require at least a resolution date
         if (!dev || !closed) return 0;
         const diff = (new Date(closed) - new Date(dev)) / 86400000;
         return diff > 0 ? diff : 0;
