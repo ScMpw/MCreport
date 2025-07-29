@@ -227,14 +227,17 @@ function addTooltipListeners() {
           for (let item of h.items || []) {
             if (item.field === "status") {
               const to = (item.toString || "").toLowerCase();
-              if (!dev && to.includes("in development")) dev = h.created;
-              if (!closed && to.includes("closed")) closed = h.created;
+              if (!dev && (to.includes("development") || to.includes("progress"))) {
+                dev = h.created;
+              }
+              if (!closed && (to.includes("closed") || to.includes("done"))) {
+                closed = h.created;
+              }
             }
           }
           if (dev && closed) break;
         }
-        if (!dev) dev = data.fields.created;
-        if (!closed) closed = data.fields.resolutiondate;
+        // require that the issue actually moved into development/in progress and then closed/done
         if (!dev || !closed) return 0;
         const diff = (new Date(closed) - new Date(dev)) / 86400000;
         return diff > 0 ? diff : 0;
@@ -264,7 +267,8 @@ function addTooltipListeners() {
             boardJql = (fd.jql || '').replace(/ORDER BY[\s\S]*$/i, '').trim();
           }
         }
-        const jql = `${boardJql ? '('+boardJql+') AND ' : ''}statusCategory = Done AND resolutiondate >= startOfWeek(-11)`;
+        const excludeRes = ['"Won\'t Do"', 'Duplicate', '"Cannot Reproduce"', 'Rejected', 'Cancelled', '"Won\'t Fix"', 'Other'];
+        const jql = `${boardJql ? '('+boardJql+') AND ' : ''}issuetype in (Story,Bug,Task) AND statusCategory = Done AND resolutiondate >= startOfWeek(-11) AND resolution not in (${excludeRes.join(',')})`;
         const enc = encodeURIComponent(jql);
         let startAt = 0;
         let issues = [];
@@ -1024,9 +1028,24 @@ function addTooltipListeners() {
       return status.includes("done") || status.includes("closed");
     }
     function validResolution(res) {
-      res = (res || '').toLowerCase().trim();
       if (!res) return true;
-      return res === 'done' || res === 'implemented/done' || res === 'implemented done';
+      res = res.toLowerCase().trim();
+      const invalid = [
+        'duplicate',
+        "won't do", 'wont do',
+        "won't fix", 'wont fix',
+        'reject', 'rejected',
+        'canceled', 'cancelled',
+        'cannot reproduce', "can't reproduce",
+        'other'
+      ];
+      if (invalid.some(v => res.includes(v))) return false;
+      const valid = [
+        'done',
+        'implemented/done', 'implemented done',
+        'fixed', 'resolved', 'complete', 'completed'
+      ];
+      return valid.some(v => res.includes(v));
     }
     function statusGroup(s) {
       s = (s||"").toLowerCase();
