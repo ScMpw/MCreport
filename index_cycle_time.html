@@ -160,6 +160,7 @@ let medianCycleTime = 0;
 let selectedSprintId = '', selectedSprintName = '', targetWeeks = 4;
 let baselineSprintId = '';
 let sprintLength = 2;
+const WORK_DAYS_PER_WEEK = 5; // use 5-day work week in simulations
 document.getElementById('versionSelect').value = 'index_cycle_time.html';
 function switchVersion(page) {
   if (page !== 'index_cycle_time.html') location.href = page;
@@ -715,7 +716,7 @@ function addTooltipListeners() {
       medianCycleTime = cycleTime.length % 2
         ? cycleTime[mid]
         : Math.floor((cycleTime[mid-1] + cycleTime[mid]) / 2);
-      const avgIssuesPerWeek = 7 / medianCycleTime;
+      const avgIssuesPerWeek = WORK_DAYS_PER_WEEK / medianCycleTime;
       const baselineSprintObj = closedSprintsSorted.find(s=>s.id==baselineSprintId);
       const baselineEnd = baselineSprintObj ? new Date(baselineSprintObj.endDate) : null;
       epicBacklogs = {};
@@ -760,7 +761,7 @@ function addTooltipListeners() {
           while (b>0 && weeks<100) {
             let v = allocCTs[Math.floor(Math.random()*allocCTs.length)];
             if (v<0.1) v=0.1;
-            weeks += v/7; b--;
+            weeks += v/WORK_DAYS_PER_WEEK; b--;
           }
           mcRuns.push(weeks);
         }
@@ -776,7 +777,7 @@ function addTooltipListeners() {
             while (b>0 && weeks<100) {
               let v = testCTs[Math.floor(Math.random()*testCTs.length)];
               if (v<0.1) v=0.1;
-              weeks += v/7; b--;
+              weeks += v/WORK_DAYS_PER_WEEK; b--;
             }
             runs.push(weeks);
           }
@@ -815,7 +816,7 @@ function addTooltipListeners() {
             while (b>0 && weeks<100) {
               let v = testCTs[Math.floor(Math.random()*testCTs.length)];
               if (v<0.1) v=0.1;
-              weeks += v/7; b--;
+              weeks += v/WORK_DAYS_PER_WEEK; b--;
             }
             runs.push(weeks);
           }
