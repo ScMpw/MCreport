@@ -246,12 +246,22 @@ function addTooltipListeners() {
           }
         }
         const jql = `${boardJql ? '('+boardJql+') AND ' : ''}statusCategory = Done AND resolutiondate >= startOfWeek(-11)`;
-        const enc = encodeURIComponent(jql);
         let startAt = 0;
         let issues = [];
         while (true) {
-          const url = `https://${jiraDomain}/rest/api/3/search?jql=${enc}&fields=resolutiondate&startAt=${startAt}&maxResults=100`;
-          const resp = await fetch(url, { credentials: "include" });
+          const url = `https://${jiraDomain}/rest/api/3/search`;
+          const body = JSON.stringify({
+            jql,
+            fields: ["resolutiondate"],
+            startAt,
+            maxResults: 100,
+          });
+          const resp = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body,
+          });
           if (!resp.ok) break;
           const data = await resp.json();
           issues = issues.concat(data.issues || []);
