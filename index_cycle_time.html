@@ -269,7 +269,7 @@ function addTooltipListeners() {
         let startAt = 0;
         let issues = [];
         while (true) {
-          const url = `https://${jiraDomain}/rest/api/3/search?jql=${enc}&fields=key,resolutiondate&startAt=${startAt}&maxResults=100`;
+          const url = `https://${jiraDomain}/rest/api/3/search?jql=${enc}&fields=key,resolution,resolutiondate&startAt=${startAt}&maxResults=100`;
           const resp = await fetch(url, { credentials: "include" });
           if (!resp.ok) break;
           const data = await resp.json();
@@ -280,6 +280,8 @@ function addTooltipListeners() {
         const weeks = new Array(12).fill(0).map(()=>({cts:[], keys:[]}));
         const current = weekStart(new Date());
         for (const it of issues) {
+          const resName = it.fields && it.fields.resolution && it.fields.resolution.name;
+          if (!validResolution(resName)) continue;
           const dateStr = it.fields && it.fields.resolutiondate;
           if (!dateStr) continue;
           const w = weekStart(dateStr);
