@@ -1022,8 +1022,9 @@ function addTooltipListeners() {
       return status.includes("done") || status.includes("closed");
     }
     function validResolution(res) {
-      res = (res||'').toLowerCase();
-      return !res || res === 'done' || res === 'implemented/done' || res === 'implemented done';
+      res = (res || '').toLowerCase().trim();
+      if (!res) return true;
+      return res === 'done' || res === 'implemented/done' || res === 'implemented done';
     }
     function statusGroup(s) {
       s = (s||"").toLowerCase();
