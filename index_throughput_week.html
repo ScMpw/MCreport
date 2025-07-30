@@ -116,7 +116,6 @@
           <option value="index.html">Velocity</option>
           <option value="index_cycle_time.html">Cycle Time</option>
           <option value="index_throughput.html">Throughput</option>
-          <option value="index_throughput_week.html">Weekly Throughput</option>
         </select>
       </label>
     </div>
@@ -136,11 +135,11 @@
     <div id="loadingMessage" style="display:none; font-weight:bold; margin:10px 0;"></div>
 
     <div id="configSection" style="display:none;">
-      <div class="section-title">Velocity History (editable, last 6 closed sprints):</div>
-      <div id="velocityWrap"></div>
+      <div class="section-title">Throughput History (issues per week, last 12 weeks):</div>
+      <div id="throughputWrap"></div>
       <div style="margin:0.9em 0 1.6em 0;">
-        <label>Target Sprints for Delivery:
-          <input id="targetSprintsInput" type="number" min="1" max="20" value="4" style="width:60px">
+        <label>Target Weeks for Delivery:
+          <input id="targetWeeksInput" type="number" min="1" max="20" value="4" style="width:60px">
         </label>
         <button class="btn" onclick="renderEpicSummary()">Update Report</button>
         <button class="btn" onclick="exportPDF()">Download PDF Report</button>
@@ -153,16 +152,18 @@
   <script>
 let jiraDomain = '', boardNum = '', sprints = [], closedSprintsSorted = [];
 let allEpics = {}, epicStories = {}, epicStoriesBaseline = {};
-let velocityArr = [];
-let avgVelocity = 0;
-let selectedSprintId = '', selectedSprintName = '', targetSprints = 4;
+let throughputArr = [];
+let throughputIssues = [];
+let throughputWeekNums = [];
+let avgThroughput = 0;
+let selectedSprintId = '', selectedSprintName = '', targetWeeks = 4;
 let baselineSprintId = '';
-document.getElementById('versionSelect').value = 'index.html';
+document.getElementById('versionSelect').value = 'index_throughput_week.html';
 function switchVersion(page) {
-  if (page !== 'index.html') location.href = page;
+  if (page !== 'index_throughput_week.html') location.href = page;
 }
-let epicAllocations = {}, epicBacklogs = {}, epicRequiredAlloc = {}, epicRequiredSP = {},
-    epicRequiredSPPrev = {};
+let epicAllocations = {}, epicBacklogs = {}, epicRequiredAlloc = {}, epicRequiredIssues = {},
+    epicRequiredIssuesPrev = {};
 let epicForecastResults = {};
 let historicData = [];
 let storyFilters = { current:true, previous:true, new:true, open:true, removed:true };
@@ -212,43 +213,75 @@ function addTooltipListeners() {
     renderFilterOptions();
     addTooltipListeners();
 
-    // --- NEW: FETCH JIRA VELOCITY REPORT (Greenhopper REST API) ---
-    async function fetchVelocityFromReport(jiraDomain, boardNum) {
-      const url = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/velocity?rapidViewId=${boardNum}`;
-      const resp = await fetch(url, { credentials: "include" });
-      if (!resp.ok) {
-        alert("Failed to fetch velocity report. Are you logged in to Jira?");
+    // --- NEW: FETCH JIRA THROUGHPUT DATA (completed issues per week) ---
+    async function fetchThroughputFromReport(jiraDomain, boardNum) {
+      function weekStart(dt) {
+        const d = new Date(dt);
+        const day = d.getDay();
+        const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+        d.setDate(diff); d.setHours(0,0,0,0);
+        return d;
+      }
+      function isoWeekNumber(dt) {
+        const d = new Date(Date.UTC(dt.getFullYear(), dt.getMonth(), dt.getDate()));
+        const day = d.getUTCDay() || 7;
+        d.setUTCDate(d.getUTCDate() + 4 - day);
+        const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+        return Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
+      }
+      try {
+        const cfgUrl = `https://${jiraDomain}/rest/agile/1.0/board/${boardNum}/configuration`;
+        const cfgResp = await fetch(cfgUrl, { credentials: "include" });
+        if (!cfgResp.ok) throw new Error('cfg');
+        const cfg = await cfgResp.json();
+        const filterId = cfg.filter && cfg.filter.id;
+        let boardJql = '';
+        if (filterId) {
+          const fResp = await fetch(`https://${jiraDomain}/rest/api/3/filter/${filterId}`, { credentials: "include" });
+          if (fResp.ok) {
+            const fd = await fResp.json();
+            boardJql = (fd.jql || '').replace(/ORDER BY[\s\S]*$/i, '').trim();
+          }
+        }
+        const jql = `${boardJql ? '('+boardJql+') AND ' : ''}issuetype in (Story,Bug,Task) AND statusCategory = Done AND resolutiondate >= startOfWeek(-11)`;
+        const enc = encodeURIComponent(jql);
+        let startAt = 0;
+        let issues = [];
+        while (true) {
+          const url = `https://${jiraDomain}/rest/api/3/search?jql=${enc}&fields=key,resolution,resolutiondate&startAt=${startAt}&maxResults=100`;
+          const resp = await fetch(url, { credentials: "include" });
+          if (!resp.ok) break;
+          const data = await resp.json();
+          issues = issues.concat(data.issues || []);
+          startAt += 100;
+          if (startAt >= (data.total || 0)) break;
+        }
+        const weeks = new Array(12).fill(0).map(()=>[]);
+        const current = weekStart(new Date());
+        throughputWeekNums = [];
+        for (let i=0;i<12;i++) {
+          const d = new Date(current);
+          d.setDate(d.getDate() - (11-i)*7);
+          throughputWeekNums.push(isoWeekNumber(d));
+        }
+        for (const it of issues) {
+          const resName = it.fields && it.fields.resolution && it.fields.resolution.name;
+          if (!validResolution(resName)) continue;
+          const dateStr = it.fields && it.fields.resolutiondate;
+          if (!dateStr) continue;
+          const w = weekStart(dateStr);
+          const diff = Math.floor((current - w) / (7*24*60*60*1000));
+          if (diff >=0 && diff < 12) weeks[11-diff].push(it.key);
+        }
+        throughputIssues = weeks;
+        const counts = weeks.map(w=>w.length);
+        console.log('Weekly throughput:', counts);
+        return counts;
+      } catch (e) {
+        console.error('Failed to fetch weekly throughput', e);
+        alert('Failed to fetch throughput report. Are you logged in to Jira?');
         return [];
       }
-      const data = await resp.json();
-      // Attempt to read velocity values from the standard report
-      let closed = (data.sprints || []).filter(s => s.state === "CLOSED");
-      closed.sort((a, b) => {
-        const ad = a.endDate || a.completeDate || a.startDate || '';
-        const bd = b.endDate || b.completeDate || b.startDate || '';
-        return ad && bd ? new Date(bd) - new Date(ad) : 0;
-      });
-      closed = closed.slice(0, 6);
-      let velocities = closed.map(s => {
-        const entry = data.velocityStatEntries[s.id];
-        return entry ? entry.completed.value : 0;
-      });
-      console.log('Most recent 6 sprint velocities:', velocities, closed.map(s=>s.name));
-
-      // Fallback: if fewer than 3 velocities are non-zero, try sprint reports
-      if (velocities.filter(v => v > 0).length < 3) {
-        velocities = await Promise.all(closed.map(async s => {
-          const surl = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/sprintreport?rapidViewId=${boardNum}&sprintId=${s.id}`;
-          try {
-            const r = await fetch(surl, { credentials: "include" });
-            if (!r.ok) return 0;
-            const d = await r.json();
-            return d.contents?.completedIssuesEstimateSum?.value || 0;
-          } catch (e) { return 0; }
-        }));
-        console.log('Fallback sprint report velocities:', velocities);
-      }
-      return velocities;
     }
 
     async function fetchBoardTeam() {
@@ -373,7 +406,7 @@ function addTooltipListeners() {
       return 'story-status-open';
    }
 
-    // --- MAIN DATA FETCH (Epics/Stories/Velocity) ---
+    // --- MAIN DATA FETCH (Epics/Stories/Throughput) ---
     async function fetchAll() {
       selectedSprintId = document.getElementById('sprintSelect').value;
       selectedSprintName = document.getElementById('sprintSelect').selectedOptions[0].textContent;
@@ -412,7 +445,9 @@ function addTooltipListeners() {
         try {
           const resp = await fetch(urlEpic, { credentials: "include" });
           const data = await resp.json();
-          epicStories[epicKey] = (data.issues || []).map(story => ({
+          epicStories[epicKey] = (data.issues || [])
+            .filter(story => validResolution(story.fields.resolution && story.fields.resolution.name))
+            .map(story => ({
             key: story.key,
             summary: story.fields.summary,
             status: story.fields.status && story.fields.status.name,
@@ -440,6 +475,7 @@ function addTooltipListeners() {
               let resolved = story.fields.resolutiondate ? new Date(story.fields.resolutiondate) : null;
               let baseSprint = closedSprintsSorted.find(s=>s.id==baselineSprintId);
               let end = baseSprint ? new Date(baseSprint.endDate) : null;
+              if (!validResolution(story.fields.resolution && story.fields.resolution.name)) return false;
               return created <= end && (!resolved || resolved > end);
             }).map(story => ({
             key: story.key,
@@ -464,21 +500,26 @@ function addTooltipListeners() {
       });
       teamFilters = {};
       allTeams.forEach(t => { teamFilters[t] = false; });
-      // --- FETCH HISTORICAL VELOCITY FROM JIRA REPORT ---
-      velocityArr = await fetchVelocityFromReport(jiraDomain, boardNum);
+      // --- FETCH HISTORICAL THROUGHPUT FROM JIRA REPORT ---
+      throughputArr = await fetchThroughputFromReport(jiraDomain, boardNum);
       document.getElementById('configSection').style.display = '';
-      renderVelocityInputs();
+      renderThroughputInputs();
       renderEpicSummary();
       hideLoading();
     }
 
-    // --- VELOCITY INPUTS ---
-    function renderVelocityInputs() {
-      let vhtml = velocityArr.map((v, i) =>
-        `<input class="editarr" type="number" min="0" value="${v}" onchange="editVelocity(this,${i})">`).join(', ');
-      document.getElementById('velocityWrap').innerHTML = vhtml;
+    // --- THROUGHPUT INPUTS ---
+    function renderThroughputInputs() {
+      let vhtml = throughputArr.map((v, i) => {
+        const issues = (throughputIssues[i] || []).join(', ');
+        const wk = throughputWeekNums[i] || '';
+        const name = wk ? `KW ${wk}` : `Week ${i+1}`;
+        return `<span style="white-space:nowrap;">${name}: <input class="editarr" type="number" min="0" value="${v}" onchange="editThroughput(this,${i})"><span class="info-icon" data-tip="${issues}" title="${issues}">&#9432;<span class="tooltip"></span></span></span>`;
+      }).join(', ');
+      document.getElementById('throughputWrap').innerHTML = vhtml;
+      addTooltipListeners();
     }
-    function editVelocity(inp, idx) { velocityArr[idx] = Number(inp.value) || 0; }
+    function editThroughput(inp, idx) { throughputArr[idx] = Number(inp.value) || 0; }
 
     function updateHistoricTotals() {
       const entry = {
@@ -606,13 +647,13 @@ function addTooltipListeners() {
 
     // --- MAIN REPORT RENDER ---
     function renderEpicSummary(skipHistory = false) {
-      targetSprints = Number(document.getElementById('targetSprintsInput').value) || 4;
-      let velocity = velocityArr.filter(v=>v>0);
-      if (velocity.length<3) {
-        document.getElementById('epicSummary').innerHTML = '<div class="warn">Please set at least 3 recent velocity values.</div>';
+      targetWeeks = Number(document.getElementById('targetWeeksInput').value) || 4;
+      let throughput = throughputArr.filter(v=>v>0);
+      if (throughput.length<3) {
+        document.getElementById('epicSummary').innerHTML = '<div class="warn">Please set at least 3 recent throughput values.</div>';
         return;
       }
-      avgVelocity = velocity.reduce((a,b)=>a+b,0)/velocity.length;
+      avgThroughput = throughput.reduce((a,b)=>a+b,0)/throughput.length;
       const baselineSprintObj = closedSprintsSorted.find(s=>s.id==baselineSprintId);
       const baselineEnd = baselineSprintObj ? new Date(baselineSprintObj.endDate) : null;
       epicBacklogs = {};
@@ -621,10 +662,11 @@ function addTooltipListeners() {
         let stories = epicStories[epicKey]||[];
         let backlog = stories.filter(st => {
           if (isDone(st.status)) return false;
+          if (!validResolution(st.resolution)) return false;
           let teams = (st.team||'').split(',').map(t=>t.trim()).filter(Boolean);
           if (!teams.length || !teams.some(t=>teamFilters[t])) return false;
           return true;
-        }).reduce((a,b)=>a+b.points,0);
+        }).length;
         epicBacklogs[epicKey] = backlog;
         totalBacklog += backlog;
       });
@@ -637,53 +679,53 @@ function addTooltipListeners() {
       applyStoryFilters();
       epicForecastResults = {};
       epicRequiredAlloc = {};
-      epicRequiredSP = {};
-      epicRequiredSPPrev = {};
+      epicRequiredIssues = {};
+      epicRequiredIssuesPrev = {};
       Object.keys(epicStories).forEach(epicKey => {
         let stories = epicStories[epicKey]||[];
         let backlogPts = epicBacklogs[epicKey];
         if (backlogPts <= 0) {
           epicForecastResults[epicKey] = [0];
           epicRequiredAlloc[epicKey] = { "75": 0, "95": 0 };
-          epicRequiredSP[epicKey] = { "75": 0, "95": 0 };
+          epicRequiredIssues[epicKey] = { "75": 0, "95": 0 };
           return;
         }
         let alloc = epicAllocations[epicKey];
-        let allocVels = velocity.map(v=>v*alloc/100);
+        let allocTPs = throughput.map(v=>v*alloc/100);
         let mcRuns = [];
         for (let i=0; i<10000; i++) {
-          let b = backlogPts, s=0;
-          while (b>0 && s<100) {
-            let v = allocVels[Math.floor(Math.random()*allocVels.length)];
+          let b = backlogPts, w=0;
+          while (b>0 && w<100) {
+            let v = allocTPs[Math.floor(Math.random()*allocTPs.length)];
             if (v<1) v=1;
-            b -= v; s++;
+            b -= v; w++;
           }
-          mcRuns.push(s);
+          mcRuns.push(w);
         }
         mcRuns.sort((a,b)=>a-b);
         epicForecastResults[epicKey] = mcRuns;
         let allocNeeded = { "75": null, "95": null };
         for (let pct=1;pct<=100;pct++) {
-          let testVels = velocity.map(v=>v*pct/100);
+          let testTPs = throughput.map(v=>v*pct/100);
           let runs = [];
           for (let i=0;i<5000;i++) {
-            let b = backlogPts, s=0;
-            while (b>0 && s<100) {
-              let v = testVels[Math.floor(Math.random()*testVels.length)];
+            let b = backlogPts, w=0;
+            while (b>0 && w<100) {
+              let v = testTPs[Math.floor(Math.random()*testTPs.length)];
               if (v<1) v=1;
-              b -= v; s++;
+              b -= v; w++;
             }
-            runs.push(s);
+            runs.push(w);
           }
           runs.sort((a,b)=>a-b);
-          if (allocNeeded["75"] === null && runs[Math.floor(0.75*runs.length)]<=targetSprints) allocNeeded["75"] = pct;
-          if (allocNeeded["95"] === null && runs[Math.floor(0.95*runs.length)]<=targetSprints) allocNeeded["95"] = pct;
+          if (allocNeeded["75"] === null && runs[Math.floor(0.75*runs.length)]<=targetWeeks) allocNeeded["75"] = pct;
+          if (allocNeeded["95"] === null && runs[Math.floor(0.95*runs.length)]<=targetWeeks) allocNeeded["95"] = pct;
           if (allocNeeded["75"] && allocNeeded["95"]) break;
         }
         epicRequiredAlloc[epicKey] = allocNeeded;
-      epicRequiredSP[epicKey] = {
-        "75": allocNeeded["75"] ? Math.ceil(avgVelocity * allocNeeded["75"] / 100) : null,
-        "95": allocNeeded["95"] ? Math.ceil(avgVelocity * allocNeeded["95"] / 100) : null
+      epicRequiredIssues[epicKey] = {
+        "75": allocNeeded["75"] ? Math.ceil(avgThroughput * allocNeeded["75"] / 100) : null,
+        "95": allocNeeded["95"] ? Math.ceil(avgThroughput * allocNeeded["95"] / 100) : null
       };
     });
 
@@ -692,35 +734,36 @@ function addTooltipListeners() {
         let backlogPts = stories.filter(st => {
           let teams = (st.team||'').split(',').map(t=>t.trim()).filter(Boolean);
           if (!teams.length || !teams.some(t=>teamFilters[t])) return false;
+          if (!validResolution(st.resolution)) return false;
           let res = st.resolved ? new Date(st.resolved) : null;
           if (baselineEnd && res && res <= baselineEnd) return false;
           return true;
-        }).reduce((a,b)=>a+b.points,0);
+        }).length;
         if (backlogPts <= 0) {
-          epicRequiredSPPrev[epicKey] = { "75": 0, "95": 0 };
+          epicRequiredIssuesPrev[epicKey] = { "75": 0, "95": 0 };
           return;
         }
         let allocNeeded = { "75": null, "95": null };
         for (let pct=1;pct<=100;pct++) {
-          let testVels = velocity.map(v=>v*pct/100);
+          let testTPs = throughput.map(v=>v*pct/100);
           let runs = [];
           for (let i=0;i<5000;i++) {
-            let b = backlogPts, s=0;
-            while (b>0 && s<100) {
-              let v = testVels[Math.floor(Math.random()*testVels.length)];
+            let b = backlogPts, w=0;
+            while (b>0 && w<100) {
+              let v = testTPs[Math.floor(Math.random()*testTPs.length)];
               if (v<1) v=1;
-              b -= v; s++;
+              b -= v; w++;
             }
-            runs.push(s);
+            runs.push(w);
           }
           runs.sort((a,b)=>a-b);
-          if (allocNeeded["75"] === null && runs[Math.floor(0.75*runs.length)]<=targetSprints) allocNeeded["75"] = pct;
-          if (allocNeeded["95"] === null && runs[Math.floor(0.95*runs.length)]<=targetSprints) allocNeeded["95"] = pct;
+          if (allocNeeded["75"] === null && runs[Math.floor(0.75*runs.length)]<=targetWeeks) allocNeeded["75"] = pct;
+          if (allocNeeded["95"] === null && runs[Math.floor(0.95*runs.length)]<=targetWeeks) allocNeeded["95"] = pct;
           if (allocNeeded["75"] && allocNeeded["95"]) break;
         }
-        epicRequiredSPPrev[epicKey] = {
-          "75": allocNeeded["75"] ? Math.ceil(avgVelocity * allocNeeded["75"] / 100) : null,
-          "95": allocNeeded["95"] ? Math.ceil(avgVelocity * allocNeeded["95"] / 100) : null
+        epicRequiredIssuesPrev[epicKey] = {
+          "75": allocNeeded["75"] ? Math.ceil(avgThroughput * allocNeeded["75"] / 100) : null,
+          "95": allocNeeded["95"] ? Math.ceil(avgThroughput * allocNeeded["95"] / 100) : null
         };
       });
 
@@ -741,7 +784,7 @@ function addTooltipListeners() {
         ? `<span class="warn">Required allocations exceed team capacity. Not all epics likely to finish.</span>`
         : `<span class="success">Required allocations within team capacity.</span>`;
       document.getElementById('requiredSummary').innerHTML =
-        `<div><b>Sum of required allocation to finish in ${targetSprints} sprints:</b><span class="info-icon" data-tip="Combined team capacity needed across all epics to meet the target sprint goal.">&#9432;<span class="tooltip"></span></span> `+
+        `<div><b>Sum of required allocation to finish in ${targetWeeks} weeks:</b><span class="info-icon" data-tip="Combined team capacity needed across all epics to meet the target goal.">&#9432;<span class="tooltip"></span></span> `+
         `${totalReq75}% at 75% confidence &nbsp; | &nbsp; ${totalReq95}% at 95% confidence`+
         `<br>${reqWarn}</div>`;
       // The total allocation info is still calculated for simulations but no longer displayed in the UI
@@ -827,34 +870,34 @@ function addTooltipListeners() {
                 </table>
               </div>
               <div style="margin-bottom:8px;">
-                <b>Required allocation${unestimated>0?'+':''} to finish in ${targetSprints} sprints:</b>
+                <b>Required allocation${unestimated>0?'+':''} to finish in ${targetWeeks} weeks:</b>
                 <ul style="margin:3px 0 0 0;padding-left:1.3em;">
                   ${(() => {
                     const fmt = pct => {
-                      const sp = epicRequiredSP[epicKey][pct];
+                      const sp = epicRequiredIssues[epicKey][pct];
                       if (sp != null) {
                         const plus = unestimated>0?'+':'';
-                        return `${sp}${plus} SP/sprint (${required[pct]}${plus}%)`;
+                        return `${sp}${plus} issues/week (${required[pct]}${plus}%)`;
                       }
                       return '<span class="warn">Over 100%</span>';
                     };
                     const prev = pct => {
-                      const sp = (epicRequiredSPPrev[epicKey]||{})[pct];
-                      return sp != null ? `${sp} SP` : 'n/a';
+                      const sp = (epicRequiredIssuesPrev[epicKey]||{})[pct];
+                      return sp != null ? `${sp} issues` : 'n/a';
                     };
                     return [
-                      `<li>75% confidence: ${fmt("75")} <span style="font-size:0.9em;color:#555;">(last sprint: ${prev("75")})</span><span class="info-icon" data-tip="Estimated capacity per sprint for a 75% chance of finishing on time. Calculated using Monte Carlo simulations.">&#9432;<span class="tooltip"></span></span></li>`,
-                      `<li>95% confidence: ${fmt("95")} <span style="font-size:0.9em;color:#555;">(last sprint: ${prev("95")})</span><span class="info-icon" data-tip="Capacity needed for a 95% likelihood of completion within the target sprints. Based on Monte Carlo results.">&#9432;<span class="tooltip"></span></span></li>`
+                      `<li>75% confidence: ${fmt("75")} <span style="font-size:0.9em;color:#555;">(last week: ${prev("75")})</span><span class="info-icon" data-tip="Estimated capacity per week for a 75% chance of finishing on time. Calculated using Monte Carlo simulations.">&#9432;<span class="tooltip"></span></span></li>`,
+                      `<li>95% confidence: ${fmt("95")} <span style="font-size:0.9em;color:#555;">(last week: ${prev("95")})</span><span class="info-icon" data-tip="Capacity needed for a 95% likelihood of completion within the target weeks. Based on Monte Carlo results.">&#9432;<span class="tooltip"></span></span></li>`
                     ].join('');
                   })()}
                 </ul>
               </div>
               <div style="font-size:0.99em;">
-                ${probRows[1][1] > targetSprints ?
-                  `<span class="warn">At 75% confidence, this epic is <b>not likely</b> to finish in ${targetSprints} sprints.<br>
-                  More allocation or velocity needed.</span>`
+                ${probRows[1][1] > targetWeeks ?
+                  `<span class="warn">At 75% confidence, this epic is <b>not likely</b> to finish in ${targetWeeks} weeks.<br>
+                  More allocation or throughput needed.</span>`
                   :
-                  `<span class="success">On track to finish in ${targetSprints} sprints at 75% confidence.</span>`
+                  `<span class="success">On track to finish in ${targetWeeks} weeks at 75% confidence.</span>`
                 }
               </div>
             </div>
@@ -944,6 +987,26 @@ function addTooltipListeners() {
     function isDone(status) {
       status = (status||'').toLowerCase();
       return status.includes("done") || status.includes("closed");
+    }
+    function validResolution(res) {
+      if (!res) return true;
+      res = res.toLowerCase().trim();
+      const invalid = [
+        'duplicate',
+        "won't do", 'wont do',
+        "won't fix", 'wont fix',
+        'reject', 'rejected',
+        'canceled', 'cancelled',
+        'cannot reproduce', "can't reproduce",
+        'other'
+      ];
+      if (invalid.some(v => res.includes(v))) return false;
+      const valid = [
+        'done',
+        'implemented/done', 'implemented done',
+        'fixed', 'resolved', 'complete', 'completed'
+      ];
+      return valid.some(v => res.includes(v));
     }
     function statusGroup(s) {
       s = (s||"").toLowerCase();
