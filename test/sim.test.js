@@ -10,7 +10,7 @@ describe('calculateWeeklyThroughput', () => {
       { resolutiondate: '2024-01-28' }, // current week Sunday
       { resolutiondate: null },
     ];
-    const counts = calculateWeeklyThroughput(issues, new Date('2024-01-29'));
+    const counts = calculateWeeklyThroughput(issues, new Date('2024-01-28'));
     // last value is most recent week
     expect(counts[11]).toBe(2);
     expect(counts[10]).toBe(2);

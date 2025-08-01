@@ -1,0 +1,29 @@
+[
+  {
+    "id": "ISSUE-1",
+    "team": "Alpha",
+    "product": "WebApp",
+    "project": "MC",
+    "created": "2025-07-01",
+    "resolved": "2025-07-05",
+    "points": 3
+  },
+  {
+    "id": "ISSUE-2",
+    "team": "Alpha",
+    "product": "WebApp",
+    "project": "MC",
+    "created": "2025-07-03",
+    "resolved": "2025-07-10",
+    "points": 5
+  },
+  {
+    "id": "ISSUE-3",
+    "team": "Beta",
+    "product": "Mobile",
+    "project": "MC",
+    "created": "2025-07-02",
+    "resolved": "2025-07-08",
+    "points": 8
+  }
+]

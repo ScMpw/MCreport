@@ -12,3 +12,14 @@ npm test
 ```
 
 The `npm test` command will run all unit tests located in the `test/` directory.
+
+## Overview CLI
+
+A small Node.js script (`src/overview.js`) provides aggregated metrics for issues.
+It calculates average cycle time, throughput per week and velocity per week.
+
+Usage:
+```bash
+node src/overview.js sample-issues.json --team Alpha
+```
+This reads issues from `sample-issues.json` and prints metrics for the selected team.
