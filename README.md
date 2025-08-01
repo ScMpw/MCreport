@@ -23,3 +23,10 @@ Usage:
 node src/overview.js sample-issues.json --team Alpha
 ```
 This reads issues from `sample-issues.json` and prints metrics for the selected team.
+
+## Overview Web Page
+
+An HTML page (`index_overview.html`) displays the same metrics in the browser.
+It loads issues from `sample-issues.json` and lets you filter by team, product
+and project. The page shows average cycle time, weekly throughput, velocity and
+lists the issues grouped by resolution week.
