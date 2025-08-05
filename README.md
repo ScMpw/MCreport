@@ -20,13 +20,11 @@ It calculates average cycle time, throughput per week and velocity per week.
 
 Usage:
 ```bash
-node src/overview.js sample-issues.json --team Alpha
+node src/overview.js <issues.json> --team Alpha
 ```
-This reads issues from `sample-issues.json` and prints metrics for the selected team.
+Provide a JSON file exported from Jira as `<issues.json>` and metrics will be printed for the selected team.
 
 ## Overview Web Page
 
 An HTML page (`index_overview.html`) displays the same metrics in the browser.
-It loads issues from `sample-issues.json` and lets you filter by team, product
-and project. The page shows average cycle time, weekly throughput, velocity and
-lists the issues grouped by resolution week.
+Enter your Jira domain and a JQL query to load issues directly from Jira. The page lets you filter by team, product and project and shows average cycle time, weekly throughput, velocity and lists the issues grouped by resolution week.
