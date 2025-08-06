@@ -73,8 +73,12 @@
       jiraDomain = document.getElementById('jiraDomain').value.trim();
       if (!jiraDomain) return alert('Enter Jira domain');
       try {
-        const resp = await fetch(`https://${jiraDomain}/rest/agile/1.0/board?maxResults=1000`, { credentials:'include' });
-        if (!resp.ok) return;
+        const resp = await fetch(`https://${jiraDomain}/rest/agile/1.0/board?maxResults=1000`, { credentials: 'include' });
+        if (!resp.ok) {
+          console.error('Failed to fetch boards', resp.status);
+          alert('Failed to load boards. Verify Jira domain and login.');
+          return;
+        }
         const data = await resp.json();
         const boards = (data.values || []).sort((a,b)=>a.name.localeCompare(b.name));
         const sel = document.getElementById('boardSelect');
@@ -90,7 +94,10 @@
         }
         // eslint-disable-next-line no-undef
         sel.choicesInstance = new Choices(sel);
-      } catch (e) {}
+      } catch (e) {
+        console.error('Error loading boards', e);
+        alert('Error loading boards. Check console for details.');
+      }
     }
 
     async function fetchIssuesForSprint(boardId, sprintId) {
@@ -133,7 +140,6 @@
       document.getElementById('resultTable').style.display = '';
     }
 
-    loadBoards();
   </script>
 </body>
 </html>
