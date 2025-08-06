@@ -8,6 +8,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css" />
   <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body { background: #f7f8fa; font-family: 'Inter', Arial, sans-serif; margin: 0; padding: 0; }
     .main { max-width: 950px; margin: 30px auto 40px auto; background: #fff; border-radius: 18px; box-shadow: 0 2px 12px #d1d5db70; padding: 36px 32px; }
@@ -61,6 +62,8 @@
       </thead>
       <tbody></tbody>
     </table>
+    <canvas id="chart" style="max-width:100%; margin-top:20px; display:none;"></canvas>
+    <div id="details" style="margin-top:20px;"></div>
   </div>
 
   <script src="src/disruption.js"></script>
@@ -182,7 +185,7 @@
       let startAt = 0;
       const maxResults = 100;
       while (true) {
-        const url = `https://${jiraDomain}/rest/api/3/search?jql=${jql}&fields=customfield_10016&expand=changelog&startAt=${startAt}&maxResults=${maxResults}`;
+        const url = `https://${jiraDomain}/rest/api/3/search?jql=${jql}&fields=customfield_10016,customfield_10002&expand=changelog&startAt=${startAt}&maxResults=${maxResults}`;
         try {
           const resp = await fetch(url, { credentials: 'include' });
           if (!resp.ok) {
@@ -219,8 +222,10 @@
         const sprintObj = sprints.find(s => String(s.id) === String(sprintId));
         const issues = await fetchIssuesForSprint(sprintId);
         if (issues === null) { hideLoading(); return; }
-        const velocity = issues.reduce((sum, it) => sum + (it.fields?.customfield_10016 || 0), 0);
+        const velocity = issues.reduce((sum, it) =>
+          sum + (it.fields?.customfield_10016 || it.fields?.customfield_10002 || 0), 0);
         const events = issues.map(i => ({
+          key: i.key,
           changelog: (i.changelog?.histories || []).map(h => ({
             field: h.items[0]?.field,
             from: h.items[0]?.fromString,
@@ -246,7 +251,40 @@
         tbody.appendChild(tr);
       });
       document.getElementById('resultTable').style.display = '';
+      renderChart(results);
+      renderDetails(results);
       hideLoading();
+    }
+
+    function renderDetails(results) {
+      const container = document.getElementById('details');
+      container.innerHTML = '';
+      results.forEach(r => {
+        const div = document.createElement('div');
+        div.innerHTML = `<h3>${r.sprint}</h3>` +
+          `<b>Pulled:</b> ${r.details.pulled.join(', ') || 'None'}<br>` +
+          `<b>Blocked:</b> ${r.details.blocked.join(', ') || 'None'}<br>` +
+          `<b>Moved:</b> ${r.details.moved.join(', ') || 'None'}<br>` +
+          `<b>Type Changed:</b> ${r.details.typeChanged.join(', ') || 'None'}<br>`;
+        container.appendChild(div);
+      });
+    }
+
+    function renderChart(results) {
+      const canvas = document.getElementById('chart');
+      canvas.style.display = '';
+      const ctx = canvas.getContext('2d');
+      const labels = results.map(r => r.sprint);
+      const data = {
+        labels,
+        datasets: [
+          { label: 'Pulled', data: results.map(r => r.pulled), backgroundColor: '#f87171' },
+          { label: 'Blocked', data: results.map(r => r.blocked), backgroundColor: '#fbbf24' },
+          { label: 'Moved', data: results.map(r => r.moved), backgroundColor: '#60a5fa' },
+          { label: 'Type Changed', data: results.map(r => r.typeChanged), backgroundColor: '#a78bfa' }
+        ]
+      };
+      new Chart(ctx, { type: 'bar', data, options: { responsive: true, scales: { y: { beginAtZero: true } } } });
     }
 
   </script>
