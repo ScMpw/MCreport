@@ -34,6 +34,10 @@
       </label>
     </div>
     <div style="margin-bottom:20px;">
+      <label>Jira Domain: <input id="jiraDomain" value="aldi-sued.atlassian.net" size="28"></label>
+      <button class="btn" onclick="loadBoards()">Load Boards</button>
+    </div>
+    <div style="margin-bottom:20px;">
       <label for="boardSelect" class="section-title">Select Team Board:</label>
       <select id="boardSelect"></select>
       <button class="btn" onclick="loadReport()">Load Report</button>
@@ -56,7 +60,7 @@
 
   <script src="src/disruption.js"></script>
   <script>
-    const jiraDomain = location.host;
+    let jiraDomain = '';
 
     function switchVersion(page) {
       if (location.pathname.endsWith(page)) return;
@@ -66,19 +70,26 @@
     document.getElementById('versionSelect').value = 'index_disruption.html';
 
     async function loadBoards() {
+      jiraDomain = document.getElementById('jiraDomain').value.trim();
+      if (!jiraDomain) return alert('Enter Jira domain');
       try {
         const resp = await fetch(`https://${jiraDomain}/rest/agile/1.0/board?maxResults=1000`, { credentials:'include' });
         if (!resp.ok) return;
         const data = await resp.json();
         const boards = (data.values || []).sort((a,b)=>a.name.localeCompare(b.name));
         const sel = document.getElementById('boardSelect');
+        sel.innerHTML = '';
         boards.forEach(b => {
           const opt = document.createElement('option');
           opt.value = b.id;
           opt.textContent = `${b.name} (${b.location.projectKey})`;
           sel.appendChild(opt);
         });
-        new Choices(sel);
+        if (sel.choicesInstance) {
+          sel.choicesInstance.destroy();
+        }
+        // eslint-disable-next-line no-undef
+        sel.choicesInstance = new Choices(sel);
       } catch (e) {}
     }
 
