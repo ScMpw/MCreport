@@ -66,25 +66,20 @@
     document.getElementById('versionSelect').value = 'index_disruption.html';
 
     async function loadBoards() {
-      const projects = ['ANP','BF','NPSCO'];
-      const boards = [];
-      for (const p of projects) {
-        try {
-          const resp = await fetch(`https://${jiraDomain}/rest/agile/1.0/board?projectKeyOrId=${p}`, { credentials:'include' });
-          if (!resp.ok) continue;
-          const data = await resp.json();
-          boards.push(...data.values);
-        } catch (e) {}
-      }
-      boards.sort((a,b)=>a.name.localeCompare(b.name));
-      const sel = document.getElementById('boardSelect');
-      boards.forEach(b => {
-        const opt = document.createElement('option');
-        opt.value = b.id;
-        opt.textContent = `${b.name} (${b.location.projectKey})`;
-        sel.appendChild(opt);
-      });
-      new Choices(sel);
+      try {
+        const resp = await fetch(`https://${jiraDomain}/rest/agile/1.0/board?maxResults=1000`, { credentials:'include' });
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const boards = (data.values || []).sort((a,b)=>a.name.localeCompare(b.name));
+        const sel = document.getElementById('boardSelect');
+        boards.forEach(b => {
+          const opt = document.createElement('option');
+          opt.value = b.id;
+          opt.textContent = `${b.name} (${b.location.projectKey})`;
+          sel.appendChild(opt);
+        });
+        new Choices(sel);
+      } catch (e) {}
     }
 
     async function fetchIssuesForSprint(boardId, sprintId) {
