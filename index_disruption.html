@@ -35,11 +35,11 @@
     </div>
     <div style="margin-bottom:20px;">
       <label>Jira Domain: <input id="jiraDomain" value="aldi-sued.atlassian.net" size="28"></label>
-      <button class="btn" onclick="loadBoards()">Load Boards</button>
+      <button class="btn" onclick="loadTeams()">Load Teams</button>
     </div>
     <div style="margin-bottom:20px;">
-      <label for="boardSelect" class="section-title">Select Team Board:</label>
-      <select id="boardSelect"></select>
+      <label for="teamSelect" class="section-title">Select Responsible Team:</label>
+      <select id="teamSelect"></select>
       <button class="btn" onclick="loadReport()">Load Report</button>
     </div>
     <div id="stats"></div>
@@ -69,25 +69,24 @@
 
     document.getElementById('versionSelect').value = 'index_disruption.html';
 
-    async function loadBoards() {
+    async function loadTeams() {
       jiraDomain = document.getElementById('jiraDomain').value.trim();
       if (!jiraDomain) return alert('Enter Jira domain');
       try {
-        const resp = await fetch(`https://${jiraDomain}/rest/agile/1.0/board?maxResults=1000`, { credentials: 'include' });
+        const resp = await fetch(`https://${jiraDomain}/rest/teams/1.0/teams?maxResults=1000`, { credentials: 'include' });
         if (!resp.ok) {
-          console.error('Failed to fetch boards', resp.status);
-          alert('Failed to load boards. Verify Jira domain and login.');
+          console.error('Failed to fetch teams', resp.status);
+          alert('Failed to load teams. Verify Jira domain and login.');
           return;
         }
         const data = await resp.json();
-        const boards = (data.values || []).sort((a,b)=>a.name.localeCompare(b.name));
-        const sel = document.getElementById('boardSelect');
+        const teams = (data.values || data.teams || []).sort((a,b)=>a.name.localeCompare(b.name));
+        const sel = document.getElementById('teamSelect');
         sel.innerHTML = '';
-        boards.forEach(b => {
+        teams.forEach(t => {
           const opt = document.createElement('option');
-          opt.value = b.id;
-          const projectKey = b.location && b.location.projectKey ? ` (${b.location.projectKey})` : '';
-          opt.textContent = `${b.name}${projectKey}`;
+          opt.value = t.id;
+          opt.textContent = t.name;
           sel.appendChild(opt);
         });
         if (sel.choicesInstance) {
@@ -96,12 +95,12 @@
         // eslint-disable-next-line no-undef
         sel.choicesInstance = new Choices(sel);
       } catch (e) {
-        console.error('Error loading boards', e);
-        alert('Error loading boards. Check console for details.');
+        console.error('Error loading teams', e);
+        alert('Error loading teams. Check console for details.');
       }
     }
 
-    async function fetchIssuesForSprint(boardId, sprintId) {
+    async function fetchIssuesForSprint(sprintId) {
       const jql = encodeURIComponent(`Sprint = ${sprintId}`);
       const url = `https://${jiraDomain}/rest/api/2/search?jql=${jql}&expand=changelog&maxResults=1000`;
       const resp = await fetch(url, { credentials:'include' });
@@ -111,17 +110,17 @@
     }
 
     async function loadReport() {
-      const boardId = document.getElementById('boardSelect').value;
-      if (!boardId) return alert('Select a board');
-      const sprintUrl = `https://${jiraDomain}/rest/agile/1.0/board/${boardId}/sprint?state=closed&maxResults=50`;
+      const teamId = document.getElementById('teamSelect').value;
+      if (!teamId) return alert('Select a team');
+      const sprintUrl = `https://${jiraDomain}/rest/teams/1.0/teams/${teamId}/sprints?state=closed&maxResults=50`;
       const resp = await fetch(sprintUrl, { credentials:'include' });
       if (!resp.ok) return alert('Failed to fetch sprints');
       const data = await resp.json();
-      let sprints = data.values || [];
+      let sprints = data.values || data.sprints || [];
       sprints = sprints.filter(s=>s.startDate).sort((a,b)=>new Date(b.startDate)-new Date(a.startDate)).slice(0,12).reverse();
       const results = [];
       for (const s of sprints) {
-        const issues = await fetchIssuesForSprint(boardId, s.id);
+        const issues = await fetchIssuesForSprint(s.id);
         const velocity = issues.reduce((sum,it)=>sum+(it.fields?.customfield_10016||0),0);
         const disruptions = window.aggregateDisruptions(issues.map(i=>({ changelog: i.changelog.histories.map(h=>({ field:h.items[0]?.field, from:h.items[0]?.fromString, to:h.items[0]?.toString, created:h.created })) })), s.startDate);
         results.push({ sprint:s.name, velocity, ...disruptions });
