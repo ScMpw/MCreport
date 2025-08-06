@@ -33,15 +33,20 @@
         </select>
       </label>
     </div>
-    <div style="margin-bottom:20px;">
+    <div>
       <label>Jira Domain: <input id="jiraDomain" value="aldi-sued.atlassian.net" size="28"></label>
-      <button class="btn" onclick="loadTeams()">Load Teams</button>
+      <label>Board Number:
+        <input id="boardNum" size="5">
+      </label>
+      <button class="btn" onclick="fetchAllSprints()">Fetch Sprints</button>
     </div>
-    <div style="margin-bottom:20px;">
-      <label for="teamSelect" class="section-title">Select Responsible Team:</label>
-      <select id="teamSelect"></select>
-      <button class="btn" onclick="loadReport()">Load Report</button>
+    <div class="sprint-row" id="sprintRow" style="display:none; margin:1.1em 0;">
+      <label>Sprint:
+        <select id="sprintSelect" multiple></select>
+      </label>
+      <button class="btn" onclick="fetchAll()">Load Report</button>
     </div>
+    <div id="loadingMessage" style="display:none; font-weight:bold; margin:10px 0;"></div>
     <div id="stats"></div>
     <table id="resultTable" style="display:none;">
       <thead>
@@ -60,84 +65,188 @@
 
   <script src="src/disruption.js"></script>
   <script>
-    let jiraDomain = '';
+    let jiraDomain = '', boardNum = '', sprints = [], boardTeams = [];
+
+    document.getElementById('versionSelect').value = 'index_disruption.html';
 
     function switchVersion(page) {
       if (location.pathname.endsWith(page)) return;
       location.href = page;
     }
 
-    document.getElementById('versionSelect').value = 'index_disruption.html';
+    function showLoading(msg) {
+      const el = document.getElementById('loadingMessage');
+      if (el) {
+        el.textContent = msg || 'Loading...';
+        el.style.display = '';
+      }
+    }
 
-    async function loadTeams() {
-      jiraDomain = document.getElementById('jiraDomain').value.trim();
-      if (!jiraDomain) return alert('Enter Jira domain');
+    function hideLoading() {
+      const el = document.getElementById('loadingMessage');
+      if (el) el.style.display = 'none';
+    }
+
+    async function fetchBoardTeam() {
+      boardTeams = [];
       try {
-        const resp = await fetch(`https://${jiraDomain}/rest/teams/1.0/teams?maxResults=1000`, { credentials: 'include' });
-        if (!resp.ok) {
-          console.error('Failed to fetch teams', resp.status);
-          alert('Failed to load teams. Verify Jira domain and login.');
+        const cfgUrl = `https://${jiraDomain}/rest/agile/1.0/board/${boardNum}/configuration`;
+        const cfgResp = await fetch(cfgUrl, { credentials: 'include' });
+        if (!cfgResp.ok) return;
+        const cfg = await cfgResp.json();
+        const filterId = cfg.filter && cfg.filter.id;
+        if (!filterId) return;
+        const fResp = await fetch(`https://${jiraDomain}/rest/api/3/filter/${filterId}`, { credentials: 'include' });
+        if (!fResp.ok) return;
+        const fd = await fResp.json();
+        const jql = fd.jql || '';
+        const regex = /(?:"Team"|customfield_12600|cf\[12600\])\s*(?:=|in)\s*(\([^\)]*\)|"[^"\n]+")/gi;
+        let m;
+        while ((m = regex.exec(jql)) !== null) {
+          let str = m[1].replace(/[()]/g, '');
+          str.split(',').forEach(t => {
+            t = t.replace(/"/g, '').trim();
+            if (t && !boardTeams.includes(t)) boardTeams.push(t);
+          });
+        }
+      } catch (e) {
+        console.error('Failed to fetch board team', e);
+      }
+      console.log('Board teams:', boardTeams.join(', '));
+    }
+
+    async function fetchAllSprints() {
+      jiraDomain = document.getElementById('jiraDomain').value.trim();
+      boardNum = document.getElementById('boardNum').value.trim();
+      if (!jiraDomain || !boardNum) return alert('Enter Jira domain and board number.');
+
+      showLoading('Fetching sprints...');
+      await fetchBoardTeam();
+
+      let allSprintsArr = [];
+      let startAt = 0;
+      const maxResults = 50;
+      let total = null;
+
+      while (true) {
+        const url = `https://${jiraDomain}/rest/agile/1.0/board/${boardNum}/sprint?maxResults=${maxResults}&startAt=${startAt}`;
+        try {
+          const resp = await fetch(url, { credentials: 'include' });
+          if (!resp.ok) {
+            const text = await resp.text();
+            console.error('API Error Response:', resp.status, text);
+            alert('API returned an error. See console for details.');
+            hideLoading();
+            return;
+          }
+          const data = await resp.json();
+          if (data.values && data.values.length) {
+            allSprintsArr = allSprintsArr.concat(data.values);
+            total = data.total;
+            startAt += data.values.length;
+            if (data.isLast || allSprintsArr.length >= total) break;
+          } else {
+            break;
+          }
+        } catch (e) {
+          console.error(e);
+          alert('Failed to fetch sprints. CORS? Are you logged into Jira?');
+          hideLoading();
           return;
         }
-        const data = await resp.json();
-        const teams = (data.values || data.teams || []).sort((a,b)=>a.name.localeCompare(b.name));
-        const sel = document.getElementById('teamSelect');
-        sel.innerHTML = '';
-        teams.forEach(t => {
-          const opt = document.createElement('option');
-          opt.value = t.id;
-          opt.textContent = t.name;
-          sel.appendChild(opt);
-        });
-        if (sel.choicesInstance) {
-          sel.choicesInstance.destroy();
-        }
-        // eslint-disable-next-line no-undef
-        sel.choicesInstance = new Choices(sel);
-      } catch (e) {
-        console.error('Error loading teams', e);
-        alert('Error loading teams. Check console for details.');
       }
+
+      sprints = allSprintsArr.slice();
+      populateSprintDropdown();
+      hideLoading();
+    }
+
+    function populateSprintDropdown() {
+      const sel = document.getElementById('sprintSelect');
+      sel.innerHTML = '';
+      for (let i = sprints.length - 1; i >= 0; i--) {
+        const sprint = sprints[i];
+        const opt = document.createElement('option');
+        opt.value = sprint.id;
+        let name = sprint.name || '(no name)';
+        if (sprint.startDate) name += ' (' + sprint.startDate.substr(0, 10) + ')';
+        opt.textContent = (sprint.state === 'active' ? '🟢 ' : '') + name;
+        sel.appendChild(opt);
+      }
+      document.getElementById('sprintRow').style.display = '';
     }
 
     async function fetchIssuesForSprint(sprintId) {
       const jql = encodeURIComponent(`Sprint = ${sprintId}`);
-      const url = `https://${jiraDomain}/rest/api/2/search?jql=${jql}&expand=changelog&maxResults=1000`;
-      const resp = await fetch(url, { credentials:'include' });
-      if (!resp.ok) return [];
-      const data = await resp.json();
-      return data.issues || [];
+      let issues = [];
+      let startAt = 0;
+      const maxResults = 100;
+      while (true) {
+        const url = `https://${jiraDomain}/rest/api/3/search?jql=${jql}&fields=customfield_10016&expand=changelog&startAt=${startAt}&maxResults=${maxResults}`;
+        try {
+          const resp = await fetch(url, { credentials: 'include' });
+          if (!resp.ok) {
+            const text = await resp.text();
+            console.error('Failed to fetch sprint issues', resp.status, text);
+            alert('Failed to fetch issues for sprint ' + sprintId);
+            return null;
+          }
+          const data = await resp.json();
+          issues = issues.concat(data.issues || []);
+          startAt += data.issues ? data.issues.length : 0;
+          if (!data.issues || startAt >= (data.total || 0)) break;
+        } catch (e) {
+          console.error('Error fetching issues for sprint', sprintId, e);
+          alert('Error fetching sprint issues. See console for details.');
+          return null;
+        }
+      }
+      return issues;
     }
 
-    async function loadReport() {
-      const teamId = document.getElementById('teamSelect').value;
-      if (!teamId) return alert('Select a team');
-      const sprintUrl = `https://${jiraDomain}/rest/teams/1.0/teams/${teamId}/sprints?state=closed&maxResults=50`;
-      const resp = await fetch(sprintUrl, { credentials:'include' });
-      if (!resp.ok) return alert('Failed to fetch sprints');
-      const data = await resp.json();
-      let sprints = data.values || data.sprints || [];
-      sprints = sprints.filter(s=>s.startDate).sort((a,b)=>new Date(b.startDate)-new Date(a.startDate)).slice(0,12).reverse();
+    async function fetchAll() {
+      const sel = document.getElementById('sprintSelect');
+      const selected = Array.from(sel.selectedOptions);
+      if (!selected.length) return alert('Select at least one sprint.');
+
+      showLoading('Loading sprint data...');
+      if (!boardTeams.length) await fetchBoardTeam();
+
       const results = [];
-      for (const s of sprints) {
-        const issues = await fetchIssuesForSprint(s.id);
-        const velocity = issues.reduce((sum,it)=>sum+(it.fields?.customfield_10016||0),0);
-        const disruptions = window.aggregateDisruptions(issues.map(i=>({ changelog: i.changelog.histories.map(h=>({ field:h.items[0]?.field, from:h.items[0]?.fromString, to:h.items[0]?.toString, created:h.created })) })), s.startDate);
-        results.push({ sprint:s.name, velocity, ...disruptions });
+      for (const opt of selected) {
+        const sprintId = opt.value;
+        const sprintName = opt.textContent;
+        const sprintObj = sprints.find(s => String(s.id) === String(sprintId));
+        const issues = await fetchIssuesForSprint(sprintId);
+        if (issues === null) { hideLoading(); return; }
+        const velocity = issues.reduce((sum, it) => sum + (it.fields?.customfield_10016 || 0), 0);
+        const events = issues.map(i => ({
+          changelog: (i.changelog?.histories || []).map(h => ({
+            field: h.items[0]?.field,
+            from: h.items[0]?.fromString,
+            to: h.items[0]?.toString,
+            created: h.created
+          }))
+        }));
+        const disruptions = window.aggregateDisruptions(events, sprintObj && sprintObj.startDate);
+        results.push({ sprint: sprintName, velocity, ...disruptions });
       }
-      const velocities = results.map(r=>r.velocity);
-      const avg = velocities.reduce((a,b)=>a+b,0)/velocities.length || 0;
-      const sd = Math.sqrt(velocities.reduce((s,v)=>s+(v-avg)**2,0)/velocities.length || 0);
+
+      const velocities = results.map(r => r.velocity);
+      const avg = velocities.reduce((a, b) => a + b, 0) / (velocities.length || 1);
+      const sd = Math.sqrt(velocities.reduce((s, v) => s + (v - avg) ** 2, 0) / (velocities.length || 1));
       const stats = document.getElementById('stats');
       stats.textContent = `Average Velocity: ${avg.toFixed(2)} | Standard Deviation: ${sd.toFixed(2)}`;
+
       const tbody = document.querySelector('#resultTable tbody');
       tbody.innerHTML = '';
-      results.forEach(r=>{
+      results.forEach(r => {
         const tr = document.createElement('tr');
         tr.innerHTML = `<td>${r.sprint}</td><td>${r.velocity}</td><td>${r.pulled}</td><td>${r.blocked}</td><td>${r.moved}</td><td>${r.typeChanged}</td>`;
         tbody.appendChild(tr);
       });
       document.getElementById('resultTable').style.display = '';
+      hideLoading();
     }
 
   </script>
