@@ -3,17 +3,9 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
-  "directories": {
-    "doc": "docs"
-  },
-  "scripts": {
-    "test": "jest"
-  },
+  "scripts": {},
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
-  "devDependencies": {
-    "jest": "^29.7.0"
-  }
+  "type": "commonjs"
 }
