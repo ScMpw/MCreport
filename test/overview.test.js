@@ -24,4 +24,14 @@ describe('calculateMetrics', () => {
     expect(res.throughputPerWeek[week]).toBe(2);
     expect(res.velocityPerWeek[week]).toBe(8);
   });
+
+  test('handles story points as strings', () => {
+    const stringIssues = [
+      { created:'2025-02-01', resolved:'2025-02-05', points:'4' },
+      { created:'2025-02-02', resolved:'2025-02-05', points:'6' }
+    ];
+    const res = calculateMetrics(stringIssues);
+    const week = isoWeekNumber('2025-02-05');
+    expect(res.velocityPerWeek[week]).toBe(10);
+  });
 });

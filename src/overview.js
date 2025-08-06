@@ -29,7 +29,7 @@ function calculateMetrics(issues) {
     totalCycle += diff;
     const week = isoWeekNumber(resolved);
     throughput[week] = (throughput[week] || 0) + 1;
-    velocity[week] = (velocity[week] || 0) + (it.points || 0);
+    velocity[week] = (velocity[week] || 0) + (Number(it.points) || 0);
   }
   return {
     averageCycleTime: totalCycle / issues.length,
