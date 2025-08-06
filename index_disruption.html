@@ -86,7 +86,8 @@
         boards.forEach(b => {
           const opt = document.createElement('option');
           opt.value = b.id;
-          opt.textContent = `${b.name} (${b.location.projectKey})`;
+          const projectKey = b.location && b.location.projectKey ? ` (${b.location.projectKey})` : '';
+          opt.textContent = `${b.name}${projectKey}`;
           sel.appendChild(opt);
         });
         if (sel.choicesInstance) {
