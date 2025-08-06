@@ -22,6 +22,20 @@ describe('countDisruptions', () => {
     expect(res.details.moved).toContain('ISSUE-1');
     expect(res.details.typeChanged).toContain('ISSUE-1');
   });
+
+  test('counts each disrupted story only once', () => {
+    const issue = {
+      key: 'ISSUE-2',
+      changelog: [
+        { field: 'status', from: 'In Progress', to: 'Blocked', created: '2024-02-01' },
+        { field: 'status', from: 'Blocked', to: 'In Progress', created: '2024-02-02' },
+        { field: 'status', from: 'In Progress', to: 'Blocked', created: '2024-02-03' }
+      ]
+    };
+    const res = countDisruptions(issue, '2024-01-30');
+    expect(res.blocked).toBe(1);
+    expect(res.details.blocked).toEqual(['ISSUE-2']);
+  });
 });
 
 describe('aggregateDisruptions', () => {

@@ -113,7 +113,7 @@ function calculateMetrics(issues){
     total += (r-c)/86400000;
     const w=isoWeekNumber(it.resolved);
     tp[w]=(tp[w]||0)+1;
-    vel[w]=(vel[w]||0)+(it.points||0);
+    vel[w]=(vel[w]||0)+(Number(it.points)||0);
   }
   return {avg: total/issues.length, tp, vel};
 }
