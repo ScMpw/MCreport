@@ -154,10 +154,10 @@
         <td title="${sprint.initiallyPlannedSource}">${sprint.initiallyPlanned || 0}</td>
         <td title="${sprint.completedSource}">${sprint.completed || 0}</td>
         <td title="completed minus initially planned">${sprint.other || 0}</td>
-        <td title="${metrics.pulledInIssues.join(', ')}">${metrics.pulledIn} (${metrics.pulledInCount})</td>
-        <td title="${metrics.blockedIssues.join(', ')}">${metrics.blocked} (${metrics.blockedCount})</td>
-        <td title="${metrics.typeChangedIssues.join(', ')}">${metrics.typeChanged || 0} (${metrics.typeChangedCount})</td>
-        <td title="${metrics.movedOutIssues.join(', ')}">${metrics.movedOut} (${metrics.movedOutCount})</td>
+        <td title="${metrics.pulledInIssues.join(', ')}">${metrics.pulledIn || 0} (${metrics.pulledInCount || 0})</td>
+        <td title="${metrics.blockedIssues.join(', ')}">${metrics.blocked || 0} (${metrics.blockedCount || 0})</td>
+        <td title="${metrics.typeChangedIssues.join(', ')}">${metrics.typeChanged || 0} (${metrics.typeChangedCount || 0})</td>
+        <td title="${metrics.movedOutIssues.join(', ')}">${metrics.movedOut || 0} (${metrics.movedOutCount || 0})</td>
         <td><button class="btn details-toggle" onclick="toggleDetails('${detailsId}', this)">Show Details</button></td>
       </tr>`;
       html += `<tr id="${detailsId}" style="display:none"><td colspan="9">
