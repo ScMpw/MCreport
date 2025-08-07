@@ -20,29 +20,37 @@
       typeChangedIssues: [],
       movedOutIssues: []
     };
+
     events.forEach(ev => {
       const pts = ev.points || 0;
+
       if (ev.addedAfterStart) {
         metrics.pulledIn += pts;
-        metrics.pulledInCount += 1;
         metrics.pulledInIssues.push(ev.key);
       }
+
       if (ev.blocked) {
         metrics.blocked += pts;
-        metrics.blockedCount += 1;
         metrics.blockedIssues.push(ev.key);
       }
+
       if (ev.typeChanged) {
         metrics.typeChanged += pts;
-        metrics.typeChangedCount += 1;
         metrics.typeChangedIssues.push(ev.key);
       }
+
       if (ev.movedOut) {
         metrics.movedOut += pts;
-        metrics.movedOutCount += 1;
         metrics.movedOutIssues.push(ev.key);
       }
     });
+
+    // Derive counts from the collected issue lists to avoid undefined values
+    metrics.pulledInCount = metrics.pulledInIssues.length;
+    metrics.blockedCount = metrics.blockedIssues.length;
+    metrics.typeChangedCount = metrics.typeChangedIssues.length;
+    metrics.movedOutCount = metrics.movedOutIssues.length;
+
     return metrics;
   }
   return { calculateDisruptionMetrics };
