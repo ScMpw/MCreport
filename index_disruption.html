@@ -82,13 +82,16 @@
           if (!r.ok) continue;
           const d = await r.json();
           const addedMap = d.contents.issueKeysAddedDuringSprint || {};
+          // `issueKeysAddedDuringSprint` is keyed by issue ID with the issue key as the value
+          // Convert it to a Set of issue keys for quick membership checks
+          const addedKeys = new Set(Object.values(addedMap));
           const issues = [];
           const collect = (arr, movedOut=false) => {
             (arr || []).forEach(it => {
               issues.push({
                 key: it.key,
                 points: it.estimateStatistic?.statFieldValue?.value || 0,
-                addedAfterStart: !!addedMap[it.key],
+                addedAfterStart: addedKeys.has(it.key),
                 blocked: !!it.flagged,
                 movedOut
               });
