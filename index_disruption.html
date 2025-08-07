@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Stakeholder PI Status Report – Disruption KPI</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
+  <style>
+    body { background: #f7f8fa; font-family: 'Inter', Arial, sans-serif; margin:0; padding:0; }
+    .main { max-width: 950px; margin: 30px auto; background:#fff; border-radius:18px; padding:36px 32px; box-shadow:0 2px 12px #d1d5db70; }
+    table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+    th, td { border: 1px solid #e5e7eb; padding: 6px 10px; text-align:left; font-size:0.95em; }
+    th { background:#e0e7ef; }
+  </style>
+</head>
+<body>
+<div class="main">
+  <h1>Disruption KPI Report</h1>
+  <div>
+    <label>Version:
+      <select id="versionSelect" onchange="switchVersion(this.value)">
+        <option value="index.html">Velocity</option>
+        <option value="index_throughput.html">Throughput</option>
+        <option value="index_throughput_week.html">Weekly Throughput</option>
+        <option value="index_disruption.html">Disruption</option>
+      </select>
+    </label>
+  </div>
+  <div style="margin-top:20px;">
+    <label for="boardSelect">Team/Board:</label>
+    <select id="boardSelect">
+      <option>Demo Board</option>
+    </select>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Sprint</th>
+        <th>Velocity</th>
+        <th>Pulled In</th>
+        <th>Blocked</th>
+        <th>Type Changed</th>
+        <th>Moved Out</th>
+      </tr>
+    </thead>
+    <tbody id="metricsBody"></tbody>
+  </table>
+</div>
+<script src="src/disruption.js"></script>
+<script>
+  function switchVersion(v){ window.location.href = v; }
+
+  const sampleData = [
+    {
+      name: 'Sprint 1',
+      issues: [
+        { points: 5, addedAfterStart: true },
+        { points: 3, blocked: true },
+        { points: 2, typeChanged: true }
+      ]
+    },
+    {
+      name: 'Sprint 2',
+      issues: [
+        { points: 8 },
+        { points: 1, movedOut: true },
+        { points: 3, blocked: true, addedAfterStart: true }
+      ]
+    }
+  ];
+
+  function renderTable() {
+    const tbody = document.getElementById('metricsBody');
+    let html = '';
+    sampleData.forEach(sprint => {
+      const metrics = Disruption.calculateDisruptionMetrics(sprint.issues);
+      const velocity = sprint.issues.reduce((sum, i) => sum + (i.points || 0), 0);
+      html += `<tr>
+        <td>${sprint.name}</td>
+        <td>${velocity}</td>
+        <td>${metrics.pulledIn}</td>
+        <td>${metrics.blocked}</td>
+        <td>${metrics.typeChanged}</td>
+        <td>${metrics.movedOut}</td>
+      </tr>`;
+    });
+    tbody.innerHTML = html;
+  }
+
+  renderTable();
+  document.getElementById('versionSelect').value = 'index_disruption.html';
+</script>
+</body>
+</html>
