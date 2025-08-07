@@ -18,18 +18,25 @@
     return levels.indexOf(level) <= levels.indexOf(current);
   }
 
+  let listener = null;
   const logger = {};
   levels.forEach(l => {
     logger[l] = (...args) => {
-      if (shouldLog(l) && typeof console !== 'undefined') {
-        const method = console[l] ? l : 'log';
-        console[method]('[MCReport]', ...args);
+      if (shouldLog(l)) {
+        if (typeof console !== 'undefined') {
+          const method = console[l] ? l : 'log';
+          console[method]('[MCReport]', ...args);
+        }
+        if (typeof listener === 'function') {
+          try { listener(l, args); } catch (e) {}
+        }
       }
     };
   });
 
   logger.setLevel = lvl => { if (levels.includes(lvl)) current = lvl; };
   logger.getLevel = () => current;
+  logger.setListener = fn => { listener = fn; };
 
   return logger;
 }));
