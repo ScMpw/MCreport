@@ -37,6 +37,7 @@
     <label style="margin-left:10px;">Board Number: <input id="boardNum" size="5"></label>
     <button class="btn" onclick="loadDisruption()">Load Data</button>
   </div>
+  <div id="logPanel" style="display:none; white-space:pre-wrap; font-size:0.85em; background:#f3f4f6; border:1px solid #e5e7eb; padding:6px; margin:10px 0; max-height:150px; overflow:auto;"></div>
   <table>
     <thead>
       <tr>
@@ -56,17 +57,28 @@
 </div>
 <script src="src/logger.js"></script>
 <script>
+  function appendLog(level, args) {
+    const el = document.getElementById('logPanel');
+    if (!el) return;
+    const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+    el.textContent += `[${level}] ${msg}\n`;
+    el.scrollTop = el.scrollHeight;
+    el.style.display = '';
+  }
   Logger.setLevel('debug');
+  Logger.setListener((level, args) => appendLog(level, args));
 </script>
 <script src="src/disruption.js"></script>
 <script>
   function switchVersion(v){ window.location.href = v; }
 
-  async function fetchDisruptionData(jiraDomain, boardNum) {
-    const url = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/velocity?rapidViewId=${boardNum}`;
+    async function fetchDisruptionData(jiraDomain, boardNum) {
+      Logger.info('Fetching disruption data for board', boardNum);
+      const url = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/velocity?rapidViewId=${boardNum}`;
     try {
       const resp = await fetch(url, { credentials: 'include' });
       if (!resp.ok) {
+        Logger.error('Failed to fetch velocity report', resp.status);
         alert('Failed to fetch velocity report. Are you logged in to Jira?');
         return [];
       }
@@ -140,11 +152,12 @@
           }
           const other = completed > initiallyPlanned ? completed - initiallyPlanned : 0;
           results.push({ name: s.name, issues, initiallyPlanned, completed, other, initiallyPlannedSource, completedSource });
-        } catch (e) { console.error('sprint fetch failed', e); }
+        } catch (e) { Logger.error('sprint fetch failed', e); }
       }
+      Logger.info('Disruption data fetched for', results.length, 'sprints');
       return results;
     } catch (e) {
-      console.error('Failed to fetch disruption data', e);
+      Logger.error('Failed to fetch disruption data', e);
       alert('Failed to fetch disruption data.');
       return [];
     }
@@ -198,8 +211,10 @@
       alert('Enter Jira domain and board number.');
       return;
     }
+    Logger.info('Loading disruption report');
     const data = await fetchDisruptionData(jiraDomain, boardNum);
     renderTable(data);
+    Logger.info('Disruption report rendered');
   }
 
   document.getElementById('versionSelect').value = 'index_disruption.html';
