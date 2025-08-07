@@ -37,7 +37,9 @@
     <thead>
       <tr>
         <th>Sprint</th>
-        <th>Velocity</th>
+        <th>Planned</th>
+        <th>Completed</th>
+        <th>Other</th>
         <th>Pulled In</th>
         <th>Blocked</th>
         <th>Type Changed</th>
@@ -90,6 +92,19 @@
           collect(d.contents.completedIssues, false);
           collect(d.contents.issuesNotCompletedInCurrentSprint, false);
           collect(d.contents.puntedIssues, true);
+
+          const entry = data.velocityStatEntries?.[s.id] || {};
+          let planned = entry.estimated?.value || 0;
+          let completed = entry.completed?.value || 0;
+          let other = completed > planned ? completed - planned : 0;
+
+          if (!completed) {
+            completed = d.contents?.completedIssuesEstimateSum?.value || 0;
+            planned = completed +
+                      (d.contents?.incompletedIssuesEstimateSum?.value || 0) +
+                      (d.contents?.puntedIssuesEstimateSum?.value || 0);
+            other = completed > planned ? completed - planned : 0;
+          }
           const sprintStart = s.startDate ? new Date(s.startDate) : null;
           const sprintEnd = s.completeDate ? new Date(s.completeDate) : (s.endDate ? new Date(s.endDate) : null);
           await Promise.all(issues.map(async it => {
@@ -109,7 +124,7 @@
               }
             } catch(e) {}
           }));
-          results.push({ name: s.name, issues });
+          results.push({ name: s.name, issues, planned, completed, other });
         } catch (e) { console.error('sprint fetch failed', e); }
       }
       return results;
@@ -125,10 +140,11 @@
     let html = '';
     data.forEach(sprint => {
       const metrics = Disruption.calculateDisruptionMetrics(sprint.issues);
-      const velocity = sprint.issues.reduce((sum, i) => sum + (i.points || 0), 0);
       html += `<tr>
         <td>${sprint.name}</td>
-        <td>${velocity}</td>
+        <td>${sprint.planned || 0}</td>
+        <td>${sprint.completed || 0}</td>
+        <td>${sprint.other || 0}</td>
         <td>${metrics.pulledIn}</td>
         <td>${metrics.blocked}</td>
         <td>${metrics.typeChanged || 0}</td>
