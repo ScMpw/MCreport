@@ -1,13 +1,18 @@
+const logger = require('./logger');
+
 function weekStart(dt) {
+  logger.debug('weekStart input', dt);
   const d = new Date(dt);
   const day = d.getDay();
   const diff = d.getDate() - day + (day === 0 ? -6 : 1);
   d.setDate(diff);
   d.setHours(0,0,0,0);
+  logger.debug('weekStart output', d);
   return d;
 }
 
 function calculateWeeklyThroughput(issues, current=new Date()) {
+  logger.debug('calculateWeeklyThroughput start', { count: issues.length, current });
   const counts = new Array(12).fill(0);
   const currentWeek = weekStart(current);
   issues.forEach(it => {
@@ -17,10 +22,12 @@ function calculateWeeklyThroughput(issues, current=new Date()) {
     const diff = Math.floor((currentWeek - w) / (7*24*60*60*1000));
     if (diff >= 0 && diff < 12) counts[11 - diff]++;
   });
+  logger.debug('calculateWeeklyThroughput result', counts);
   return counts;
 }
 
 function monteCarloSprints(backlogPts, throughput, allocation=100, runs=1000) {
+  logger.debug('monteCarloSprints start', { backlogPts, throughput, allocation, runs });
   const allocTPs = throughput.map(v => v * allocation / 100);
   const res = [];
   for (let i = 0; i < runs; i++) {
@@ -33,6 +40,7 @@ function monteCarloSprints(backlogPts, throughput, allocation=100, runs=1000) {
     res.push(s);
   }
   res.sort((a,b) => a - b);
+  logger.debug('monteCarloSprints result', res);
   return res;
 }
 
