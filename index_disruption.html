@@ -95,10 +95,13 @@
 
           const entry = data.velocityStatEntries?.[s.id] || {};
           let completed = entry.completed?.value || 0;
+          let completedSource = 'velocityStatEntries.completed';
           if (!completed) {
             completed = d.contents?.completedIssuesEstimateSum?.value || 0;
+            completedSource = 'completedIssuesEstimateSum';
           }
           let initiallyPlanned = entry.estimated?.value || 0;
+          let initiallyPlannedSource = 'velocityStatEntries.estimated';
           const sprintStart = s.startDate ? new Date(s.startDate) : null;
           const sprintEnd = s.completeDate ? new Date(s.completeDate) : (s.endDate ? new Date(s.endDate) : null);
           await Promise.all(issues.map(async it => {
@@ -121,9 +124,10 @@
           if (!initiallyPlanned) {
             initiallyPlanned = issues.filter(it => !it.addedAfterStart)
                                      .reduce((sum, it) => sum + it.points, 0);
+            initiallyPlannedSource = 'sum of issues not added after start';
           }
           const other = completed > initiallyPlanned ? completed - initiallyPlanned : 0;
-          results.push({ name: s.name, issues, initiallyPlanned, completed, other });
+          results.push({ name: s.name, issues, initiallyPlanned, completed, other, initiallyPlannedSource, completedSource });
         } catch (e) { console.error('sprint fetch failed', e); }
       }
       return results;
@@ -141,13 +145,13 @@
       const metrics = Disruption.calculateDisruptionMetrics(sprint.issues);
       html += `<tr>
         <td>${sprint.name}</td>
-        <td>${sprint.initiallyPlanned || 0}</td>
-        <td>${sprint.completed || 0}</td>
-        <td>${sprint.other || 0}</td>
-        <td>${metrics.pulledIn}</td>
-        <td>${metrics.blocked}</td>
-        <td>${metrics.typeChanged || 0}</td>
-        <td>${metrics.movedOut}</td>
+        <td title="${sprint.initiallyPlannedSource}">${sprint.initiallyPlanned || 0}</td>
+        <td title="${sprint.completedSource}">${sprint.completed || 0}</td>
+        <td title="completed minus initially planned">${sprint.other || 0}</td>
+        <td title="${metrics.pulledInIssues.join(', ')}">${metrics.pulledIn}</td>
+        <td title="${metrics.blockedIssues.join(', ')}">${metrics.blocked}</td>
+        <td title="${metrics.typeChangedIssues.join(', ')}">${metrics.typeChanged || 0}</td>
+        <td title="${metrics.movedOutIssues.join(', ')}">${metrics.movedOut}</td>
       </tr>`;
     });
     tbody.innerHTML = html;
