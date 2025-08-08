@@ -157,7 +157,7 @@
           }
 
           closed.sort((a, b) => new Date(b.startDate) - new Date(a.startDate));
-          closed = closed.slice(0, 12);
+          closed = closed.slice(0, 6);
           teamVelocity[boardNum] = new Array(closed.length).fill(0);
 
           await Promise.all(closed.map(async (s, idx) => {
@@ -349,7 +349,7 @@
   function renderVelocityStats(boardNames, teamVelocity) {
     const wrap = document.getElementById('velocityStats');
     if (!wrap) return;
-    let html = '<h2>Velocity (last 12 sprints)</h2>';
+    let html = '<h2>Velocity (last 6 sprints)</h2>';
     html += '<table><thead><tr><th>Team</th><th>Mean Velocity</th><th>Std Dev</th></tr></thead><tbody>';
     Object.keys(boardNames).forEach(id => {
       const vals = teamVelocity[id] || [];
