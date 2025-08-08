@@ -165,24 +165,22 @@
               const r = await fetch(surl, { credentials: 'include' });
               if (!r.ok) return;
               const d = await r.json();
-              const addedMap = d.contents.issueKeysAddedDuringSprint || {};
-              const addedKeys = new Set(Object.values(addedMap));
               const events = [];
-              const collect = (arr, movedOut = false, completed = false) => {
+              const collect = (arr, completed = false) => {
                 (arr || []).forEach(it => {
                   events.push({
                     key: it.key,
                     points: it.estimateStatistic?.statFieldValue?.value || 0,
-                    addedAfterStart: addedKeys.has(it.key),
+                    addedAfterStart: false,
                     blocked: !!it.flagged,
-                    movedOut,
+                    movedOut: false,
                     completed
                   });
                 });
               };
-              collect(d.contents.completedIssues, false, true);
-              collect(d.contents.issuesNotCompletedInCurrentSprint, false, false);
-              collect(d.contents.puntedIssues, true, false);
+              collect(d.contents.completedIssues, true);
+              collect(d.contents.issuesNotCompletedInCurrentSprint, false);
+              collect(d.contents.puntedIssues, false);
 
               const entry = data.velocityStatEntries?.[s.id] || {};
               let completed = entry.completed?.value || 0;
@@ -224,25 +222,35 @@
                   }
 
                   const allowedTypes = new Set(['task', 'story', 'bug']);
-                  let changedDuringSprint = false;
+                  let typeChangedDuringSprint = false;
                   for (const h of histories) {
                     const chDate = new Date(h.created);
-                    if (sprintStart && sprintEnd && chDate >= sprintStart && chDate <= sprintEnd) {
+                    if (sprintStart && chDate >= sprintStart) {
                       for (const item of h.items || []) {
-                        if (item.field === 'issuetype') {
+                        if (item.field === 'Sprint') {
+                          const from = (item.fromString || item.from || '').toString();
+                          const to = (item.toString || item.to || '').toString();
+                          const sprintIdStr = String(s.id);
+                          const sprintName = s.name || '';
+                          const fromHas = from.includes(sprintIdStr) || from.includes(sprintName);
+                          const toHas = to.includes(sprintIdStr) || to.includes(sprintName);
+                          if (!fromHas && toHas) ev.addedAfterStart = true;
+                          if (fromHas && !toHas) ev.movedOut = true;
+                        }
+                        if (sprintEnd && chDate <= sprintEnd && item.field === 'issuetype') {
                           const fromType = item.fromString || item.from;
                           const toType = item.toString || item.to;
                           if (fromType && toType && fromType !== toType) {
-                            changedDuringSprint = true;
+                            typeChangedDuringSprint = true;
                             break;
                           }
                         }
                       }
                     }
-                    if (changedDuringSprint) break;
+                    if (typeChangedDuringSprint) break;
                   }
 
-                  if (changedDuringSprint && allowedTypes.has((initialType || '').toLowerCase()) && currentType && currentType !== initialType) {
+                  if (typeChangedDuringSprint && allowedTypes.has((initialType || '').toLowerCase()) && currentType && currentType !== initialType) {
                     ev.typeChanged = true;
                   }
                 } catch (e) {}
