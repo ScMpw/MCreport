@@ -197,7 +197,13 @@
                     if (sprintStart && sprintEnd && chDate >= sprintStart && chDate <= sprintEnd) {
                       ev.events = ev.events.concat(h.items || []);
                       for (const item of h.items) {
-                        if (item.field === 'issuetype') ev.typeChanged = true;
+                        if (item.field === 'issuetype') {
+                          const fromType = item.fromString || item.from;
+                          const toType = item.toString || item.to;
+                          if (fromType && toType && fromType !== toType) {
+                            ev.typeChanged = true;
+                          }
+                        }
                       }
                     }
                   }
