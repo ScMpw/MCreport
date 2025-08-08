@@ -64,8 +64,6 @@
   </table>
   <div id="velocityStats"></div>
   <div id="chartSection" class="chart-section">
-    <canvas id="velocityChart"></canvas>
-    <canvas id="stdDevChart"></canvas>
     <canvas id="disruptionChart"></canvas>
   </div>
 </div>
@@ -224,7 +222,8 @@
                 initiallyPlannedSource = 'sum of events not added after start';
               }
               const other = completed > initiallyPlanned ? completed - initiallyPlanned : 0;
-              const existing = combined[s.name] || { name: s.name, events: [], initiallyPlanned: 0, completed: 0, other: 0, initiallyPlannedSource, completedSource };
+              const existing = combined[s.name] || { name: s.name, startDate: s.startDate, events: [], initiallyPlanned: 0, completed: 0, other: 0, initiallyPlannedSource, completedSource };
+              existing.startDate = existing.startDate || s.startDate;
               existing.events = existing.events.concat(events);
               existing.initiallyPlanned += initiallyPlanned || 0;
               existing.completed += completed || 0;
@@ -236,7 +235,8 @@
           }));
         }));
         Logger.info('Disruption data fetched for', Object.keys(combined).length, 'sprints');
-        return { sprints: Object.values(combined), teamVelocity };
+        const sprintsArr = Object.values(combined).sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
+        return { sprints: sprintsArr, teamVelocity };
       } catch (e) {
         Logger.error('Failed to fetch disruption data', e);
         alert('Failed to fetch disruption data.');
@@ -291,33 +291,7 @@
     wrap.innerHTML = html;
   }
 
-  function renderCharts(boardNames, teamVelocity, sprints) {
-    const teamIds = Object.keys(boardNames);
-    const teamLabels = teamIds.map(id => boardNames[id]);
-    const velocityMeans = [];
-    const velocityStd = [];
-    teamIds.forEach(id => {
-      const vals = teamVelocity[id] || [];
-      const mean = Kpis.calculateVelocity(vals);
-      const sd = Kpis.calculateStdDev(vals, mean);
-      velocityMeans.push(mean.toFixed(2));
-      velocityStd.push(sd.toFixed(2));
-    });
-
-    const vctx = document.getElementById('velocityChart').getContext('2d');
-    new Chart(vctx, {
-      type: 'bar',
-      data: { labels: teamLabels, datasets: [{ label: 'Mean Velocity', data: velocityMeans, backgroundColor: '#3b82f6' }] },
-      options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
-    });
-
-    const sctx = document.getElementById('stdDevChart').getContext('2d');
-    new Chart(sctx, {
-      type: 'bar',
-      data: { labels: teamLabels, datasets: [{ label: 'Std Dev', data: velocityStd, backgroundColor: '#f59e0b' }] },
-      options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
-    });
-
+  function renderCharts(sprints) {
     const sprintLabels = sprints.map(s => s.name);
     const metricsArr = sprints.map(s => Disruption.calculateDisruptionMetrics(s.events));
     const pulledInCounts = metricsArr.map(m => m.pulledInCount || 0);
@@ -366,7 +340,7 @@
     const boardNames = {};
     selected.forEach(b => { boardNames[b.value] = b.label; });
     renderVelocityStats(boardNames, teamVelocity);
-    renderCharts(boardNames, teamVelocity, sprints);
+    renderCharts(sprints);
     Logger.info('Disruption report rendered');
   }
 
