@@ -67,7 +67,7 @@
   </table>
   <div id="velocityStats"></div>
   <div id="chartSection" class="chart-section">
-    <canvas id="disruptionChart"></canvas>
+    <canvas id="completedChart"></canvas>
     <div class="rating-zone-description">
       <div><span style="background:rgba(254,202,202,0.4);"></span>Alarming: 0…AV-2SD</div>
       <div><span style="background:rgba(254,249,195,0.4);"></span>Concerning: AV-2SD…AV-1SD</div>
@@ -76,6 +76,7 @@
       <div><span style="background:rgba(209,250,229,0.4);"></span>Lively: AV+1SD…AV+2SD</div>
       <div><span style="background:rgba(254,249,195,0.4);"></span>Bloated: AV+2SD…∞</div>
     </div>
+    <canvas id="disruptionChart"></canvas>
   </div>
 </div>
 <script src="src/logger.js"></script>
@@ -348,17 +349,11 @@ function renderCharts(sprints) {
     const sd = Kpis.calculateStdDev(prev, avg);
     const max = Math.max(...prev, avg + 2 * sd);
     return [
-      // Alarming 0…AV-2SD
       { yMin: 0, yMax: Math.max(avg - 2 * sd, 0), color: 'rgba(254,202,202,0.4)' },
-      // Concerning AV-2SD…-1SD
       { yMin: Math.max(avg - 2 * sd, 0), yMax: avg - sd, color: 'rgba(254,249,195,0.4)' },
-      // Healthy AV-1SD…AV
       { yMin: avg - sd, yMax: avg, color: 'rgba(209,250,229,0.4)' },
-      // Spot-on AV…AV+1SD
       { yMin: avg, yMax: avg + sd, color: 'rgba(110,231,183,0.4)' },
-      // Lively AV+1SD…+2SD
       { yMin: avg + sd, yMax: avg + 2 * sd, color: 'rgba(209,250,229,0.4)' },
-      // Bloated AV+2SD…∞
       { yMin: avg + 2 * sd, yMax: max, color: 'rgba(254,249,195,0.4)' }
     ];
   });
@@ -385,27 +380,42 @@ function renderCharts(sprints) {
     }
   };
 
+  const vctx = document.getElementById('completedChart').getContext('2d');
+  new Chart(vctx, {
+    type: 'line',
+    data: {
+      labels: sprintLabels,
+      datasets: [
+        { label: 'Completed SP', data: completedSP, borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.3)', fill: false, tension: 0.1 }
+      ]
+    },
+    options: {
+      scales: {
+        y: { beginAtZero: true, suggestedMax: maxY, title: { display: true, text: 'Completed Story Points' } }
+      },
+      plugins: { legend: { position: 'bottom' }, ratingZones: { zonesBySprint } }
+    },
+    plugins: [ratingZonesPlugin]
+  });
+
   const dctx = document.getElementById('disruptionChart').getContext('2d');
   new Chart(dctx, {
     type: 'line',
     data: {
       labels: sprintLabels,
       datasets: [
-        { label: 'Completed SP', data: completedSP, borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.3)', fill: false, tension: 0.1, yAxisID: 'y' },
-        { label: 'Pulled In Issues', data: pulledInCount, borderColor: '#3b82f6', backgroundColor: '#3b82f6', fill: false, yAxisID: 'y1' },
-        { label: 'Blocked Issues', data: blockedCount, borderColor: '#ef4444', backgroundColor: '#ef4444', fill: false, yAxisID: 'y1' },
-        { label: 'Type Changed Issues', data: typeChangedCount, borderColor: '#f59e0b', backgroundColor: '#f59e0b', fill: false, yAxisID: 'y1' },
-        { label: 'Moved Out Issues', data: movedOutCount, borderColor: '#10b981', backgroundColor: '#10b981', fill: false, yAxisID: 'y1' }
+        { label: 'Pulled In Issues', data: pulledInCount, borderColor: '#3b82f6', backgroundColor: '#3b82f6', fill: false, tension: 0.1 },
+        { label: 'Blocked Issues', data: blockedCount, borderColor: '#ef4444', backgroundColor: '#ef4444', fill: false, tension: 0.1 },
+        { label: 'Type Changed Issues', data: typeChangedCount, borderColor: '#f59e0b', backgroundColor: '#f59e0b', fill: false, tension: 0.1 },
+        { label: 'Moved Out Issues', data: movedOutCount, borderColor: '#10b981', backgroundColor: '#10b981', fill: false, tension: 0.1 }
       ]
     },
     options: {
       scales: {
-        y: { beginAtZero: true, suggestedMax: maxY, title: { display: true, text: 'Completed Story Points' } },
-        y1: { beginAtZero: true, position: 'right', title: { display: true, text: 'Issue Count' }, grid: { drawOnChartArea: false } }
+        y: { beginAtZero: true, title: { display: true, text: 'Issue Count' } }
       },
-      plugins: { legend: { position: 'bottom' }, ratingZones: { zonesBySprint } }
-    },
-    plugins: [ratingZonesPlugin]
+      plugins: { legend: { position: 'bottom' } }
+    }
   });
 }
 
