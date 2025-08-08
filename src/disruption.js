@@ -20,7 +20,7 @@
 
     const metrics = {
       pulledIn: 0,
-      blocked: 0,
+      blockedDays: 0,
       typeChanged: 0,
       movedOut: 0,
       pulledInIssues: new Set(),
@@ -51,8 +51,8 @@
         metrics.pulledInIssues.add(ev.key);
       }
 
-      if (ev.blocked) {
-        metrics.blocked += completedPts;
+      if (ev.blockedDays && ev.blockedDays > 0) {
+        metrics.blockedDays += ev.blockedDays;
         metrics.blockedIssues.add(ev.key);
       }
 
