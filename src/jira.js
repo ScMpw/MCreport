@@ -24,7 +24,9 @@
     // list as needed.
     const boardIds = [2796, 2526, 6346];
     const results = [];
-    const target = 'PROJECT IN (ANP, BF, NPSCO)';
+
+    // Accept boards whose project keys match any of these values.
+    const allowedProjects = new Set(['ANP', 'BF', 'NPSCO']);
 
     for (const id of boardIds) {
       try {
@@ -35,11 +37,16 @@
         }
         const board = await bResp.json();
 
-        const fResp = await fetch(`https://${jiraDomain}/rest/agile/1.0/board/${id}/filter`, { credentials: 'include' });
-        if (!fResp.ok) continue;
-        const fd = await fResp.json();
-        const jql = (fd && fd.jql ? fd.jql.toUpperCase() : '');
-        if (jql.includes(target)) {
+        // Query projects associated with this board instead of the board's filter.
+        const pResp = await fetch(`https://${jiraDomain}/rest/agile/1.0/board/${id}/project`, { credentials: 'include' });
+        if (!pResp.ok) {
+          logger.warn('Failed to fetch board projects', id, pResp.status);
+          continue;
+        }
+        const pdata = await pResp.json();
+        const projects = pdata.values || [];
+        const matches = projects.some(p => allowedProjects.has((p.key || '').toUpperCase()));
+        if (matches) {
           results.push({ id, name: board.name });
         }
       } catch (e) {
