@@ -242,11 +242,12 @@
                   if (!blockedPeriods.length && ev.blocked) {
                     blockedPeriods.push([sprintStart, sprintEnd || new Date()]);
                   }
-                  const msPerDay = 24 * 60 * 60 * 1000;
                   ev.blockedDays = blockedPeriods.reduce((sum, [start, end]) => {
                     const sClamped = sprintStart && start < sprintStart ? sprintStart : start;
                     const eClamped = sprintEnd && end > sprintEnd ? sprintEnd : end;
-                    return eClamped > sClamped ? sum + (eClamped - sClamped) / msPerDay : sum;
+                    return eClamped > sClamped
+                      ? sum + Kpis.calculateWorkDays(sClamped, eClamped)
+                      : sum;
                   }, 0);
 
                   const allowedTypes = new Set(['task', 'story', 'bug']);
