@@ -20,8 +20,8 @@
     .story-table { border-collapse: collapse; width: 100%; margin: 6px 0 18px 0; }
     .story-table th, .story-table td { border: 1px solid #e5e7eb; padding: 4px 7px; font-size: 0.95em; text-align:left; }
     .story-table th { background:#e0e7ef; }
-    .chart-section { margin-top: 30px; }
-    .chart-section canvas { max-width: 100%; margin-top: 20px; }
+    .chart-section { margin-top: 30px; overflow-x: auto; }
+    .chart-section canvas { margin-top: 20px; }
     .rating-zone-description { margin-top: 10px; font-size: 0.9em; }
     .rating-zone-description div { margin-top: 4px; }
     .rating-zone-description span { display:inline-block; width:12px; height:12px; margin-right:6px; vertical-align:middle; }
@@ -400,6 +400,13 @@ function renderCharts(sprints) {
   const typeChangedCount = metricsArr.map(m => m.typeChangedCount || 0);
   const movedOutCount = metricsArr.map(m => m.movedOutCount || 0);
 
+  const chartWidth = Math.max(sprintLabels.length * 120, 600);
+  ['completedChart','disruptionChart'].forEach(id => {
+    const canvas = document.getElementById(id);
+    canvas.width = chartWidth;
+    canvas.height = 300;
+  });
+
   const zonesBySprint = completedSP.map((_, i) => {
     if (i < 4) return null;
     const prev = completedSP.slice(i - 4, i);
@@ -450,6 +457,8 @@ function renderCharts(sprints) {
       ]
     },
     options: {
+      responsive: false,
+      maintainAspectRatio: false,
       scales: {
 
         y: { beginAtZero: true, suggestedMax: maxY, title: { display: true, text: 'Completed Story Points' } }
@@ -473,6 +482,8 @@ function renderCharts(sprints) {
       ]
     },
     options: {
+      responsive: false,
+      maintainAspectRatio: false,
       scales: {
         y: { beginAtZero: true, title: { display: true, text: 'Issue Count / Blocked Days' } }
       },
