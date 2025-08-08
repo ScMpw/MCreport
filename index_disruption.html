@@ -6,6 +6,9 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css" />
   <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body { background: #f7f8fa; font-family: 'Inter', Arial, sans-serif; margin:0; padding:0; }
     .main { max-width: 950px; margin: 30px auto; background:#fff; border-radius:18px; padding:36px 32px; box-shadow:0 2px 12px #d1d5db70; }
@@ -17,6 +20,8 @@
     .story-table { border-collapse: collapse; width: 100%; margin: 6px 0 18px 0; }
     .story-table th, .story-table td { border: 1px solid #e5e7eb; padding: 4px 7px; font-size: 0.95em; text-align:left; }
     .story-table th { background:#e0e7ef; }
+    .chart-section { margin-top: 30px; }
+    .chart-section canvas { max-width: 100%; margin-top: 20px; }
   </style>
 </head>
 <body>
@@ -38,6 +43,7 @@
       <select id="boardNum" multiple></select>
     </label>
     <button class="btn" onclick="loadDisruption()">Load Data</button>
+    <button class="btn" onclick="exportPDF()">Download PDF</button>
   </div>
   <div id="logPanel" style="display:none; white-space:pre-wrap; font-size:0.85em; background:#f3f4f6; border:1px solid #e5e7eb; padding:6px; margin:10px 0; max-height:150px; overflow:auto;"></div>
   <table>
@@ -57,6 +63,11 @@
     <tbody id="metricsBody"></tbody>
   </table>
   <div id="velocityStats"></div>
+  <div id="chartSection" class="chart-section">
+    <canvas id="velocityChart"></canvas>
+    <canvas id="stdDevChart"></canvas>
+    <canvas id="disruptionChart"></canvas>
+  </div>
 </div>
 <script src="src/logger.js"></script>
 <script src="src/jira.js"></script>
@@ -241,6 +252,58 @@
     wrap.innerHTML = html;
   }
 
+  function renderCharts(boardNames, teamVelocity, sprints) {
+    const teamIds = Object.keys(boardNames);
+    const teamLabels = teamIds.map(id => boardNames[id]);
+    const velocityMeans = [];
+    const velocityStd = [];
+    teamIds.forEach(id => {
+      const vals = teamVelocity[id] || [];
+      const mean = Kpis.calculateVelocity(vals);
+      const sd = Kpis.calculateStdDev(vals, mean);
+      velocityMeans.push(mean.toFixed(2));
+      velocityStd.push(sd.toFixed(2));
+    });
+
+    const vctx = document.getElementById('velocityChart').getContext('2d');
+    new Chart(vctx, {
+      type: 'bar',
+      data: { labels: teamLabels, datasets: [{ label: 'Mean Velocity', data: velocityMeans, backgroundColor: '#3b82f6' }] },
+      options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+    });
+
+    const sctx = document.getElementById('stdDevChart').getContext('2d');
+    new Chart(sctx, {
+      type: 'bar',
+      data: { labels: teamLabels, datasets: [{ label: 'Std Dev', data: velocityStd, backgroundColor: '#f59e0b' }] },
+      options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+    });
+
+    const sprintLabels = sprints.map(s => s.name);
+    const metricsArr = sprints.map(s => Disruption.calculateDisruptionMetrics(s.events));
+    const pulledInCounts = metricsArr.map(m => m.pulledInCount || 0);
+    const blockedCounts = metricsArr.map(m => m.blockedCount || 0);
+    const typeChangedCounts = metricsArr.map(m => m.typeChangedCount || 0);
+    const movedOutCounts = metricsArr.map(m => m.movedOutCount || 0);
+    const totalCounts = metricsArr.map((m, i) => pulledInCounts[i] + blockedCounts[i] + typeChangedCounts[i] + movedOutCounts[i]);
+
+    const dctx = document.getElementById('disruptionChart').getContext('2d');
+    new Chart(dctx, {
+      type: 'bar',
+      data: {
+        labels: sprintLabels,
+        datasets: [
+          { type: 'bar', label: 'Total', data: totalCounts, backgroundColor: 'rgba(99,102,241,0.5)', borderColor: '#6366f1', borderWidth: 1 },
+          { type: 'line', label: 'Pulled In', data: pulledInCounts, borderColor: '#3b82f6', backgroundColor: '#3b82f6', fill: false },
+          { type: 'line', label: 'Blocked', data: blockedCounts, borderColor: '#ef4444', backgroundColor: '#ef4444', fill: false },
+          { type: 'line', label: 'Type Changed', data: typeChangedCounts, borderColor: '#f59e0b', backgroundColor: '#f59e0b', fill: false },
+          { type: 'line', label: 'Moved Out', data: movedOutCounts, borderColor: '#10b981', backgroundColor: '#10b981', fill: false }
+        ]
+      },
+      options: { scales: { y: { beginAtZero: true } }, plugins: { legend: { position: 'bottom' } } }
+    });
+  }
+
   function toggleDetails(id, btn) {
     const row = document.getElementById(id);
     if (row) {
@@ -264,7 +327,21 @@
     const boardNames = {};
     selected.forEach(b => { boardNames[b.value] = b.label; });
     renderVelocityStats(boardNames, teamVelocity);
+    renderCharts(boardNames, teamVelocity, sprints);
     Logger.info('Disruption report rendered');
+  }
+
+  function exportPDF() {
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
+    const elem = document.querySelector('.main');
+    html2canvas(elem).then(canvas => {
+      const img = canvas.toDataURL('image/png');
+      const width = pdf.internal.pageSize.getWidth();
+      const height = canvas.height * width / canvas.width;
+      pdf.addImage(img, 'PNG', 0, 0, width, height);
+      pdf.save('Disruption_Report.pdf');
+    });
   }
 
   document.getElementById('versionSelect').value = 'index_disruption.html';
