@@ -20,5 +20,26 @@
     return Math.sqrt(variance);
   }
 
-  return { calculateVelocity, calculateStdDev };
+  function calculateWorkDays(start, end) {
+    if (!start || !end) return 0;
+    const s = new Date(start);
+    const e = new Date(end);
+    if (isNaN(s) || isNaN(e) || e <= s) return 0;
+    const msPerDay = 24 * 60 * 60 * 1000;
+    let total = 0;
+    let cur = s;
+    while (cur < e) {
+      const next = new Date(cur);
+      next.setHours(24, 0, 0, 0);
+      const dayEnd = next < e ? next : e;
+      const day = cur.getDay();
+      if (day !== 0 && day !== 6) {
+        total += (dayEnd - cur) / msPerDay;
+      }
+      cur = next;
+    }
+    return total;
+  }
+
+  return { calculateVelocity, calculateStdDev, calculateWorkDays };
 }));
