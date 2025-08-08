@@ -414,8 +414,6 @@ function renderCharts(sprints) {
       labels: sprintLabels,
       datasets: [
 
-        { label: 'Completed SP', data: completedSP, borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.3)', fill: false, tension: 0.1 }
-
         { label: 'Completed SP', data: completedSP, borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.3)', fill: false, tension: 0.1, yAxisID: 'y' },
         { label: 'Pulled In Issues', data: pulledInCount, borderColor: '#3b82f6', backgroundColor: '#3b82f6', fill: false, yAxisID: 'y1' },
         { label: 'Blocked Days', data: blockedDays, borderColor: '#ef4444', backgroundColor: '#ef4444', fill: false, yAxisID: 'y1' },
@@ -427,10 +425,8 @@ function renderCharts(sprints) {
     options: {
       scales: {
 
-        y: { beginAtZero: true, suggestedMax: maxY, title: { display: true, text: 'Completed Story Points' } }
-
         y: { beginAtZero: true, suggestedMax: maxY, title: { display: true, text: 'Completed Story Points' } },
-          y1: { beginAtZero: true, position: 'right', title: { display: true, text: 'Issue Count / Blocked Days' }, grid: { drawOnChartArea: false } }
+        y1: { beginAtZero: true, position: 'right', title: { display: true, text: 'Issue Count / Blocked Days' }, grid: { drawOnChartArea: false } }
 
       },
       plugins: { legend: { position: 'bottom' }, ratingZones: { zonesBySprint } }
