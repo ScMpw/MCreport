@@ -17,46 +17,36 @@
 
   async function fetchBoardsByJql(jiraDomain) {
     logger.info('Fetching boards for domain', jiraDomain);
-    const allBoards = [];
-    let startAt = 0;
-    const maxResults = 50;
-    try {
-      while (true) {
-        const url = `https://${jiraDomain}/rest/agile/1.0/board?maxResults=${maxResults}&startAt=${startAt}`;
-        const resp = await fetch(url, { credentials: 'include' });
-        if (!resp.ok) {
-          logger.error('Failed to fetch boards list', resp.status);
-          break;
-        }
-        const data = await resp.json();
-        if (Array.isArray(data.values) && data.values.length) {
-          allBoards.push(...data.values);
-          if (data.isLast) break;
-          startAt += data.values.length;
-        } else {
-          break;
-        }
-      }
-    } catch (e) {
-      logger.error('Board list fetch error', e);
-      return [];
-    }
 
+    // Restrict the search to a predefined set of boards to avoid
+    // querying every board in the instance which previously resulted in
+    // numerous 404 errors. Additional board IDs can be added to this
+    // list as needed.
+    const boardIds = [2796, 2526, 6346];
     const results = [];
     const target = 'PROJECT IN (ANP, BF, NPSCO)';
-    for (const b of allBoards) {
+
+    for (const id of boardIds) {
       try {
-        const fResp = await fetch(`https://${jiraDomain}/rest/agile/1.0/board/${b.id}/filter`, { credentials: 'include' });
+        const bResp = await fetch(`https://${jiraDomain}/rest/agile/1.0/board/${id}`, { credentials: 'include' });
+        if (!bResp.ok) {
+          logger.warn('Failed to fetch board', id, bResp.status);
+          continue;
+        }
+        const board = await bResp.json();
+
+        const fResp = await fetch(`https://${jiraDomain}/rest/agile/1.0/board/${id}/filter`, { credentials: 'include' });
         if (!fResp.ok) continue;
         const fd = await fResp.json();
         const jql = (fd && fd.jql ? fd.jql.toUpperCase() : '');
         if (jql.includes(target)) {
-          results.push({ id: b.id, name: b.name });
+          results.push({ id, name: board.name });
         }
       } catch (e) {
-        logger.warn('Failed to inspect board', b.id, e);
+        logger.warn('Failed to inspect board', id, e);
       }
     }
+
     logger.info('Boards matching filter:', results.map(r => `${r.name} (${r.id})`).join(', '));
     return results;
   }
