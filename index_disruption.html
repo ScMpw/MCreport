@@ -321,26 +321,55 @@ function renderCharts(sprints) {
   const typeChangedCount = metricsArr.map(m => m.typeChangedCount || 0);
   const movedOutCount = metricsArr.map(m => m.movedOutCount || 0);
 
+  const last4 = completedSP.slice(-4);
+  const avg = Kpis.calculateVelocity(last4);
+  const sd = Kpis.calculateStdDev(last4, avg);
+  const maxY = Math.max(...completedSP, avg + 2 * sd);
+  const zones = [
+    { yMin: 0, yMax: Math.max(avg - 2 * sd, 0), color: 'rgba(254,202,202,0.3)' },
+    { yMin: Math.max(avg - 2 * sd, 0), yMax: avg - sd, color: 'rgba(254,215,170,0.3)' },
+    { yMin: avg - sd, yMax: avg, color: 'rgba(209,250,229,0.3)' },
+    { yMin: avg, yMax: avg + sd, color: 'rgba(167,243,208,0.3)' },
+    { yMin: avg + sd, yMax: avg + 2 * sd, color: 'rgba(191,219,254,0.3)' },
+    { yMin: avg + 2 * sd, yMax: maxY, color: 'rgba(199,210,254,0.3)' }
+  ];
+
+  const ratingZonesPlugin = {
+    id: 'ratingZones',
+    beforeDraw(chart, args, opts) {
+      const { ctx, chartArea: { top, bottom, left, right }, scales: { y } } = chart;
+      ctx.save();
+      opts.zones.forEach(z => {
+        const yStart = y.getPixelForValue(z.yMax);
+        const yEnd = y.getPixelForValue(z.yMin);
+        ctx.fillStyle = z.color;
+        ctx.fillRect(left, yStart, right - left, yEnd - yStart);
+      });
+      ctx.restore();
+    }
+  };
+
   const dctx = document.getElementById('disruptionChart').getContext('2d');
   new Chart(dctx, {
-    type: 'bar',
+    type: 'line',
     data: {
       labels: sprintLabels,
       datasets: [
-        { type: 'bar', label: 'Completed SP', data: completedSP, backgroundColor: 'rgba(99,102,241,0.5)', borderColor: '#6366f1', borderWidth: 1, yAxisID: 'y' },
-        { type: 'line', label: 'Pulled In Issues', data: pulledInCount, borderColor: '#3b82f6', backgroundColor: '#3b82f6', fill: false, yAxisID: 'y1' },
-        { type: 'line', label: 'Blocked Issues', data: blockedCount, borderColor: '#ef4444', backgroundColor: '#ef4444', fill: false, yAxisID: 'y1' },
-        { type: 'line', label: 'Type Changed Issues', data: typeChangedCount, borderColor: '#f59e0b', backgroundColor: '#f59e0b', fill: false, yAxisID: 'y1' },
-        { type: 'line', label: 'Moved Out Issues', data: movedOutCount, borderColor: '#10b981', backgroundColor: '#10b981', fill: false, yAxisID: 'y1' }
+        { label: 'Completed SP', data: completedSP, borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.3)', fill: false, tension: 0.1, yAxisID: 'y' },
+        { label: 'Pulled In Issues', data: pulledInCount, borderColor: '#3b82f6', backgroundColor: '#3b82f6', fill: false, yAxisID: 'y1' },
+        { label: 'Blocked Issues', data: blockedCount, borderColor: '#ef4444', backgroundColor: '#ef4444', fill: false, yAxisID: 'y1' },
+        { label: 'Type Changed Issues', data: typeChangedCount, borderColor: '#f59e0b', backgroundColor: '#f59e0b', fill: false, yAxisID: 'y1' },
+        { label: 'Moved Out Issues', data: movedOutCount, borderColor: '#10b981', backgroundColor: '#10b981', fill: false, yAxisID: 'y1' }
       ]
     },
     options: {
       scales: {
-        y: { beginAtZero: true, title: { display: true, text: 'Completed Story Points' } },
+        y: { beginAtZero: true, suggestedMax: maxY, title: { display: true, text: 'Completed Story Points' } },
         y1: { beginAtZero: true, position: 'right', title: { display: true, text: 'Issue Count' }, grid: { drawOnChartArea: false } }
       },
-      plugins: { legend: { position: 'bottom' } }
-    }
+      plugins: { legend: { position: 'bottom' }, ratingZones: { zones } }
+    },
+    plugins: [ratingZonesPlugin]
   });
 }
 
