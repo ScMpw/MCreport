@@ -57,7 +57,7 @@
         <th>Completed</th>
         <th>Other</th>
         <th>Pulled In</th>
-        <th>Blocked</th>
+        <th>Blocked Days</th>
         <th>Type Changed</th>
         <th>Moved Out</th>
         <th>Details</th>
@@ -222,6 +222,33 @@
                     issueCache.set(ev.key, { histories, initialType, currentType });
                   }
 
+                  // calculate total days flagged within the sprint
+                  const sortedHist = histories.slice().sort((a, b) => new Date(a.created) - new Date(b.created));
+                  let blockStart = null;
+                  const blockedPeriods = [];
+                  for (const h of sortedHist) {
+                    const item = (h.items || []).find(i => i.field === 'Flagged');
+                    if (!item) continue;
+                    const date = new Date(h.created);
+                    const added = !item.from && item.to;
+                    const removed = item.from && !item.to;
+                    if (added && !blockStart) blockStart = date;
+                    if (removed && blockStart) {
+                      blockedPeriods.push([blockStart, date]);
+                      blockStart = null;
+                    }
+                  }
+                  if (blockStart) blockedPeriods.push([blockStart, sprintEnd || new Date()]);
+                  if (!blockedPeriods.length && ev.blocked) {
+                    blockedPeriods.push([sprintStart, sprintEnd || new Date()]);
+                  }
+                  const msPerDay = 24 * 60 * 60 * 1000;
+                  ev.blockedDays = blockedPeriods.reduce((sum, [start, end]) => {
+                    const sClamped = sprintStart && start < sprintStart ? sprintStart : start;
+                    const eClamped = sprintEnd && end > sprintEnd ? sprintEnd : end;
+                    return eClamped > sClamped ? sum + (eClamped - sClamped) / msPerDay : sum;
+                  }, 0);
+
                   const allowedTypes = new Set(['task', 'story', 'bug']);
                   let typeChangedDuringSprint = false;
                   for (const h of histories) {
@@ -298,7 +325,7 @@
         <td title="${sprint.completedSource}">${sprint.completed || 0}</td>
         <td title="completed minus initially planned">${sprint.other || 0}</td>
         <td title="${metrics.pulledInIssues.join(', ')}">${metrics.pulledIn || 0} (${metrics.pulledInCount || 0})</td>
-        <td title="${metrics.blockedIssues.join(', ')}">${metrics.blocked || 0} (${metrics.blockedCount || 0})</td>
+        <td title="${metrics.blockedIssues.join(', ')}">${Number(metrics.blockedDays || 0).toFixed(1)} (${metrics.blockedCount || 0})</td>
         <td title="${metrics.typeChangedIssues.join(', ')}">${metrics.typeChanged || 0} (${metrics.typeChangedCount || 0})</td>
         <td title="${metrics.movedOutIssues.join(', ')}">${metrics.movedOut || 0} (${metrics.movedOutCount || 0})</td>
         <td><button class="btn details-toggle" onclick="toggleDetails('${detailsId}', this)">Show Details</button></td>
@@ -338,7 +365,7 @@ function renderCharts(sprints) {
   const completedSP = sprints.map(s => s.completed || 0);
   const metricsArr = sprints.map(s => Disruption.calculateDisruptionMetrics(s.events));
   const pulledInCount = metricsArr.map(m => m.pulledInCount || 0);
-  const blockedCount = metricsArr.map(m => m.blockedCount || 0);
+  const blockedDays = metricsArr.map(m => m.blockedDays || 0);
   const typeChangedCount = metricsArr.map(m => m.typeChangedCount || 0);
   const movedOutCount = metricsArr.map(m => m.movedOutCount || 0);
 
@@ -386,12 +413,25 @@ function renderCharts(sprints) {
     data: {
       labels: sprintLabels,
       datasets: [
+
         { label: 'Completed SP', data: completedSP, borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.3)', fill: false, tension: 0.1 }
+
+        { label: 'Completed SP', data: completedSP, borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.3)', fill: false, tension: 0.1, yAxisID: 'y' },
+        { label: 'Pulled In Issues', data: pulledInCount, borderColor: '#3b82f6', backgroundColor: '#3b82f6', fill: false, yAxisID: 'y1' },
+        { label: 'Blocked Days', data: blockedDays, borderColor: '#ef4444', backgroundColor: '#ef4444', fill: false, yAxisID: 'y1' },
+        { label: 'Type Changed Issues', data: typeChangedCount, borderColor: '#f59e0b', backgroundColor: '#f59e0b', fill: false, yAxisID: 'y1' },
+        { label: 'Moved Out Issues', data: movedOutCount, borderColor: '#10b981', backgroundColor: '#10b981', fill: false, yAxisID: 'y1' }
+
       ]
     },
     options: {
       scales: {
+
         y: { beginAtZero: true, suggestedMax: maxY, title: { display: true, text: 'Completed Story Points' } }
+
+        y: { beginAtZero: true, suggestedMax: maxY, title: { display: true, text: 'Completed Story Points' } },
+          y1: { beginAtZero: true, position: 'right', title: { display: true, text: 'Issue Count / Blocked Days' }, grid: { drawOnChartArea: false } }
+
       },
       plugins: { legend: { position: 'bottom' }, ratingZones: { zonesBySprint } }
     },
