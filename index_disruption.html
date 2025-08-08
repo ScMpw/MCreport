@@ -127,6 +127,7 @@
             let allSprints = [];
             let startAt = 0;
             const maxResults = 50;
+            let loops = 0;
             while (true) {
               const sUrl = `https://${jiraDomain}/rest/agile/1.0/board/${boardNum}/sprint?state=closed&maxResults=${maxResults}&startAt=${startAt}`;
               const sResp = await fetch(sUrl, { credentials: 'include' });
@@ -137,8 +138,9 @@
               const sData = await sResp.json();
               const values = sData.values || [];
               allSprints = allSprints.concat(values);
-              if (sData.isLast || !values.length) break;
               startAt += values.length;
+              loops++;
+              if (sData.isLast || values.length < maxResults || loops > 100) break;
             }
             closed = allSprints.filter(s => (s.state || '').toUpperCase() === 'CLOSED' && s.startDate);
           }
