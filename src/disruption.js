@@ -17,51 +17,65 @@
 
   function calculateDisruptionMetrics(events = []) {
     logger.debug('calculateDisruptionMetrics called with events', events);
+
     const metrics = {
-      pulledIn: 0, // total story points
-      pulledInCount: 0,
+      pulledIn: 0,
       blocked: 0,
-      blockedCount: 0,
       typeChanged: 0,
-      typeChangedCount: 0,
       movedOut: 0,
-      movedOutCount: 0,
-      pulledInIssues: [],
-      blockedIssues: [],
-      typeChangedIssues: [],
-      movedOutIssues: []
+      pulledInIssues: new Set(),
+      blockedIssues: new Set(),
+      typeChangedIssues: new Set(),
+      movedOutIssues: new Set(),
+      pulledInCount: 0,
+      blockedCount: 0,
+      typeChangedCount: 0,
+      movedOutCount: 0
     };
 
-    events.forEach(ev => {
+    // Deduplicate events by issue key to avoid double counting
+    const uniq = new Map();
+    (events || []).forEach(ev => {
+      if (ev && ev.key && !uniq.has(ev.key)) {
+        uniq.set(ev.key, ev);
+      }
+    });
+
+    uniq.forEach(ev => {
       const pts = ev.points || 0;
       logger.debug('Processing event', ev);
 
       if (ev.addedAfterStart) {
         metrics.pulledIn += pts;
-        metrics.pulledInIssues.push(ev.key);
+        metrics.pulledInIssues.add(ev.key);
       }
 
       if (ev.blocked) {
         metrics.blocked += pts;
-        metrics.blockedIssues.push(ev.key);
+        metrics.blockedIssues.add(ev.key);
       }
 
       if (ev.typeChanged) {
         metrics.typeChanged += pts;
-        metrics.typeChangedIssues.push(ev.key);
+        metrics.typeChangedIssues.add(ev.key);
       }
 
       if (ev.movedOut) {
         metrics.movedOut += pts;
-        metrics.movedOutIssues.push(ev.key);
+        metrics.movedOutIssues.add(ev.key);
       }
     });
 
-    // Derive counts from the collected issue lists to avoid undefined values
-    metrics.pulledInCount = metrics.pulledInIssues.length;
-    metrics.blockedCount = metrics.blockedIssues.length;
-    metrics.typeChangedCount = metrics.typeChangedIssues.length;
-    metrics.movedOutCount = metrics.movedOutIssues.length;
+    metrics.pulledInCount = metrics.pulledInIssues.size;
+    metrics.blockedCount = metrics.blockedIssues.size;
+    metrics.typeChangedCount = metrics.typeChangedIssues.size;
+    metrics.movedOutCount = metrics.movedOutIssues.size;
+
+    // Convert sets back to arrays for downstream consumers
+    metrics.pulledInIssues = Array.from(metrics.pulledInIssues);
+    metrics.blockedIssues = Array.from(metrics.blockedIssues);
+    metrics.typeChangedIssues = Array.from(metrics.typeChangedIssues);
+    metrics.movedOutIssues = Array.from(metrics.movedOutIssues);
 
     logger.debug('Calculated metrics', metrics);
     return metrics;
