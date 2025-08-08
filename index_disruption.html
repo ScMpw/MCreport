@@ -34,7 +34,9 @@
   </div>
   <div style="margin-top:20px;">
     <label>Jira Domain: <input id="jiraDomain" value="aldi-sued.atlassian.net" size="28"></label>
-    <label style="margin-left:10px;">Board Number: <input id="boardNum" size="5"></label>
+    <label style="margin-left:10px;">Boards:
+      <select id="boardNum" multiple></select>
+    </label>
     <button class="btn" onclick="loadDisruption()">Load Data</button>
   </div>
   <div id="logPanel" style="display:none; white-space:pre-wrap; font-size:0.85em; background:#f3f4f6; border:1px solid #e5e7eb; padding:6px; margin:10px 0; max-height:150px; overflow:auto;"></div>
@@ -56,6 +58,7 @@
   </table>
 </div>
 <script src="src/logger.js"></script>
+<script src="src/jira.js"></script>
 <script>
   function appendLog(level, args) {
     const el = document.getElementById('logPanel');
@@ -71,6 +74,24 @@
 <script src="src/disruption.js"></script>
 <script>
   function switchVersion(v){ window.location.href = v; }
+
+  const boardSelect = document.getElementById('boardNum');
+  let boardChoices = new Choices(boardSelect, { removeItemButton: true });
+
+  async function populateBoards() {
+    const domain = document.getElementById('jiraDomain').value.trim();
+    if (!domain) return;
+    try {
+      const boards = await Jira.fetchBoardsByJql(domain);
+      boardChoices.clearChoices();
+      boardChoices.setChoices(boards.map(b => ({ value: b.id, label: b.name })), 'value', 'label', true);
+    } catch (e) {
+      Logger.error('Failed to load boards', e);
+    }
+  }
+
+  document.getElementById('jiraDomain').addEventListener('change', populateBoards);
+  populateBoards();
 
     async function fetchDisruptionData(jiraDomain, boardNum) {
       Logger.info('Fetching disruption data for board', boardNum);
@@ -206,14 +227,26 @@
 
   async function loadDisruption() {
     const jiraDomain = document.getElementById('jiraDomain').value.trim();
-    const boardNum = document.getElementById('boardNum').value.trim();
-    if (!jiraDomain || !boardNum) {
-      alert('Enter Jira domain and board number.');
+    const boards = boardChoices ? boardChoices.getValue(true) : [];
+    if (!jiraDomain || !boards.length) {
+      alert('Enter Jira domain and select boards.');
       return;
     }
-    Logger.info('Loading disruption report');
-    const data = await fetchDisruptionData(jiraDomain, boardNum);
-    renderTable(data);
+    Logger.info('Loading disruption report for boards', boards.join(','));
+    const allData = await Promise.all(boards.map(b => fetchDisruptionData(jiraDomain, b)));
+    const combined = {};
+    allData.forEach(list => {
+      list.forEach(s => {
+        if (!combined[s.name]) {
+          combined[s.name] = { name: s.name, issues: [], initiallyPlanned: 0, completed: 0, other: 0, initiallyPlannedSource: s.initiallyPlannedSource, completedSource: s.completedSource };
+        }
+        combined[s.name].issues = combined[s.name].issues.concat(s.issues);
+        combined[s.name].initiallyPlanned += s.initiallyPlanned || 0;
+        combined[s.name].completed += s.completed || 0;
+        combined[s.name].other += s.other || 0;
+      });
+    });
+    renderTable(Object.values(combined));
     Logger.info('Disruption report rendered');
   }
 
