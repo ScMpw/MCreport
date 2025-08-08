@@ -366,6 +366,7 @@ function renderCharts(sprints) {
   const metricsArr = sprints.map(s => Disruption.calculateDisruptionMetrics(s.events));
   const pulledInCount = metricsArr.map(m => m.pulledInCount || 0);
   const blockedDays = metricsArr.map(m => m.blockedDays || 0);
+  const blockedCount = metricsArr.map(m => m.blockedCount || 0);
   const typeChangedCount = metricsArr.map(m => m.typeChangedCount || 0);
   const movedOutCount = metricsArr.map(m => m.movedOutCount || 0);
 
