@@ -93,102 +93,107 @@
   document.getElementById('jiraDomain').addEventListener('change', populateBoards);
   populateBoards();
 
-    async function fetchDisruptionData(jiraDomain, boardNum) {
-      Logger.info('Fetching disruption data for board', boardNum);
-      const url = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/velocity?rapidViewId=${boardNum}`;
-    try {
-      const resp = await fetch(url, { credentials: 'include' });
-      if (!resp.ok) {
-        Logger.error('Failed to fetch velocity report', resp.status);
-        alert('Failed to fetch velocity report. Are you logged in to Jira?');
+    async function fetchDisruptionData(jiraDomain, boardNums = []) {
+      Logger.info('Fetching disruption data for boards', boardNums.join(','));
+      const combined = {};
+      try {
+        await Promise.all(boardNums.map(async boardNum => {
+          const url = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/velocity?rapidViewId=${boardNum}`;
+          const resp = await fetch(url, { credentials: 'include' });
+          if (!resp.ok) {
+            Logger.error('Failed to fetch velocity report', resp.status);
+            return;
+          }
+          const data = await resp.json();
+          let closed = (data.sprints || []).filter(s => s.state === 'CLOSED' && s.startDate);
+          closed.sort((a, b) => new Date(b.startDate) - new Date(a.startDate));
+          closed = closed.slice(0, 12);
+          for (const s of closed) {
+            const surl = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/sprintreport?rapidViewId=${boardNum}&sprintId=${s.id}`;
+            try {
+              const r = await fetch(surl, { credentials: 'include' });
+              if (!r.ok) continue;
+              const d = await r.json();
+              const addedMap = d.contents.issueKeysAddedDuringSprint || {};
+              const addedKeys = new Set(Object.values(addedMap));
+              const events = [];
+              const collect = (arr, movedOut = false) => {
+                (arr || []).forEach(it => {
+                  events.push({
+                    key: it.key,
+                    points: it.estimateStatistic?.statFieldValue?.value || 0,
+                    addedAfterStart: addedKeys.has(it.key),
+                    blocked: !!it.flagged,
+                    movedOut
+                  });
+                });
+              };
+              collect(d.contents.completedIssues, false);
+              collect(d.contents.issuesNotCompletedInCurrentSprint, false);
+              collect(d.contents.puntedIssues, true);
+
+              const entry = data.velocityStatEntries?.[s.id] || {};
+              let completed = entry.completed?.value || 0;
+              let completedSource = 'velocityStatEntries.completed';
+              if (!completed) {
+                completed = d.contents?.completedIssuesEstimateSum?.value || 0;
+                completedSource = 'completedIssuesEstimateSum';
+              }
+              let initiallyPlanned = entry.estimated?.value || 0;
+              let initiallyPlannedSource = 'velocityStatEntries.estimated';
+              const sprintStart = s.startDate ? new Date(s.startDate) : null;
+              const sprintEnd = s.completeDate ? new Date(s.completeDate) : (s.endDate ? new Date(s.endDate) : null);
+              await Promise.all(events.map(async ev => {
+                try {
+                  const u = `https://${jiraDomain}/rest/api/3/issue/${ev.key}?expand=changelog`;
+                  const ir = await fetch(u, { credentials: 'include' });
+                  if (!ir.ok) return;
+                  const id = await ir.json();
+                  const histories = id.changelog?.histories || [];
+                  ev.events = [];
+                  for (const h of histories) {
+                    const chDate = new Date(h.created);
+                    if (sprintStart && sprintEnd && chDate >= sprintStart && chDate <= sprintEnd) {
+                      ev.events = ev.events.concat(h.items || []);
+                      for (const item of h.items) {
+                        if (item.field === 'issuetype') ev.typeChanged = true;
+                      }
+                    }
+                  }
+                } catch (e) {}
+              }));
+              if (!initiallyPlanned) {
+                initiallyPlanned = events.filter(ev => !ev.addedAfterStart)
+                                         .reduce((sum, ev) => sum + ev.points, 0);
+                initiallyPlannedSource = 'sum of events not added after start';
+              }
+              const other = completed > initiallyPlanned ? completed - initiallyPlanned : 0;
+              if (!combined[s.name]) {
+                combined[s.name] = { name: s.name, events: [], initiallyPlanned: 0, completed: 0, other: 0, initiallyPlannedSource, completedSource };
+              }
+              combined[s.name].events = combined[s.name].events.concat(events);
+              combined[s.name].initiallyPlanned += initiallyPlanned || 0;
+              combined[s.name].completed += completed || 0;
+              combined[s.name].other += other || 0;
+            } catch (e) {
+              Logger.error('sprint fetch failed', e);
+            }
+          }
+        }));
+        Logger.info('Disruption data fetched for', Object.keys(combined).length, 'sprints');
+        return Object.values(combined);
+      } catch (e) {
+        Logger.error('Failed to fetch disruption data', e);
+        alert('Failed to fetch disruption data.');
         return [];
       }
-      const data = await resp.json();
-      let closed = (data.sprints || []).filter(s => s.state === 'CLOSED');
-      closed.sort((a,b) => {
-        const ad = a.endDate || a.completeDate || a.startDate || '';
-        const bd = b.endDate || b.completeDate || b.startDate || '';
-        return ad && bd ? new Date(bd) - new Date(ad) : 0;
-      });
-      closed = closed.slice(0,6);
-      const results = [];
-      for (const s of closed) {
-        const surl = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/sprintreport?rapidViewId=${boardNum}&sprintId=${s.id}`;
-        try {
-          const r = await fetch(surl, { credentials: 'include' });
-          if (!r.ok) continue;
-          const d = await r.json();
-          const addedMap = d.contents.issueKeysAddedDuringSprint || {};
-          // `issueKeysAddedDuringSprint` is keyed by issue ID with the issue key as the value
-          // Convert it to a Set of issue keys for quick membership checks
-          const addedKeys = new Set(Object.values(addedMap));
-          const issues = [];
-          const collect = (arr, movedOut=false) => {
-            (arr || []).forEach(it => {
-              issues.push({
-                key: it.key,
-                points: it.estimateStatistic?.statFieldValue?.value || 0,
-                addedAfterStart: addedKeys.has(it.key),
-                blocked: !!it.flagged,
-                movedOut
-              });
-            });
-          };
-          collect(d.contents.completedIssues, false);
-          collect(d.contents.issuesNotCompletedInCurrentSprint, false);
-          collect(d.contents.puntedIssues, true);
-
-          const entry = data.velocityStatEntries?.[s.id] || {};
-          let completed = entry.completed?.value || 0;
-          let completedSource = 'velocityStatEntries.completed';
-          if (!completed) {
-            completed = d.contents?.completedIssuesEstimateSum?.value || 0;
-            completedSource = 'completedIssuesEstimateSum';
-          }
-          let initiallyPlanned = entry.estimated?.value || 0;
-          let initiallyPlannedSource = 'velocityStatEntries.estimated';
-          const sprintStart = s.startDate ? new Date(s.startDate) : null;
-          const sprintEnd = s.completeDate ? new Date(s.completeDate) : (s.endDate ? new Date(s.endDate) : null);
-          await Promise.all(issues.map(async it => {
-            try {
-              const u = `https://${jiraDomain}/rest/api/3/issue/${it.key}?expand=changelog&fields=issuetype`;
-              const ir = await fetch(u, { credentials: 'include' });
-              if (!ir.ok) return;
-              const id = await ir.json();
-              const histories = id.changelog?.histories || [];
-              for (const h of histories) {
-                const chDate = new Date(h.created);
-                if (sprintStart && sprintEnd && chDate >= sprintStart && chDate <= sprintEnd) {
-                  for (const item of h.items) {
-                    if (item.field === 'issuetype') { it.typeChanged = true; return; }
-                  }
-                }
-              }
-            } catch(e) {}
-          }));
-          if (!initiallyPlanned) {
-            initiallyPlanned = issues.filter(it => !it.addedAfterStart)
-                                     .reduce((sum, it) => sum + it.points, 0);
-            initiallyPlannedSource = 'sum of issues not added after start';
-          }
-          const other = completed > initiallyPlanned ? completed - initiallyPlanned : 0;
-          results.push({ name: s.name, issues, initiallyPlanned, completed, other, initiallyPlannedSource, completedSource });
-        } catch (e) { Logger.error('sprint fetch failed', e); }
-      }
-      Logger.info('Disruption data fetched for', results.length, 'sprints');
-      return results;
-    } catch (e) {
-      Logger.error('Failed to fetch disruption data', e);
-      alert('Failed to fetch disruption data.');
-      return [];
     }
-  }
 
   function renderTable(data) {
     const tbody = document.getElementById('metricsBody');
     let html = '';
     data.forEach((sprint, idx) => {
-      const metrics = Disruption.calculateDisruptionMetrics(sprint.issues);
+      const metrics = Disruption.calculateDisruptionMetrics(sprint.events);
       const detailsId = `details-${idx}`;
       html += `<tr>
         <td>${sprint.name}</td>
@@ -233,20 +238,8 @@
       return;
     }
     Logger.info('Loading disruption report for boards', boards.join(','));
-    const allData = await Promise.all(boards.map(b => fetchDisruptionData(jiraDomain, b)));
-    const combined = {};
-    allData.forEach(list => {
-      list.forEach(s => {
-        if (!combined[s.name]) {
-          combined[s.name] = { name: s.name, issues: [], initiallyPlanned: 0, completed: 0, other: 0, initiallyPlannedSource: s.initiallyPlannedSource, completedSource: s.completedSource };
-        }
-        combined[s.name].issues = combined[s.name].issues.concat(s.issues);
-        combined[s.name].initiallyPlanned += s.initiallyPlanned || 0;
-        combined[s.name].completed += s.completed || 0;
-        combined[s.name].other += s.other || 0;
-      });
-    });
-    renderTable(Object.values(combined));
+    const data = await fetchDisruptionData(jiraDomain, boards);
+    renderTable(data);
     Logger.info('Disruption report rendered');
   }
 
