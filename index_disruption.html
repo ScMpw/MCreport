@@ -114,12 +114,26 @@
         await Promise.all(boardNums.map(async boardNum => {
           const url = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/velocity?rapidViewId=${boardNum}`;
           const resp = await fetch(url, { credentials: 'include' });
-          if (!resp.ok) {
-            Logger.error('Failed to fetch velocity report', resp.status);
-            return;
+          let data = {};
+          if (resp.ok) {
+            data = await resp.json();
+          } else {
+            Logger.warn('Velocity report unavailable, falling back to sprint list', resp.status);
           }
-          const data = await resp.json();
+
           let closed = (data.sprints || []).filter(s => s.state === 'CLOSED' && s.startDate);
+
+          if (!closed.length) {
+            const sUrl = `https://${jiraDomain}/rest/agile/1.0/board/${boardNum}/sprint?state=closed`;
+            const sResp = await fetch(sUrl, { credentials: 'include' });
+            if (!sResp.ok) {
+              Logger.error('Failed to fetch sprint list', sResp.status);
+              return;
+            }
+            const sData = await sResp.json();
+            closed = (sData.values || []).filter(s => (s.state || '').toUpperCase() === 'CLOSED' && s.startDate);
+          }
+
           closed.sort((a, b) => new Date(b.startDate) - new Date(a.startDate));
           closed = closed.slice(0, 12);
           teamVelocity[boardNum] = [];
