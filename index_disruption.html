@@ -414,19 +414,14 @@ function renderCharts(sprints) {
       labels: sprintLabels,
       datasets: [
 
-        { label: 'Completed SP', data: completedSP, borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.3)', fill: false, tension: 0.1, yAxisID: 'y' },
-        { label: 'Pulled In Issues', data: pulledInCount, borderColor: '#3b82f6', backgroundColor: '#3b82f6', fill: false, yAxisID: 'y1' },
-        { label: 'Blocked Days', data: blockedDays, borderColor: '#ef4444', backgroundColor: '#ef4444', fill: false, yAxisID: 'y1' },
-        { label: 'Type Changed Issues', data: typeChangedCount, borderColor: '#f59e0b', backgroundColor: '#f59e0b', fill: false, yAxisID: 'y1' },
-        { label: 'Moved Out Issues', data: movedOutCount, borderColor: '#10b981', backgroundColor: '#10b981', fill: false, yAxisID: 'y1' }
+        { label: 'Completed SP', data: completedSP, borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.3)', fill: false, tension: 0.1 }
 
       ]
     },
     options: {
       scales: {
 
-        y: { beginAtZero: true, suggestedMax: maxY, title: { display: true, text: 'Completed Story Points' } },
-        y1: { beginAtZero: true, position: 'right', title: { display: true, text: 'Issue Count / Blocked Days' }, grid: { drawOnChartArea: false } }
+        y: { beginAtZero: true, suggestedMax: maxY, title: { display: true, text: 'Completed Story Points' } }
 
       },
       plugins: { legend: { position: 'bottom' }, ratingZones: { zonesBySprint } }
@@ -441,14 +436,14 @@ function renderCharts(sprints) {
       labels: sprintLabels,
       datasets: [
         { label: 'Pulled In Issues', data: pulledInCount, borderColor: '#3b82f6', backgroundColor: '#3b82f6', fill: false, tension: 0.1 },
-        { label: 'Blocked Issues', data: blockedCount, borderColor: '#ef4444', backgroundColor: '#ef4444', fill: false, tension: 0.1 },
+        { label: 'Blocked Days', data: blockedDays, borderColor: '#ef4444', backgroundColor: '#ef4444', fill: false, tension: 0.1 },
         { label: 'Type Changed Issues', data: typeChangedCount, borderColor: '#f59e0b', backgroundColor: '#f59e0b', fill: false, tension: 0.1 },
         { label: 'Moved Out Issues', data: movedOutCount, borderColor: '#10b981', backgroundColor: '#10b981', fill: false, tension: 0.1 }
       ]
     },
     options: {
       scales: {
-        y: { beginAtZero: true, title: { display: true, text: 'Issue Count' } }
+        y: { beginAtZero: true, title: { display: true, text: 'Issue Count / Blocked Days' } }
       },
       plugins: { legend: { position: 'bottom' } }
     }
