@@ -157,20 +157,21 @@
               const addedMap = d.contents.issueKeysAddedDuringSprint || {};
               const addedKeys = new Set(Object.values(addedMap));
               const events = [];
-              const collect = (arr, movedOut = false) => {
+              const collect = (arr, movedOut = false, completed = false) => {
                 (arr || []).forEach(it => {
                   events.push({
                     key: it.key,
                     points: it.estimateStatistic?.statFieldValue?.value || 0,
                     addedAfterStart: addedKeys.has(it.key),
                     blocked: !!it.flagged,
-                    movedOut
+                    movedOut,
+                    completed
                   });
                 });
               };
-              collect(d.contents.completedIssues, false);
-              collect(d.contents.issuesNotCompletedInCurrentSprint, false);
-              collect(d.contents.puntedIssues, true);
+              collect(d.contents.completedIssues, false, true);
+              collect(d.contents.issuesNotCompletedInCurrentSprint, false, false);
+              collect(d.contents.puntedIssues, true, false);
 
               const entry = data.velocityStatEntries?.[s.id] || {};
               let completed = entry.completed?.value || 0;
@@ -266,7 +267,8 @@
   function renderTable(data) {
     const tbody = document.getElementById('metricsBody');
     let html = '';
-    data.forEach((sprint, idx) => {
+    const sorted = data.slice().sort((a, b) => new Date(b.startDate || 0) - new Date(a.startDate || 0));
+    sorted.forEach((sprint, idx) => {
       const metrics = Disruption.calculateDisruptionMetrics(sprint.events);
       const detailsId = `details-${idx}`;
       html += `<tr>
@@ -313,11 +315,11 @@
   function renderCharts(sprints) {
     const sprintLabels = sprints.map(s => s.name);
     const metricsArr = sprints.map(s => Disruption.calculateDisruptionMetrics(s.events));
-    const pulledInCounts = metricsArr.map(m => m.pulledInCount || 0);
-    const blockedCounts = metricsArr.map(m => m.blockedCount || 0);
-    const typeChangedCounts = metricsArr.map(m => m.typeChangedCount || 0);
-    const movedOutCounts = metricsArr.map(m => m.movedOutCount || 0);
-    const totalCounts = metricsArr.map((m, i) => pulledInCounts[i] + blockedCounts[i] + typeChangedCounts[i] + movedOutCounts[i]);
+    const pulledInSP = metricsArr.map(m => m.pulledIn || 0);
+    const blockedSP = metricsArr.map(m => m.blocked || 0);
+    const typeChangedSP = metricsArr.map(m => m.typeChanged || 0);
+    const movedOutSP = metricsArr.map(m => m.movedOut || 0);
+    const totalSP = metricsArr.map((m, i) => pulledInSP[i] + blockedSP[i] + typeChangedSP[i] + movedOutSP[i]);
 
     const dctx = document.getElementById('disruptionChart').getContext('2d');
     new Chart(dctx, {
@@ -325,14 +327,14 @@
       data: {
         labels: sprintLabels,
         datasets: [
-          { type: 'bar', label: 'Total', data: totalCounts, backgroundColor: 'rgba(99,102,241,0.5)', borderColor: '#6366f1', borderWidth: 1 },
-          { type: 'line', label: 'Pulled In', data: pulledInCounts, borderColor: '#3b82f6', backgroundColor: '#3b82f6', fill: false },
-          { type: 'line', label: 'Blocked', data: blockedCounts, borderColor: '#ef4444', backgroundColor: '#ef4444', fill: false },
-          { type: 'line', label: 'Type Changed', data: typeChangedCounts, borderColor: '#f59e0b', backgroundColor: '#f59e0b', fill: false },
-          { type: 'line', label: 'Moved Out', data: movedOutCounts, borderColor: '#10b981', backgroundColor: '#10b981', fill: false }
+          { type: 'bar', label: 'Total SP', data: totalSP, backgroundColor: 'rgba(99,102,241,0.5)', borderColor: '#6366f1', borderWidth: 1 },
+          { type: 'line', label: 'Pulled In SP', data: pulledInSP, borderColor: '#3b82f6', backgroundColor: '#3b82f6', fill: false },
+          { type: 'line', label: 'Blocked SP', data: blockedSP, borderColor: '#ef4444', backgroundColor: '#ef4444', fill: false },
+          { type: 'line', label: 'Type Changed SP', data: typeChangedSP, borderColor: '#f59e0b', backgroundColor: '#f59e0b', fill: false },
+          { type: 'line', label: 'Moved Out SP', data: movedOutSP, borderColor: '#10b981', backgroundColor: '#10b981', fill: false }
         ]
       },
-      options: { scales: { y: { beginAtZero: true } }, plugins: { legend: { position: 'bottom' } } }
+      options: { scales: { y: { beginAtZero: true, title: { display: true, text: 'Completed Story Points' } } }, plugins: { legend: { position: 'bottom' } } }
     });
   }
 

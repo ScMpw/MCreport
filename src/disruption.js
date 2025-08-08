@@ -42,25 +42,25 @@
     });
 
     uniq.forEach(ev => {
-      const pts = ev.points || 0;
+      const pts = ev.completed ? (ev.points || 0) : 0;
       logger.debug('Processing event', ev);
 
-      if (ev.addedAfterStart) {
+      if (ev.completed && ev.addedAfterStart) {
         metrics.pulledIn += pts;
         metrics.pulledInIssues.add(ev.key);
       }
 
-      if (ev.blocked) {
+      if (ev.completed && ev.blocked) {
         metrics.blocked += pts;
         metrics.blockedIssues.add(ev.key);
       }
 
-      if (ev.typeChanged) {
+      if (ev.completed && ev.typeChanged) {
         metrics.typeChanged += pts;
         metrics.typeChangedIssues.add(ev.key);
       }
 
-      if (ev.movedOut) {
+      if (ev.completed && ev.movedOut) {
         metrics.movedOut += pts;
         metrics.movedOutIssues.add(ev.key);
       }
