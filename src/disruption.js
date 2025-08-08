@@ -33,11 +33,23 @@
       movedOutCount: 0
     };
 
-    // Deduplicate events by issue key to avoid double counting
+    // Deduplicate events by issue key and merge flags so one issue can
+    // contribute to multiple categories without double counting.
     const uniq = new Map();
     (events || []).forEach(ev => {
-      if (ev && ev.key && !uniq.has(ev.key)) {
-        uniq.set(ev.key, ev);
+      if (!ev || !ev.key) return;
+      if (!uniq.has(ev.key)) {
+        // clone the event object to avoid side effects when merging
+        uniq.set(ev.key, Object.assign({}, ev));
+      } else {
+        const existing = uniq.get(ev.key);
+        existing.points = Math.max(existing.points || 0, ev.points || 0);
+        existing.completed = existing.completed || ev.completed;
+        existing.addedAfterStart = existing.addedAfterStart || ev.addedAfterStart;
+        existing.blockedDays = Math.max(existing.blockedDays || 0, ev.blockedDays || 0);
+        existing.blocked = existing.blocked || ev.blocked;
+        existing.typeChanged = existing.typeChanged || ev.typeChanged;
+        existing.movedOut = existing.movedOut || ev.movedOut;
       }
     });
 
