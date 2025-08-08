@@ -328,12 +328,18 @@ function renderCharts(sprints) {
     const sd = Kpis.calculateStdDev(prev, avg);
     const max = Math.max(...prev, avg + 2 * sd);
     return [
+      // Alarming 0…AV-2SD
       { yMin: 0, yMax: Math.max(avg - 2 * sd, 0), color: 'rgba(254,202,202,0.3)' },
-      { yMin: Math.max(avg - 2 * sd, 0), yMax: avg - sd, color: 'rgba(254,215,170,0.3)' },
+      // Concerning AV-2SD…-1SD
+      { yMin: Math.max(avg - 2 * sd, 0), yMax: avg - sd, color: 'rgba(254,249,195,0.3)' },
+      // Healthy AV-1SD…AV
       { yMin: avg - sd, yMax: avg, color: 'rgba(209,250,229,0.3)' },
-      { yMin: avg, yMax: avg + sd, color: 'rgba(167,243,208,0.3)' },
-      { yMin: avg + sd, yMax: avg + 2 * sd, color: 'rgba(191,219,254,0.3)' },
-      { yMin: avg + 2 * sd, yMax: max, color: 'rgba(199,210,254,0.3)' }
+      // Spot-on AV…AV+1SD
+      { yMin: avg, yMax: avg + sd, color: 'rgba(110,231,183,0.3)' },
+      // Lively AV+1SD…+2SD
+      { yMin: avg + sd, yMax: avg + 2 * sd, color: 'rgba(209,250,229,0.3)' },
+      // Bloated AV+2SD…∞
+      { yMin: avg + 2 * sd, yMax: max, color: 'rgba(254,249,195,0.3)' }
     ];
   });
   const zoneMaxes = zonesBySprint.filter(zs => zs).map(zs => zs[zs.length - 1].yMax);
