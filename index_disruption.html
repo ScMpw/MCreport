@@ -193,12 +193,13 @@
                   if (cached) {
                     ({ histories, initialType, currentType } = cached);
                   } else {
-                    const u = `https://${jiraDomain}/rest/api/3/issue/${ev.key}?expand=changelog`;
+                    const u = `https://${jiraDomain}/rest/api/3/issue/${ev.key}?expand=changelog&fields=issuetype,flagged`;
                     const ir = await fetch(u, { credentials: 'include' });
                     if (!ir.ok) return;
                     const id = await ir.json();
                     histories = id.changelog?.histories || [];
                     currentType = id.fields?.issuetype?.name || '';
+                    ev.blocked = ev.blocked || !!(id.fields?.flagged && id.fields.flagged.length);
                     const sorted = histories.slice().sort((a, b) => new Date(a.created) - new Date(b.created));
                     initialType = currentType;
                     for (const h of sorted) {
