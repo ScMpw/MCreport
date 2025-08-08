@@ -321,29 +321,39 @@ function renderCharts(sprints) {
   const typeChangedCount = metricsArr.map(m => m.typeChangedCount || 0);
   const movedOutCount = metricsArr.map(m => m.movedOutCount || 0);
 
-  const last4 = completedSP.slice(-4);
-  const avg = Kpis.calculateVelocity(last4);
-  const sd = Kpis.calculateStdDev(last4, avg);
-  const maxY = Math.max(...completedSP, avg + 2 * sd);
-  const zones = [
-    { yMin: 0, yMax: Math.max(avg - 2 * sd, 0), color: 'rgba(254,202,202,0.3)' },
-    { yMin: Math.max(avg - 2 * sd, 0), yMax: avg - sd, color: 'rgba(254,215,170,0.3)' },
-    { yMin: avg - sd, yMax: avg, color: 'rgba(209,250,229,0.3)' },
-    { yMin: avg, yMax: avg + sd, color: 'rgba(167,243,208,0.3)' },
-    { yMin: avg + sd, yMax: avg + 2 * sd, color: 'rgba(191,219,254,0.3)' },
-    { yMin: avg + 2 * sd, yMax: maxY, color: 'rgba(199,210,254,0.3)' }
-  ];
+  const zonesBySprint = completedSP.map((_, i) => {
+    if (i < 4) return null;
+    const prev = completedSP.slice(i - 4, i);
+    const avg = Kpis.calculateVelocity(prev);
+    const sd = Kpis.calculateStdDev(prev, avg);
+    const max = Math.max(...prev, avg + 2 * sd);
+    return [
+      { yMin: 0, yMax: Math.max(avg - 2 * sd, 0), color: 'rgba(254,202,202,0.3)' },
+      { yMin: Math.max(avg - 2 * sd, 0), yMax: avg - sd, color: 'rgba(254,215,170,0.3)' },
+      { yMin: avg - sd, yMax: avg, color: 'rgba(209,250,229,0.3)' },
+      { yMin: avg, yMax: avg + sd, color: 'rgba(167,243,208,0.3)' },
+      { yMin: avg + sd, yMax: avg + 2 * sd, color: 'rgba(191,219,254,0.3)' },
+      { yMin: avg + 2 * sd, yMax: max, color: 'rgba(199,210,254,0.3)' }
+    ];
+  });
+  const zoneMaxes = zonesBySprint.filter(zs => zs).map(zs => zs[zs.length - 1].yMax);
+  const maxY = Math.max(...completedSP, ...zoneMaxes);
 
   const ratingZonesPlugin = {
     id: 'ratingZones',
     beforeDraw(chart, args, opts) {
-      const { ctx, chartArea: { top, bottom, left, right }, scales: { y } } = chart;
+      const { ctx, chartArea: { top, bottom, left, right }, scales: { x, y } } = chart;
       ctx.save();
-      opts.zones.forEach(z => {
-        const yStart = y.getPixelForValue(z.yMax);
-        const yEnd = y.getPixelForValue(z.yMin);
-        ctx.fillStyle = z.color;
-        ctx.fillRect(left, yStart, right - left, yEnd - yStart);
+      opts.zonesBySprint.forEach((zs, i) => {
+        if (!zs) return;
+        const xStart = x.getPixelForValue(i - 0.5);
+        const xEnd = x.getPixelForValue(i + 0.5);
+        zs.forEach(z => {
+          const yStart = y.getPixelForValue(z.yMax);
+          const yEnd = y.getPixelForValue(z.yMin);
+          ctx.fillStyle = z.color;
+          ctx.fillRect(xStart, yStart, xEnd - xStart, yEnd - yStart);
+        });
       });
       ctx.restore();
     }
@@ -367,7 +377,7 @@ function renderCharts(sprints) {
         y: { beginAtZero: true, suggestedMax: maxY, title: { display: true, text: 'Completed Story Points' } },
         y1: { beginAtZero: true, position: 'right', title: { display: true, text: 'Issue Count' }, grid: { drawOnChartArea: false } }
       },
-      plugins: { legend: { position: 'bottom' }, ratingZones: { zones } }
+      plugins: { legend: { position: 'bottom' }, ratingZones: { zonesBySprint } }
     },
     plugins: [ratingZonesPlugin]
   });
