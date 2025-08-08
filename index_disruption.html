@@ -199,17 +199,19 @@
               await Promise.all(events.map(async ev => {
                 try {
                   let cached = issueCache.get(ev.key);
-                  let histories, initialType, currentType;
+                  let histories, initialType, currentType, currentStatus;
                   if (cached) {
-                    ({ histories, initialType, currentType } = cached);
+                    ({ histories, initialType, currentType, currentStatus } = cached);
                   } else {
-                    const u = `https://${jiraDomain}/rest/api/3/issue/${ev.key}?expand=changelog&fields=issuetype,flagged`;
+                    const u = `https://${jiraDomain}/rest/api/3/issue/${ev.key}?expand=changelog&fields=issuetype,flagged,status`;
                     const ir = await fetch(u, { credentials: 'include' });
                     if (!ir.ok) return;
                     const id = await ir.json();
                     histories = id.changelog?.histories || [];
                     currentType = id.fields?.issuetype?.name || '';
+                    currentStatus = id.fields?.status?.name || '';
                     ev.blocked = ev.blocked || !!(id.fields?.flagged && id.fields.flagged.length);
+                    ev.blocked = ev.blocked || currentStatus.toLowerCase().includes('block');
                     const sorted = histories.slice().sort((a, b) => new Date(a.created) - new Date(b.created));
                     initialType = currentType;
                     for (const h of sorted) {
@@ -219,26 +221,50 @@
                         break;
                       }
                     }
-                    issueCache.set(ev.key, { histories, initialType, currentType });
+                    issueCache.set(ev.key, { histories, initialType, currentType, currentStatus });
                   }
 
-                  // calculate total days flagged within the sprint
-                  const sortedHist = histories.slice().sort((a, b) => new Date(a.created) - new Date(b.created));
-                  let blockStart = null;
+                  const isBlockedStatus = name => (name || '').toLowerCase().includes('block');
+
+                  // determine status at sprint start by walking histories backwards
+                  const statusAt = (date) => {
+                    let status = currentStatus;
+                    const desc = histories.slice().sort((a, b) => new Date(b.created) - new Date(a.created));
+                    for (const h of desc) {
+                      const changeDate = new Date(h.created);
+                      if (changeDate > date) {
+                        const stItem = (h.items || []).find(i => i.field === 'status');
+                        if (stItem) status = stItem.fromString || stItem.from || status;
+                      } else {
+                        break;
+                      }
+                    }
+                    return status;
+                  };
+
+                  const startStatus = sprintStart ? statusAt(sprintStart) : currentStatus;
+                  let curBlocked = isBlockedStatus(startStatus);
+                  let blockStart = curBlocked ? sprintStart : null;
                   const blockedPeriods = [];
+                  const sortedHist = histories.slice().sort((a, b) => new Date(a.created) - new Date(b.created));
                   for (const h of sortedHist) {
-                    const item = (h.items || []).find(i => i.field === 'Flagged');
-                    if (!item) continue;
                     const date = new Date(h.created);
-                    const added = !item.from && item.to;
-                    const removed = item.from && !item.to;
-                    if (added && !blockStart) blockStart = date;
-                    if (removed && blockStart) {
+                    if (sprintStart && date < sprintStart) continue;
+                    if (sprintEnd && date > sprintEnd) break;
+                    const stItem = (h.items || []).find(i => i.field === 'status');
+                    if (!stItem) continue;
+                    const toStatus = stItem.toString || stItem.to || '';
+                    const toBlocked = isBlockedStatus(toStatus);
+                    if (curBlocked && !toBlocked) {
                       blockedPeriods.push([blockStart, date]);
+                      curBlocked = false;
                       blockStart = null;
+                    } else if (!curBlocked && toBlocked) {
+                      curBlocked = true;
+                      blockStart = date;
                     }
                   }
-                  if (blockStart) blockedPeriods.push([blockStart, sprintEnd || new Date()]);
+                  if (curBlocked) blockedPeriods.push([blockStart, sprintEnd || new Date()]);
                   if (!blockedPeriods.length && ev.blocked) {
                     blockedPeriods.push([sprintStart, sprintEnd || new Date()]);
                   }
@@ -249,6 +275,7 @@
                       ? sum + Kpis.calculateWorkDays(sClamped, eClamped)
                       : sum;
                   }, 0);
+                  ev.blocked = ev.blocked || blockedPeriods.length > 0;
 
                   const allowedTypes = new Set(['task', 'story', 'bug']);
                   let typeChangedDuringSprint = false;
