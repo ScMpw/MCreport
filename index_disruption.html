@@ -56,6 +56,7 @@
     </thead>
     <tbody id="metricsBody"></tbody>
   </table>
+  <div id="velocityStats"></div>
 </div>
 <script src="src/logger.js"></script>
 <script src="src/jira.js"></script>
@@ -72,6 +73,7 @@
   Logger.setListener((level, args) => appendLog(level, args));
 </script>
 <script src="src/disruption.js"></script>
+<script src="src/kpis.js"></script>
 <script>
   function switchVersion(v){ window.location.href = v; }
 
@@ -96,6 +98,7 @@
     async function fetchDisruptionData(jiraDomain, boardNums = []) {
       Logger.info('Fetching disruption data for boards', boardNums.join(','));
       const combined = {};
+      const teamVelocity = {};
       try {
         await Promise.all(boardNums.map(async boardNum => {
           const url = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/velocity?rapidViewId=${boardNum}`;
@@ -108,6 +111,7 @@
           let closed = (data.sprints || []).filter(s => s.state === 'CLOSED' && s.startDate);
           closed.sort((a, b) => new Date(b.startDate) - new Date(a.startDate));
           closed = closed.slice(0, 12);
+          teamVelocity[boardNum] = [];
           for (const s of closed) {
             const surl = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/sprintreport?rapidViewId=${boardNum}&sprintId=${s.id}`;
             try {
@@ -141,6 +145,7 @@
               }
               let initiallyPlanned = entry.estimated?.value || 0;
               let initiallyPlannedSource = 'velocityStatEntries.estimated';
+              teamVelocity[boardNum].push(completed || 0);
               const sprintStart = s.startDate ? new Date(s.startDate) : null;
               const sprintEnd = s.completeDate ? new Date(s.completeDate) : (s.endDate ? new Date(s.endDate) : null);
               await Promise.all(events.map(async ev => {
@@ -181,11 +186,11 @@
           }
         }));
         Logger.info('Disruption data fetched for', Object.keys(combined).length, 'sprints');
-        return Object.values(combined);
+        return { sprints: Object.values(combined), teamVelocity };
       } catch (e) {
         Logger.error('Failed to fetch disruption data', e);
         alert('Failed to fetch disruption data.');
-        return [];
+        return { sprints: [], teamVelocity: {} };
       }
     }
 
@@ -221,6 +226,21 @@
     tbody.innerHTML = html;
   }
 
+  function renderVelocityStats(boardNames, teamVelocity) {
+    const wrap = document.getElementById('velocityStats');
+    if (!wrap) return;
+    let html = '<h2>Velocity (last 12 sprints)</h2>';
+    html += '<table><thead><tr><th>Team</th><th>Mean Velocity</th><th>Std Dev</th></tr></thead><tbody>';
+    Object.keys(boardNames).forEach(id => {
+      const vals = teamVelocity[id] || [];
+      const mean = Kpis.calculateVelocity(vals);
+      const sd = Kpis.calculateStdDev(vals, mean);
+      html += `<tr><td>${boardNames[id]}</td><td>${mean.toFixed(2)}</td><td>${sd.toFixed(2)}</td></tr>`;
+    });
+    html += '</tbody></table>';
+    wrap.innerHTML = html;
+  }
+
   function toggleDetails(id, btn) {
     const row = document.getElementById(id);
     if (row) {
@@ -232,14 +252,18 @@
 
   async function loadDisruption() {
     const jiraDomain = document.getElementById('jiraDomain').value.trim();
-    const boards = boardChoices ? boardChoices.getValue(true) : [];
+    const selected = boardChoices ? boardChoices.getValue() : [];
+    const boards = selected.map(b => b.value);
     if (!jiraDomain || !boards.length) {
       alert('Enter Jira domain and select boards.');
       return;
     }
     Logger.info('Loading disruption report for boards', boards.join(','));
-    const data = await fetchDisruptionData(jiraDomain, boards);
-    renderTable(data);
+    const { sprints, teamVelocity } = await fetchDisruptionData(jiraDomain, boards);
+    renderTable(sprints);
+    const boardNames = {};
+    selected.forEach(b => { boardNames[b.value] = b.label; });
+    renderVelocityStats(boardNames, teamVelocity);
     Logger.info('Disruption report rendered');
   }
 
