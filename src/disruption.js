@@ -45,22 +45,22 @@
       const pts = ev.completed ? (ev.points || 0) : 0;
       logger.debug('Processing event', ev);
 
-      if (ev.completed && ev.addedAfterStart) {
+      if (ev.addedAfterStart) {
         metrics.pulledIn += pts;
         metrics.pulledInIssues.add(ev.key);
       }
 
-      if (ev.completed && ev.blocked) {
+      if (ev.blocked) {
         metrics.blocked += pts;
         metrics.blockedIssues.add(ev.key);
       }
 
-      if (ev.completed && ev.typeChanged) {
+      if (ev.typeChanged) {
         metrics.typeChanged += pts;
         metrics.typeChangedIssues.add(ev.key);
       }
 
-      if (ev.completed && ev.movedOut) {
+      if (ev.movedOut) {
         metrics.movedOut += pts;
         metrics.movedOutIssues.add(ev.key);
       }

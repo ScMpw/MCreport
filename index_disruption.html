@@ -312,31 +312,37 @@
     wrap.innerHTML = html;
   }
 
-  function renderCharts(sprints) {
-    const sprintLabels = sprints.map(s => s.name);
-    const metricsArr = sprints.map(s => Disruption.calculateDisruptionMetrics(s.events));
-    const pulledInSP = metricsArr.map(m => m.pulledIn || 0);
-    const blockedSP = metricsArr.map(m => m.blocked || 0);
-    const typeChangedSP = metricsArr.map(m => m.typeChanged || 0);
-    const movedOutSP = metricsArr.map(m => m.movedOut || 0);
-    const totalSP = metricsArr.map((m, i) => pulledInSP[i] + blockedSP[i] + typeChangedSP[i] + movedOutSP[i]);
+function renderCharts(sprints) {
+  const sprintLabels = sprints.map(s => s.name);
+  const completedSP = sprints.map(s => s.completed || 0);
+  const metricsArr = sprints.map(s => Disruption.calculateDisruptionMetrics(s.events));
+  const pulledInCount = metricsArr.map(m => m.pulledInCount || 0);
+  const blockedCount = metricsArr.map(m => m.blockedCount || 0);
+  const typeChangedCount = metricsArr.map(m => m.typeChangedCount || 0);
+  const movedOutCount = metricsArr.map(m => m.movedOutCount || 0);
 
-    const dctx = document.getElementById('disruptionChart').getContext('2d');
-    new Chart(dctx, {
-      type: 'bar',
-      data: {
-        labels: sprintLabels,
-        datasets: [
-          { type: 'bar', label: 'Total SP', data: totalSP, backgroundColor: 'rgba(99,102,241,0.5)', borderColor: '#6366f1', borderWidth: 1 },
-          { type: 'line', label: 'Pulled In SP', data: pulledInSP, borderColor: '#3b82f6', backgroundColor: '#3b82f6', fill: false },
-          { type: 'line', label: 'Blocked SP', data: blockedSP, borderColor: '#ef4444', backgroundColor: '#ef4444', fill: false },
-          { type: 'line', label: 'Type Changed SP', data: typeChangedSP, borderColor: '#f59e0b', backgroundColor: '#f59e0b', fill: false },
-          { type: 'line', label: 'Moved Out SP', data: movedOutSP, borderColor: '#10b981', backgroundColor: '#10b981', fill: false }
-        ]
+  const dctx = document.getElementById('disruptionChart').getContext('2d');
+  new Chart(dctx, {
+    type: 'bar',
+    data: {
+      labels: sprintLabels,
+      datasets: [
+        { type: 'bar', label: 'Completed SP', data: completedSP, backgroundColor: 'rgba(99,102,241,0.5)', borderColor: '#6366f1', borderWidth: 1, yAxisID: 'y' },
+        { type: 'line', label: 'Pulled In Issues', data: pulledInCount, borderColor: '#3b82f6', backgroundColor: '#3b82f6', fill: false, yAxisID: 'y1' },
+        { type: 'line', label: 'Blocked Issues', data: blockedCount, borderColor: '#ef4444', backgroundColor: '#ef4444', fill: false, yAxisID: 'y1' },
+        { type: 'line', label: 'Type Changed Issues', data: typeChangedCount, borderColor: '#f59e0b', backgroundColor: '#f59e0b', fill: false, yAxisID: 'y1' },
+        { type: 'line', label: 'Moved Out Issues', data: movedOutCount, borderColor: '#10b981', backgroundColor: '#10b981', fill: false, yAxisID: 'y1' }
+      ]
+    },
+    options: {
+      scales: {
+        y: { beginAtZero: true, title: { display: true, text: 'Completed Story Points' } },
+        y1: { beginAtZero: true, position: 'right', title: { display: true, text: 'Issue Count' }, grid: { drawOnChartArea: false } }
       },
-      options: { scales: { y: { beginAtZero: true, title: { display: true, text: 'Completed Story Points' } } }, plugins: { legend: { position: 'bottom' } } }
-    });
-  }
+      plugins: { legend: { position: 'bottom' } }
+    }
+  });
+}
 
   function toggleDetails(id, btn) {
     const row = document.getElementById(id);
