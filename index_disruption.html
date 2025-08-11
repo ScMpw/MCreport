@@ -105,6 +105,22 @@
   // an error about reusing a canvas that is already in use.
   let completedChartInstance;
   let disruptionChartInstance;
+  let removedSprintIds = [];
+
+  function filterRecentSprints(allSprints, excludeIds = [], desiredCount = 6) {
+    const excluded = new Set((excludeIds || []).map(String));
+    const sorted = allSprints.slice().sort((a, b) => {
+      const ad = a.endDate || a.completeDate || a.startDate || '';
+      const bd = b.endDate || b.completeDate || b.startDate || '';
+      return ad && bd ? new Date(bd) - new Date(ad) : 0;
+    });
+    const result = [];
+    for (const s of sorted) {
+      if (!excluded.has(String(s.id))) result.push(s);
+      if (result.length >= desiredCount) break;
+    }
+    return result;
+  }
 
   async function populateBoards() {
     const domain = document.getElementById('jiraDomain').value.trim();
@@ -161,8 +177,7 @@
             closed = allSprints.filter(s => (s.state || '').toUpperCase() === 'CLOSED' && s.startDate);
           }
 
-          closed.sort((a, b) => new Date(b.startDate) - new Date(a.startDate));
-          closed = closed.slice(0, 6);
+          closed = filterRecentSprints(closed, removedSprintIds, 6);
           teamVelocity[boardNum] = new Array(closed.length).fill(0);
 
           await Promise.all(closed.map(async (s, idx) => {
