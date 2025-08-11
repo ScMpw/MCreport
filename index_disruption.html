@@ -100,6 +100,11 @@
 
   const boardSelect = document.getElementById('boardNum');
   let boardChoices = new Choices(boardSelect, { removeItemButton: true });
+  // Keep references to existing Chart.js instances so they can be destroyed
+  // when rendering charts multiple times. Without this, Chart.js will throw
+  // an error about reusing a canvas that is already in use.
+  let completedChartInstance;
+  let disruptionChartInstance;
 
   async function populateBoards() {
     const domain = document.getElementById('jiraDomain').value.trim();
@@ -448,8 +453,16 @@ function renderCharts(sprints) {
     }
   };
 
+  // Destroy existing charts if they exist to allow re-rendering without errors
+  if (completedChartInstance) {
+    completedChartInstance.destroy();
+  }
+  if (disruptionChartInstance) {
+    disruptionChartInstance.destroy();
+  }
+
   const vctx = document.getElementById('completedChart').getContext('2d');
-  new Chart(vctx, {
+  completedChartInstance = new Chart(vctx, {
     type: 'line',
     data: {
       labels: sprintLabels,
@@ -474,7 +487,7 @@ function renderCharts(sprints) {
   });
 
   const dctx = document.getElementById('disruptionChart').getContext('2d');
-  new Chart(dctx, {
+  disruptionChartInstance = new Chart(dctx, {
     type: 'line',
     data: {
       labels: sprintLabels,
