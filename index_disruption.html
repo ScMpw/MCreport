@@ -69,12 +69,12 @@
   <div id="chartSection" class="chart-section">
     <canvas id="completedChart"></canvas>
     <div class="rating-zone-description">
-      <div><span style="background:rgba(254,202,202,0.4);"></span>Alarming: 0…AV-2SD</div>
-      <div><span style="background:rgba(254,249,195,0.4);"></span>Concerning: AV-2SD…AV-1SD</div>
-      <div><span style="background:rgba(209,250,229,0.4);"></span>Healthy: AV-1SD…AV</div>
-      <div><span style="background:rgba(110,231,183,0.4);"></span>Spot-on: AV…AV+1SD</div>
-      <div><span style="background:rgba(209,250,229,0.4);"></span>Lively: AV+1SD…AV+2SD</div>
-      <div><span style="background:rgba(254,249,195,0.4);"></span>Bloated: AV+2SD…∞</div>
+      <div><span style="background:rgba(254,202,202,0.5);"></span>Alarming: 0…AV-2SD</div>
+      <div><span style="background:rgba(254,249,195,0.5);"></span>Concerning: AV-2SD…AV-1SD</div>
+      <div><span style="background:rgba(209,250,229,0.5);"></span>Healthy: AV-1SD…AV</div>
+      <div><span style="background:rgba(110,231,183,0.5);"></span>Spot-on: AV…AV+1SD</div>
+      <div><span style="background:rgba(209,250,229,0.5);"></span>Lively: AV+1SD…AV+2SD</div>
+      <div><span style="background:rgba(254,249,195,0.5);"></span>Bloated: AV+2SD…∞</div>
     </div>
     <canvas id="disruptionChart"></canvas>
   </div>
@@ -414,12 +414,12 @@ function renderCharts(sprints) {
     const sd = Kpis.calculateStdDev(window, avg);
     const max = Math.max(...window, avg + 2 * sd);
     return [
-      { yMin: 0, yMax: Math.max(avg - 2 * sd, 0), color: 'rgba(254,202,202,0.4)' },
-      { yMin: Math.max(avg - 2 * sd, 0), yMax: avg - sd, color: 'rgba(254,249,195,0.4)' },
-      { yMin: avg - sd, yMax: avg, color: 'rgba(209,250,229,0.4)' },
-      { yMin: avg, yMax: avg + sd, color: 'rgba(110,231,183,0.4)' },
-      { yMin: avg + sd, yMax: avg + 2 * sd, color: 'rgba(209,250,229,0.4)' },
-      { yMin: avg + 2 * sd, yMax: max, color: 'rgba(254,249,195,0.4)' }
+      { yMin: 0, yMax: Math.max(avg - 2 * sd, 0), color: 'rgba(254,202,202,0.5)' },
+      { yMin: Math.max(avg - 2 * sd, 0), yMax: avg - sd, color: 'rgba(254,249,195,0.5)' },
+      { yMin: avg - sd, yMax: avg, color: 'rgba(209,250,229,0.5)' },
+      { yMin: avg, yMax: avg + sd, color: 'rgba(110,231,183,0.5)' },
+      { yMin: avg + sd, yMax: avg + 2 * sd, color: 'rgba(209,250,229,0.5)' },
+      { yMin: avg + 2 * sd, yMax: max, color: 'rgba(254,249,195,0.5)' }
     ];
   });
   const zoneMaxes = zonesBySprint.map(zs => zs[zs.length - 1].yMax);
