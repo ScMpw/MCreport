@@ -25,6 +25,8 @@
     .rating-zone-description { margin-top: 10px; font-size: 0.9em; }
     .rating-zone-description div { margin-top: 4px; }
     .rating-zone-description span { display:inline-block; width:12px; height:12px; margin-right:6px; vertical-align:middle; }
+    .sprint-item { background:#e5e7eb; border-radius:4px; padding:2px 6px; margin-right:6px; display:inline-block; }
+    .sprint-item .remove { cursor:pointer; color:#e11d48; margin-left:4px; }
   </style>
 </head>
 <body>
@@ -49,10 +51,8 @@
     <button class="btn" onclick="exportPDF()">Download PDF</button>
   </div>
   <div id="sprintRow" style="margin-top:10px; display:none;">
-    <label>Sprint:
-      <select id="sprintSelect"></select>
-    </label>
-    <button class="btn" onclick="removeSelectedSprint()">Remove Sprint</button>
+    <span>Sprints:</span>
+    <div id="sprintList" style="display:inline-block;"></div>
   </div>
   <div id="logPanel" style="display:none; white-space:pre-wrap; font-size:0.85em; background:#f3f4f6; border:1px solid #e5e7eb; padding:6px; margin:10px 0; max-height:150px; overflow:auto;"></div>
   <table>
@@ -113,6 +113,8 @@
   let disruptionChartInstance;
   let sprints = [];
   let removedSprintIds = [];
+  let teamVelocityData = {};
+  let boardNamesData = {};
 
   function filterRecentSprints(allSprints, excludeIds = [], desiredCount = 6) {
     const excluded = new Set((excludeIds || []).map(String));
@@ -129,29 +131,22 @@
     return result;
   }
 
-  function populateSprintDropdown() {
-    const sel = document.getElementById('sprintSelect');
-    if (!sel) return;
-    sel.innerHTML = '';
-    sprints.forEach(s => {
-      const opt = document.createElement('option');
-      opt.value = s.id;
-      opt.textContent = s.name;
-      sel.appendChild(opt);
-    });
+  function renderSprintList() {
+    const wrap = document.getElementById('sprintList');
+    if (!wrap) return;
+    wrap.innerHTML = sprints.map(s =>
+      `<span class="sprint-item">${s.name}<span class="remove" onclick="removeSprint('${s.id}')">&times;</span></span>`
+    ).join('');
   }
 
-  function removeSelectedSprint() {
-    const sel = document.getElementById('sprintSelect');
-    const sid = sel ? sel.value : '';
-    if (!sid) {
-      alert('Select a sprint to remove.');
-      return;
-    }
-    if (!removedSprintIds.includes(String(sid))) {
-      removedSprintIds.push(String(sid));
-    }
-    loadDisruption();
+  function removeSprint(id) {
+    const sid = String(id);
+    if (!removedSprintIds.includes(sid)) removedSprintIds.push(sid);
+    sprints = sprints.filter(s => String(s.id) !== sid);
+    renderTable(sprints);
+    renderSprintList();
+    renderCharts(sprints);
+    renderVelocityStats(boardNamesData, teamVelocityData);
   }
 
   async function populateBoards() {
@@ -370,7 +365,8 @@
                 initiallyPlannedSource = 'sum of events not added after start';
               }
               const other = completed > initiallyPlanned ? completed - initiallyPlanned : 0;
-              const existing = combined[s.name] || { name: s.name, startDate: s.startDate, events: [], initiallyPlanned: 0, completed: 0, other: 0, initiallyPlannedSource, completedSource };
+              const existing = combined[s.name] || { id: s.id, name: s.name, startDate: s.startDate, events: [], initiallyPlanned: 0, completed: 0, other: 0, initiallyPlannedSource, completedSource };
+              existing.id = existing.id || s.id;
               existing.startDate = existing.startDate || s.startDate;
               existing.events = existing.events.concat(events);
               existing.initiallyPlanned += initiallyPlanned || 0;
@@ -577,11 +573,13 @@ function renderCharts(sprints) {
     const { sprints: fetchedSprints, teamVelocity } = await fetchDisruptionData(jiraDomain, boards);
     sprints = fetchedSprints;
     renderTable(sprints);
-    populateSprintDropdown();
+    renderSprintList();
     document.getElementById('sprintRow').style.display = sprints.length ? '' : 'none';
     const boardNames = {};
     selected.forEach(b => { boardNames[b.value] = b.label; });
-    renderVelocityStats(boardNames, teamVelocity);
+    boardNamesData = boardNames;
+    teamVelocityData = teamVelocity;
+    renderVelocityStats(boardNamesData, teamVelocityData);
     renderCharts(sprints);
     Logger.info('Disruption report rendered');
   }
