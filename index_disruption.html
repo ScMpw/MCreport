@@ -118,15 +118,6 @@
   let teamVelocityData = {};
   let boardNamesData = {};
 
-  function isoWeekNumber(dt) {
-    const d = new Date(Date.UTC(dt.getFullYear(), dt.getMonth(), dt.getDate()));
-    const day = d.getUTCDay() || 7;
-    d.setUTCDate(d.getUTCDate() + 4 - day);
-    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-    const week = Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
-    return `${d.getUTCFullYear()}-W${String(week).padStart(2,'0')}`;
-  }
-
   function filterRecentSprints(allSprints, excludeIds = [], desiredCount = 6) {
     const excluded = new Set((excludeIds || []).map(String));
     const sorted = allSprints.slice().sort((a, b) => {
@@ -469,35 +460,20 @@ function renderCharts(sprints) {
   const typeChangedCount = metricsArr.map(m => m.typeChangedCount || 0);
   const movedOutCount = metricsArr.map(m => m.movedOutCount || 0);
 
-  const weekMap = {};
-  sprints.forEach(s => {
-    (s.events || []).forEach(ev => {
-      if (!ev.completedDate) return;
-      const d = new Date(ev.completedDate);
-      if (isNaN(d)) return;
-      const wk = isoWeekNumber(d);
-      if (!weekMap[wk]) weekMap[wk] = { cycles: [], count: 0 };
-      if (typeof ev.cycleTime === 'number') weekMap[wk].cycles.push(ev.cycleTime);
-      weekMap[wk].count++;
-    });
+  const cycleData = sprints.map(s => {
+    const events = (s.events || []).filter(ev => ev.completedDate && typeof ev.cycleTime === 'number');
+    const avg = events.length ? events.reduce((sum, ev) => sum + ev.cycleTime, 0) / events.length : 0;
+    return { avg, count: events.length };
   });
-  const weekLabels = Object.keys(weekMap).sort();
-  const avgCycleTime = weekLabels.map(w => {
-    const arr = weekMap[w].cycles;
-    return arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0;
-  });
-  const throughputPerWeek = weekLabels.map(w => weekMap[w].count);
+  const avgCycleTime = cycleData.map(c => c.avg);
+  const throughputPerSprint = cycleData.map(c => c.count);
 
   const chartWidth = Math.max(sprintLabels.length * 120, 600);
-  ['completedChart','disruptionChart'].forEach(id => {
+  ['completedChart','disruptionChart','cycleChart'].forEach(id => {
     const canvas = document.getElementById(id);
     canvas.width = chartWidth;
     canvas.height = 300;
   });
-  const cycleCanvas = document.getElementById('cycleChart');
-  const weekChartWidth = Math.max(weekLabels.length * 100, 600);
-  cycleCanvas.width = weekChartWidth;
-  cycleCanvas.height = 300;
 
   const zonesBySprint = [];
   const avgBySprint = [];
@@ -602,10 +578,10 @@ function renderCharts(sprints) {
   cycleChartInstance = new Chart(cctx, {
     type: 'line',
     data: {
-      labels: weekLabels,
+      labels: sprintLabels,
       datasets: [
         { label: 'Mean Cycle Time (days)', data: avgCycleTime, borderColor: '#8b5cf6', backgroundColor: 'rgba(139,92,246,0.3)', yAxisID: 'y1', fill: false, tension: 0.1 },
-        { label: 'Throughput per Week', data: throughputPerWeek, borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,0.3)', yAxisID: 'y2', fill: false, tension: 0.1 }
+        { label: 'Throughput per Sprint', data: throughputPerSprint, borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,0.3)', yAxisID: 'y2', fill: false, tension: 0.1 }
       ]
     },
     options: {
