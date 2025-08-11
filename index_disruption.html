@@ -180,7 +180,9 @@
             Logger.warn('Velocity report unavailable, falling back to sprint list', resp.status);
           }
 
-          let closed = (data.sprints || []).filter(s => s.state === 'CLOSED' && s.startDate);
+          let closed = (data.sprints || []).filter(
+            s => s.state === 'CLOSED' && s.startDate && String(s.originBoardId) === String(boardNum)
+          );
 
           if (!closed.length) {
             let allSprints = [];
@@ -201,7 +203,9 @@
               loops++;
               if (sData.isLast || values.length < maxResults || loops > 100) break;
             }
-            closed = allSprints.filter(s => (s.state || '').toUpperCase() === 'CLOSED' && s.startDate);
+            closed = allSprints.filter(
+              s => (s.state || '').toUpperCase() === 'CLOSED' && s.startDate && String(s.originBoardId) === String(boardNum)
+            );
           }
 
           closed = filterRecentSprints(closed, removedSprintIds, 6);
