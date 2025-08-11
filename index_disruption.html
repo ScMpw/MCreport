@@ -26,7 +26,6 @@
     .rating-zone-description div { margin-top: 4px; }
     .rating-zone-description span { display:inline-block; width:12px; height:12px; margin-right:6px; vertical-align:middle; }
     .sprint-item { background:#e5e7eb; border-radius:4px; padding:2px 6px; margin-right:6px; display:inline-block; }
-    .sprint-item .remove { cursor:pointer; color:#e11d48; margin-left:4px; }
   </style>
 </head>
 <body>
@@ -114,41 +113,27 @@
   let disruptionChartInstance;
   let cycleChartInstance;
   let sprints = [];
-  let removedSprintIds = [];
   let teamVelocityData = {};
   let boardNamesData = {};
 
+
   function filterRecentSprints(allSprints, excludeIds = [], desiredCount = 6) {
     const excluded = new Set((excludeIds || []).map(String));
+
     const sorted = allSprints.slice().sort((a, b) => {
       const ad = a.endDate || a.completeDate || a.startDate || '';
       const bd = b.endDate || b.completeDate || b.startDate || '';
       return ad && bd ? new Date(bd) - new Date(ad) : 0;
     });
-    const result = [];
-    for (const s of sorted) {
-      if (!excluded.has(String(s.id))) result.push(s);
-      if (result.length >= desiredCount) break;
-    }
-    return result;
+    return sorted.slice(0, desiredCount);
   }
 
   function renderSprintList() {
     const wrap = document.getElementById('sprintList');
     if (!wrap) return;
     wrap.innerHTML = sprints.map(s =>
-      `<span class="sprint-item">${s.name}<span class="remove" onclick="removeSprint('${s.id}')">&times;</span></span>`
+      `<span class="sprint-item">${s.name}</span>`
     ).join('');
-  }
-
-  function removeSprint(id) {
-    const sid = String(id);
-    if (!removedSprintIds.includes(sid)) removedSprintIds.push(sid);
-    sprints = sprints.filter(s => String(s.id) !== sid);
-    renderTable(sprints);
-    renderSprintList();
-    renderCharts(sprints);
-    renderVelocityStats(boardNamesData, teamVelocityData);
   }
 
   async function populateBoards() {
@@ -210,7 +195,7 @@
             );
           }
 
-          closed = filterRecentSprints(closed, removedSprintIds, 6);
+          closed = filterRecentSprints(closed, 6);
           teamVelocity[boardNum] = new Array(closed.length).fill(0);
 
           await Promise.all(closed.map(async (s, idx) => {
