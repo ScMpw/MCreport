@@ -195,7 +195,7 @@
             );
           }
 
-          closed = filterRecentSprints(closed, 6);
+          closed = filterRecentSprints(closed, [], 6);
           teamVelocity[boardNum] = new Array(closed.length).fill(0);
 
           await Promise.all(closed.map(async (s, idx) => {
