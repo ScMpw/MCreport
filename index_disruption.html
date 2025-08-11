@@ -407,23 +407,26 @@ function renderCharts(sprints) {
     canvas.height = 300;
   });
 
-  const zonesBySprint = completedSP.map((_, i) => {
+  const zonesBySprint = [];
+  const avgBySprint = [];
+  completedSP.forEach((_, i) => {
     const start = Math.max(0, i - 3);
     const window = completedSP.slice(start, i + 1);
     const avg = Kpis.calculateVelocity(window);
     const sd = Kpis.calculateStdDev(window, avg);
     const max = Math.max(...window, avg + 2 * sd);
-    return [
+    avgBySprint.push(avg);
+    zonesBySprint.push([
       { yMin: 0, yMax: Math.max(avg - 2 * sd, 0), color: 'rgba(254,202,202,0.5)' },
       { yMin: Math.max(avg - 2 * sd, 0), yMax: avg - sd, color: 'rgba(254,249,195,0.5)' },
       { yMin: avg - sd, yMax: avg, color: 'rgba(209,250,229,0.5)' },
       { yMin: avg, yMax: avg + sd, color: 'rgba(110,231,183,0.5)' },
       { yMin: avg + sd, yMax: avg + 2 * sd, color: 'rgba(209,250,229,0.5)' },
       { yMin: avg + 2 * sd, yMax: max, color: 'rgba(254,249,195,0.5)' }
-    ];
+    ]);
   });
   const zoneMaxes = zonesBySprint.map(zs => zs[zs.length - 1].yMax);
-  const maxY = Math.max(...completedSP, ...zoneMaxes);
+  const maxY = Math.max(...completedSP, ...zoneMaxes, ...avgBySprint);
 
   const ratingZonesPlugin = {
     id: 'ratingZones',
@@ -452,7 +455,8 @@ function renderCharts(sprints) {
       labels: sprintLabels,
       datasets: [
 
-        { label: 'Completed SP', data: completedSP, borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.3)', fill: false, tension: 0.1 }
+        { label: 'Completed SP', data: completedSP, borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.3)', fill: false, tension: 0.1 },
+        { label: 'Average Velocity', data: avgBySprint, borderColor: '#000000', borderDash: [5,5], fill: false, tension: 0 }
 
       ]
     },
