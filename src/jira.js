@@ -22,7 +22,7 @@
     // querying every board in the instance which previously resulted in
     // numerous 404 errors. Additional board IDs can be added to this
     // list as needed.
-    const boardIds = [2796, 2526, 6346];
+    const boardIds = [2796, 2526, 6346, 4133, 4132, 4131, 6347, 6390, 4894];
     const results = [];
 
     // Accept boards whose project keys match any of these values.
