@@ -408,11 +408,11 @@ function renderCharts(sprints) {
   });
 
   const zonesBySprint = completedSP.map((_, i) => {
-    if (i < 4) return null;
-    const prev = completedSP.slice(i - 4, i);
-    const avg = Kpis.calculateVelocity(prev);
-    const sd = Kpis.calculateStdDev(prev, avg);
-    const max = Math.max(...prev, avg + 2 * sd);
+    const start = Math.max(0, i - 3);
+    const window = completedSP.slice(start, i + 1);
+    const avg = Kpis.calculateVelocity(window);
+    const sd = Kpis.calculateStdDev(window, avg);
+    const max = Math.max(...window, avg + 2 * sd);
     return [
       { yMin: 0, yMax: Math.max(avg - 2 * sd, 0), color: 'rgba(254,202,202,0.4)' },
       { yMin: Math.max(avg - 2 * sd, 0), yMax: avg - sd, color: 'rgba(254,249,195,0.4)' },
@@ -422,7 +422,7 @@ function renderCharts(sprints) {
       { yMin: avg + 2 * sd, yMax: max, color: 'rgba(254,249,195,0.4)' }
     ];
   });
-  const zoneMaxes = zonesBySprint.filter(zs => zs).map(zs => zs[zs.length - 1].yMax);
+  const zoneMaxes = zonesBySprint.map(zs => zs[zs.length - 1].yMax);
   const maxY = Math.max(...completedSP, ...zoneMaxes);
 
   const ratingZonesPlugin = {
