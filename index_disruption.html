@@ -432,8 +432,8 @@ function renderCharts(sprints) {
       ctx.save();
       opts.zonesBySprint.forEach((zs, i) => {
         if (!zs) return;
-        const xStart = x.getPixelForValue(i - 0.5);
-        const xEnd = x.getPixelForValue(i + 0.5);
+        const xStart = Math.max(x.getPixelForValue(i - 0.5), left);
+        const xEnd = Math.min(x.getPixelForValue(i + 0.5), right);
         zs.forEach(z => {
           const yStart = y.getPixelForValue(z.yMax);
           const yEnd = y.getPixelForValue(z.yMin);
