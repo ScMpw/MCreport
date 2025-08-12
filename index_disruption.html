@@ -200,7 +200,7 @@
             );
           }
 
-          closed = filterRecentSprints(closed, [], DISPLAY_SPRINT_COUNT + RATING_WINDOW - 1);
+          closed = filterRecentSprints(closed, [], DISPLAY_SPRINT_COUNT + RATING_WINDOW);
           teamVelocity[boardNum] = new Array(closed.length).fill(0);
 
           await Promise.all(closed.map(async (s, idx) => {
@@ -468,8 +468,13 @@ function renderCharts(displaySprints, allSprints) {
   const zonesBySprintAll = [];
   const avgBySprintAll = [];
   completedSPAll.forEach((_, i) => {
-    const start = Math.max(0, i - (RATING_WINDOW - 1));
-    const window = completedSPAll.slice(start, i + 1);
+    const start = Math.max(0, i - RATING_WINDOW);
+    const window = completedSPAll.slice(start, i);
+    if (!window.length) {
+      avgBySprintAll.push(0);
+      zonesBySprintAll.push(null);
+      return;
+    }
     const avg = Kpis.calculateVelocity(window);
     const sd = Kpis.calculateStdDev(window, avg);
     const max = Math.max(...window, avg + 3 * sd);
@@ -485,9 +490,9 @@ function renderCharts(displaySprints, allSprints) {
   });
   const zonesBySprint = zonesBySprintAll.slice(-displaySprints.length);
   const avgBySprint = avgBySprintAll.slice(-displaySprints.length);
-  const zoneMaxes = zonesBySprint.map(zs => zs[zs.length - 1].yMax);
+  const zoneMaxes = zonesBySprint.map(zs => zs ? zs[zs.length - 1].yMax : 0);
   const maxY = Math.max(...completedSP, ...zoneMaxes, ...avgBySprint);
-  zonesBySprint.forEach(zs => { zs[zs.length - 1].yMax = maxY; });
+  zonesBySprint.forEach(zs => { if (zs) { zs[zs.length - 1].yMax = maxY; } });
 
   const ratingZonesPlugin = {
     id: 'ratingZones',
