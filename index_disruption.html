@@ -360,12 +360,11 @@
                           const toType = item.toString || item.to;
                           if (fromType && toType && fromType !== toType) {
                             typeChangedDuringSprint = true;
-                            break;
                           }
                         }
                       }
                     }
-                    if (typeChangedDuringSprint) break;
+                    // Continue scanning in case sprint membership changes occur after a type change
                   }
 
                   if (typeChangedDuringSprint && allowedTypes.has((initialType || '').toLowerCase()) && currentType && currentType !== initialType) {
