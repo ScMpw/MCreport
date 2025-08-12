@@ -33,49 +33,46 @@
       movedOutCount: 0
     };
 
-    // Deduplicate events by issue key and merge flags so one issue can
-    // contribute to multiple categories without double counting.
-    const uniq = new Map();
+    // Track which categories each issue has already contributed to so the same
+    // issue can be counted in multiple disruption categories without double
+    // counting a single category twice.
+    const seen = new Map();
+
     (events || []).forEach(ev => {
       if (!ev || !ev.key) return;
-      if (!uniq.has(ev.key)) {
-        // clone the event object to avoid side effects when merging
-        uniq.set(ev.key, Object.assign({}, ev));
-      } else {
-        const existing = uniq.get(ev.key);
-        existing.points = Math.max(existing.points || 0, ev.points || 0);
-        existing.completed = existing.completed || ev.completed;
-        existing.addedAfterStart = existing.addedAfterStart || ev.addedAfterStart;
-        existing.blockedDays = Math.max(existing.blockedDays || 0, ev.blockedDays || 0);
-        existing.blocked = existing.blocked || ev.blocked;
-        existing.typeChanged = existing.typeChanged || ev.typeChanged;
-        existing.movedOut = existing.movedOut || ev.movedOut;
-      }
-    });
 
-    uniq.forEach(ev => {
       const pts = ev.points || 0;
       const completedPts = ev.completed ? pts : 0;
+      let rec = seen.get(ev.key);
+      if (!rec) {
+        rec = {};
+        seen.set(ev.key, rec);
+      }
+
       logger.debug('Processing event', ev);
 
-      if (ev.addedAfterStart) {
+      if (ev.addedAfterStart && !rec.pulledIn) {
         metrics.pulledIn += pts;
         metrics.pulledInIssues.add(ev.key);
+        rec.pulledIn = true;
       }
 
-      if (ev.blockedDays && ev.blockedDays > 0) {
+      if (ev.blockedDays && ev.blockedDays > 0 && !rec.blocked) {
         metrics.blockedDays += ev.blockedDays;
         metrics.blockedIssues.add(ev.key);
+        rec.blocked = true;
       }
 
-      if (ev.typeChanged) {
+      if (ev.typeChanged && !rec.typeChanged) {
         metrics.typeChanged += completedPts;
         metrics.typeChangedIssues.add(ev.key);
+        rec.typeChanged = true;
       }
 
-      if (ev.movedOut) {
+      if (ev.movedOut && !rec.movedOut) {
         metrics.movedOut += pts;
         metrics.movedOutIssues.add(ev.key);
+        rec.movedOut = true;
       }
     });
 
