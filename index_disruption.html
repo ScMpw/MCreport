@@ -60,7 +60,6 @@
         <th>Sprint</th>
         <th>Initially Planned</th>
         <th>Completed</th>
-        <th>Other</th>
         <th>Pulled In</th>
         <th>Blocked Days</th>
         <th>Type Changed</th>
@@ -361,14 +360,12 @@
                                          .reduce((sum, ev) => sum + ev.points, 0);
                 initiallyPlannedSource = 'sum of events not added after start';
               }
-              const other = completed > initiallyPlanned ? completed - initiallyPlanned : 0;
-              const existing = combined[s.name] || { id: s.id, name: s.name, startDate: s.startDate, events: [], initiallyPlanned: 0, completed: 0, other: 0, initiallyPlannedSource, completedSource };
+              const existing = combined[s.name] || { id: s.id, name: s.name, startDate: s.startDate, events: [], initiallyPlanned: 0, completed: 0, initiallyPlannedSource, completedSource };
               existing.id = existing.id || s.id;
               existing.startDate = existing.startDate || s.startDate;
               existing.events = existing.events.concat(events);
               existing.initiallyPlanned += initiallyPlanned || 0;
               existing.completed += completed || 0;
-              existing.other += other || 0;
               combined[s.name] = existing;
             } catch (e) {
               Logger.error('sprint fetch failed', e);
@@ -396,14 +393,13 @@
         <td>${sprint.name}</td>
         <td title="${sprint.initiallyPlannedSource}">${sprint.initiallyPlanned || 0}</td>
         <td title="${sprint.completedSource}">${sprint.completed || 0}</td>
-        <td title="completed minus initially planned">${sprint.other || 0}</td>
         <td title="${metrics.pulledInIssues.join(', ')}">${metrics.pulledIn || 0} (${metrics.pulledInCount || 0})</td>
         <td title="${metrics.blockedIssues.join(', ')}">${Number(metrics.blockedDays || 0).toFixed(1)} (${metrics.blockedCount || 0})</td>
         <td title="${metrics.typeChangedIssues.join(', ')}">${metrics.typeChanged || 0} (${metrics.typeChangedCount || 0})</td>
         <td title="${metrics.movedOutIssues.join(', ')}">${metrics.movedOut || 0} (${metrics.movedOutCount || 0})</td>
         <td><button class="btn details-toggle" onclick="toggleDetails('${detailsId}', this)">Show Details</button></td>
       </tr>`;
-      html += `<tr id="${detailsId}" style="display:none"><td colspan="9">
+      html += `<tr id="${detailsId}" style="display:none"><td colspan="8">
         <table class="story-table">
           <thead><tr><th>Metric</th><th>Stories</th></tr></thead>
           <tbody>
