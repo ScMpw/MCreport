@@ -367,6 +367,14 @@
                     // Continue scanning in case sprint membership changes occur after a type change
                   }
 
+                  // Some issues may be created after the sprint starts and assigned
+                  // to the sprint during creation. These won't have an explicit
+                  // sprint change entry in the history, so detect this case using
+                  // the issue's creation date.
+                  if (!ev.addedAfterStart && sprintStart && created && new Date(created) > sprintStart) {
+                    ev.addedAfterStart = true;
+                  }
+
                   if (typeChangedDuringSprint && allowedTypes.has((initialType || '').toLowerCase()) && currentType && currentType !== initialType) {
                     ev.typeChanged = true;
                   }
