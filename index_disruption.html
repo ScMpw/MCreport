@@ -543,9 +543,8 @@ function renderCharts(displaySprints, allSprints) {
       responsive: false,
       maintainAspectRatio: false,
       scales: {
-
+        x: { offset: true },
         y: { beginAtZero: true, suggestedMax: maxY, title: { display: true, text: 'Completed Story Points' } }
-
       },
       plugins: { legend: { position: 'bottom' }, ratingZones: { zonesBySprint } }
     },
@@ -568,6 +567,7 @@ function renderCharts(displaySprints, allSprints) {
       responsive: false,
       maintainAspectRatio: false,
       scales: {
+        x: { offset: true },
         y: { beginAtZero: true, title: { display: true, text: 'Issue Count / Blocked Days' } }
       },
       plugins: { legend: { position: 'bottom' } }
@@ -588,6 +588,7 @@ function renderCharts(displaySprints, allSprints) {
       responsive: false,
       maintainAspectRatio: false,
       scales: {
+        x: { offset: true },
         y1: { type: 'linear', position: 'left', beginAtZero: true, title: { display: true, text: 'Mean Cycle Time (days)' } },
         y2: { type: 'linear', position: 'right', beginAtZero: true, title: { display: true, text: 'Throughput' }, grid: { drawOnChartArea: false } }
       },
