@@ -74,7 +74,7 @@
       }
 
       if (ev.movedOut) {
-        metrics.movedOut += completedPts;
+        metrics.movedOut += pts;
         metrics.movedOutIssues.add(ev.key);
       }
     });
