@@ -286,6 +286,7 @@
                   let blockStart = curBlocked ? sprintStart : null;
                   const blockedPeriods = [];
                   const sortedHist = histories.slice().sort((a, b) => new Date(a.created) - new Date(b.created));
+                  let devStart = null;
                   for (const h of sortedHist) {
                     const date = new Date(h.created);
                     if (sprintStart && date < sprintStart) continue;
@@ -293,6 +294,7 @@
                     const stItem = (h.items || []).find(i => i.field === 'status');
                     if (!stItem) continue;
                     const toStatus = stItem.toString || stItem.to || '';
+                    if (!devStart && toStatus.toLowerCase() === 'in development') devStart = date;
                     const toBlocked = isBlockedStatus(toStatus);
                     if (curBlocked && !toBlocked) {
                       blockedPeriods.push([blockStart, date]);
@@ -316,8 +318,8 @@
                   }, 0);
                   ev.blocked = ev.blocked || blockedPeriods.length > 0;
                   ev.completedDate = resolutionDate;
-                  if (created && resolutionDate) {
-                    ev.cycleTime = Kpis.calculateWorkDays(new Date(created), new Date(resolutionDate));
+                  if (devStart && resolutionDate) {
+                    ev.cycleTime = Kpis.calculateWorkDays(devStart, new Date(resolutionDate));
                   }
 
                   const allowedTypes = new Set(['task', 'story', 'bug']);
@@ -569,7 +571,7 @@ function renderCharts(sprints) {
       responsive: false,
       maintainAspectRatio: false,
       scales: {
-        y1: { type: 'linear', position: 'left', beginAtZero: true, title: { display: true, text: 'Cycle Time (days)' } },
+        y1: { type: 'linear', position: 'left', beginAtZero: true, title: { display: true, text: 'Mean Cycle Time (days)' } },
         y2: { type: 'linear', position: 'right', beginAtZero: true, title: { display: true, text: 'Throughput' }, grid: { drawOnChartArea: false } }
       },
       plugins: { legend: { position: 'bottom' } }
