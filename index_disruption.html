@@ -114,12 +114,15 @@
   let completedChartInstance;
   let disruptionChartInstance;
   let cycleChartInstance;
+  const DISPLAY_SPRINT_COUNT = 6;
+  const RATING_WINDOW = 4;
   let sprints = [];
+  let allSprints = [];
   let teamVelocityData = {};
   let boardNamesData = {};
 
 
-  function filterRecentSprints(allSprints, excludeIds = [], desiredCount = 6) {
+  function filterRecentSprints(allSprints, excludeIds = [], desiredCount = DISPLAY_SPRINT_COUNT) {
     const excluded = new Set((excludeIds || []).map(String));
 
     const sorted = allSprints.slice().sort((a, b) => {
@@ -197,7 +200,7 @@
             );
           }
 
-          closed = filterRecentSprints(closed, [], 6);
+          closed = filterRecentSprints(closed, [], DISPLAY_SPRINT_COUNT + RATING_WINDOW - 1);
           teamVelocity[boardNum] = new Array(closed.length).fill(0);
 
           await Promise.all(closed.map(async (s, idx) => {
@@ -436,17 +439,18 @@
     wrap.innerHTML = html;
   }
 
-function renderCharts(sprints) {
-  const sprintLabels = sprints.map(s => s.name);
-  const completedSP = sprints.map(s => s.completed || 0);
-  const metricsArr = sprints.map(s => Disruption.calculateDisruptionMetrics(s.events));
+function renderCharts(displaySprints, allSprints) {
+  const sprintLabels = displaySprints.map(s => s.name);
+  const completedSPAll = (allSprints || displaySprints).map(s => s.completed || 0);
+  const completedSP = completedSPAll.slice(-displaySprints.length);
+  const metricsArr = displaySprints.map(s => Disruption.calculateDisruptionMetrics(s.events));
   const pulledInCount = metricsArr.map(m => m.pulledInCount || 0);
   const blockedDays = metricsArr.map(m => m.blockedDays || 0);
   const blockedCount = metricsArr.map(m => m.blockedCount || 0);
   const typeChangedCount = metricsArr.map(m => m.typeChangedCount || 0);
   const movedOutCount = metricsArr.map(m => m.movedOutCount || 0);
 
-  const cycleData = sprints.map(s => {
+  const cycleData = displaySprints.map(s => {
     const events = (s.events || []).filter(ev => ev.completedDate && typeof ev.cycleTime === 'number');
     const avg = events.length ? events.reduce((sum, ev) => sum + ev.cycleTime, 0) / events.length : 0;
     return { avg, count: events.length };
@@ -461,16 +465,16 @@ function renderCharts(sprints) {
     canvas.height = 300;
   });
 
-  const zonesBySprint = [];
-  const avgBySprint = [];
-  completedSP.forEach((_, i) => {
-    const start = Math.max(0, i - 3);
-    const window = completedSP.slice(start, i + 1);
+  const zonesBySprintAll = [];
+  const avgBySprintAll = [];
+  completedSPAll.forEach((_, i) => {
+    const start = Math.max(0, i - (RATING_WINDOW - 1));
+    const window = completedSPAll.slice(start, i + 1);
     const avg = Kpis.calculateVelocity(window);
     const sd = Kpis.calculateStdDev(window, avg);
     const max = Math.max(...window, avg + 3 * sd);
-    avgBySprint.push(avg);
-    zonesBySprint.push([
+    avgBySprintAll.push(avg);
+    zonesBySprintAll.push([
       { yMin: 0, yMax: Math.max(avg - 2 * sd, 0), color: 'rgba(254,202,202,0.5)' },
       { yMin: Math.max(avg - 2 * sd, 0), yMax: avg - sd, color: 'rgba(254,249,195,0.5)' },
       { yMin: avg - sd, yMax: avg, color: 'rgba(34,197,94,0.5)' },
@@ -479,6 +483,8 @@ function renderCharts(sprints) {
       { yMin: avg + 2 * sd, yMax: max, color: 'rgba(254,249,195,0.5)' }
     ]);
   });
+  const zonesBySprint = zonesBySprintAll.slice(-displaySprints.length);
+  const avgBySprint = avgBySprintAll.slice(-displaySprints.length);
   const zoneMaxes = zonesBySprint.map(zs => zs[zs.length - 1].yMax);
   const maxY = Math.max(...completedSP, ...zoneMaxes, ...avgBySprint);
   zonesBySprint.forEach(zs => { zs[zs.length - 1].yMax = maxY; });
@@ -602,7 +608,8 @@ function renderCharts(sprints) {
     }
     Logger.info('Loading disruption report for boards', boards.join(','));
     const { sprints: fetchedSprints, teamVelocity } = await fetchDisruptionData(jiraDomain, boards);
-    sprints = fetchedSprints;
+    allSprints = fetchedSprints;
+    sprints = fetchedSprints.slice(-DISPLAY_SPRINT_COUNT);
     renderTable(sprints);
     renderSprintList();
     document.getElementById('sprintRow').style.display = sprints.length ? '' : 'none';
@@ -611,7 +618,7 @@ function renderCharts(sprints) {
     boardNamesData = boardNames;
     teamVelocityData = teamVelocity;
     renderVelocityStats(boardNamesData, teamVelocityData);
-    renderCharts(sprints);
+    renderCharts(sprints, allSprints);
     Logger.info('Disruption report rendered');
   }
 
