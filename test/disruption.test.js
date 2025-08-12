@@ -13,4 +13,19 @@ const { calculateDisruptionMetrics } = require('../src/disruption');
   assert.deepStrictEqual(metrics.movedOutIssues.sort(), ['ST-1', 'ST-2']);
 })();
 
+// Test an issue can contribute to multiple disruption categories
+(() => {
+  const events = [
+    { key: 'ST-3', points: 5, addedAfterStart: true },
+    { key: 'ST-3', points: 5, movedOut: true }
+  ];
+  const metrics = calculateDisruptionMetrics(events);
+  assert.strictEqual(metrics.pulledIn, 5);
+  assert.strictEqual(metrics.movedOut, 5);
+  assert.strictEqual(metrics.pulledInCount, 1);
+  assert.strictEqual(metrics.movedOutCount, 1);
+  assert.deepStrictEqual(metrics.pulledInIssues, ['ST-3']);
+  assert.deepStrictEqual(metrics.movedOutIssues, ['ST-3']);
+})();
+
 console.log('disruption tests passed');
