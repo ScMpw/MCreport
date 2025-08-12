@@ -501,8 +501,10 @@ function renderCharts(displaySprints, allSprints) {
       ctx.save();
       opts.zonesBySprint.forEach((zs, i) => {
         if (!zs) return;
-        const xStart = Math.max(x.getPixelForValue(i - 0.5), left);
-        const xEnd = Math.min(x.getPixelForValue(i + 0.5), right);
+        const isFirst = i === 0;
+        const isLast = i === opts.zonesBySprint.length - 1;
+        const xStart = isFirst ? left : x.getPixelForValue(i - 0.5);
+        const xEnd = isLast ? right : x.getPixelForValue(i + 0.5);
         zs.forEach(z => {
           const yStart = y.getPixelForValue(z.yMax);
           const yEnd = y.getPixelForValue(z.yMin);
