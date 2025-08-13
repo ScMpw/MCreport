@@ -239,45 +239,9 @@
               collect(d.contents.issuesNotCompletedInCurrentSprint, false);
               collect(d.contents.puntedIssues, false);
 
-              let completed = 0;
-              let completedSource = '';
-              try {
-                const doneJql = encodeURIComponent(`sprint = ${s.id} AND statusCategory = Done`);
-                const searchUrl = `https://${jiraDomain}/rest/api/3/search?jql=${doneJql}&fields=key,customfield_10002&maxResults=1000`;
-                const sr = await fetch(searchUrl, { credentials: 'include' });
-                if (sr.ok) {
-                  const sd = await sr.json();
-                  const doneIssues = sd.issues || [];
-                  doneIssues.forEach(it => {
-                    const key = it.key;
-                    const pts = Number(it.fields?.customfield_10002) || 0;
-                    let existing = events.find(ev => ev.key === key);
-                    if (existing) {
-                      existing.points = existing.points || pts;
-                      existing.completed = true;
-                    } else {
-                      events.push({
-                        key,
-                        points: pts,
-                        addedAfterStart: false,
-                        blocked: false,
-                        movedOut: false,
-                        completed: true
-                      });
-                    }
-                  });
-                  completed = doneIssues.reduce((sum, it) => sum + (Number(it.fields?.customfield_10002) || 0), 0);
-                  completedSource = 'search API Done issues';
-                }
-              } catch (e) {
-                Logger.warn('Done issues search failed', e);
-              }
-
               const entry = data.velocityStatEntries?.[s.id] || {};
-              if (!completed) {
-                completed = entry.completed?.value || 0;
-                completedSource = 'velocityStatEntries.completed';
-              }
+              let completed = entry.completed?.value || 0;
+              let completedSource = 'velocityStatEntries.completed';
               if (!completed) {
                 completed = d.contents?.completedIssuesEstimateSum?.value || 0;
                 completedSource = 'completedIssuesEstimateSum';
@@ -295,7 +259,7 @@
                   if (cached) {
                     ({ histories, initialType, currentType, currentStatus, created, resolutionDate } = cached);
                   } else {
-                    const u = `https://${jiraDomain}/rest/api/3/issue/${ev.key}?expand=changelog&fields=issuetype,flagged,status,created,resolutiondate,customfield_10002`;
+                    const u = `https://${jiraDomain}/rest/api/3/issue/${ev.key}?expand=changelog&fields=issuetype,flagged,status,created,resolutiondate`;
                     const ir = await fetch(u, { credentials: 'include' });
                     if (!ir.ok) return;
                     const id = await ir.json();
@@ -306,7 +270,6 @@
                     resolutionDate = id.fields?.resolutiondate;
                     ev.blocked = ev.blocked || !!(id.fields?.flagged && id.fields.flagged.length);
                     ev.blocked = ev.blocked || currentStatus.toLowerCase().includes('block');
-                    ev.points = ev.points || Number(id.fields?.customfield_10002) || 0;
                     const sorted = histories.slice().sort((a, b) => new Date(a.created) - new Date(b.created));
                     initialType = currentType;
                     for (const h of sorted) {
@@ -508,9 +471,10 @@ function renderCharts(displaySprints, allSprints) {
   const movedOutCount = metricsArr.map(m => m.movedOutCount || 0);
 
   const cycleData = displaySprints.map(s => {
-    const events = (s.events || []).filter(ev => ev.completedDate && typeof ev.cycleTime === 'number');
-    const avg = events.length ? events.reduce((sum, ev) => sum + ev.cycleTime, 0) / events.length : 0;
-    return { avg, count: events.length };
+    const completed = (s.events || []).filter(ev => ev.completedDate);
+    const withCycle = completed.filter(ev => typeof ev.cycleTime === 'number');
+    const avg = withCycle.length ? withCycle.reduce((sum, ev) => sum + ev.cycleTime, 0) / withCycle.length : 0;
+    return { avg, count: completed.length };
   });
   const avgCycleTime = cycleData.map(c => c.avg);
   const throughputPerSprint = cycleData.map(c => c.count);
