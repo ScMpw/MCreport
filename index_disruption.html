@@ -74,6 +74,7 @@
     <div class="table-description"><strong>Legend:</strong> Initially Planned and Completed show story points. Pulled In, Type Changed, and Moved Out list story points with the number of affected issues in parentheses. Blocked Days lists days with the number of blocked issues in parentheses.</div>
     <div id="velocityStats"></div>
     <div id="chartSection" class="chart-section">
+      <div id="plannedInfo" style="font-size:0.9em; margin-bottom:10px;"></div>
       <canvas id="completedChart"></canvas>
       <div class="rating-zone-description">
         <div id="ratingZoneToggle" style="cursor:pointer;"><strong>Rating zones (show)</strong></div>
@@ -463,12 +464,34 @@ function renderCharts(displaySprints, allSprints) {
   const sprintLabels = displaySprints.map(s => s.name);
   const completedSPAll = (allSprints || displaySprints).map(s => s.completed || 0);
   const completedSP = completedSPAll.slice(-displaySprints.length);
+  const plannedSPAll = (allSprints || displaySprints).map(s => s.initiallyPlanned || 0);
+  const plannedSP = plannedSPAll.slice(-displaySprints.length);
   const metricsArr = displaySprints.map(s => Disruption.calculateDisruptionMetrics(s.events));
   const pulledInCount = metricsArr.map(m => m.pulledInCount || 0);
   const blockedDays = metricsArr.map(m => m.blockedDays || 0);
   const blockedCount = metricsArr.map(m => m.blockedCount || 0);
   const typeChangedCount = metricsArr.map(m => m.typeChangedCount || 0);
   const movedOutCount = metricsArr.map(m => m.movedOutCount || 0);
+
+  const remainingInitial = displaySprints.map(s =>
+    (s.events || []).filter(ev => !ev.addedAfterStart && !ev.movedOut)
+      .reduce((sum, ev) => sum + (ev.points || 0), 0)
+  );
+  const completedInitial = displaySprints.map(s =>
+    (s.events || []).filter(ev => !ev.addedAfterStart && !ev.movedOut && ev.completed)
+      .reduce((sum, ev) => sum + (ev.points || 0), 0)
+  );
+  const plannedInfoEl = document.getElementById('plannedInfo');
+  if (plannedInfoEl) {
+    let infoHtml = '<strong>Initial plan retained vs completed:</strong>';
+    displaySprints.forEach((s, idx) => {
+      const init = s.initiallyPlanned || 0;
+      const rem = remainingInitial[idx] || 0;
+      const comp = completedInitial[idx] || 0;
+      infoHtml += `<div>${s.name}: ${rem} of ${init} remained; ${comp} completed</div>`;
+    });
+    plannedInfoEl.innerHTML = infoHtml;
+  }
 
   const cycleData = displaySprints.map(s => {
     const completed = (s.events || []).filter(ev => ev.completedDate);
@@ -512,7 +535,7 @@ function renderCharts(displaySprints, allSprints) {
   const zonesBySprint = zonesBySprintAll.slice(-displaySprints.length);
   const avgBySprint = avgBySprintAll.slice(-displaySprints.length);
   const zoneMaxes = zonesBySprint.map(zs => zs ? zs[zs.length - 1].yMax : 0);
-  const maxY = Math.max(...completedSP, ...zoneMaxes, ...avgBySprint);
+  const maxY = Math.max(...completedSP, ...plannedSP, ...zoneMaxes, ...avgBySprint);
   zonesBySprint.forEach(zs => { if (zs) { zs[zs.length - 1].yMax = maxY; } });
 
   const ratingZonesPlugin = {
@@ -554,10 +577,9 @@ function renderCharts(displaySprints, allSprints) {
     data: {
       labels: sprintLabels,
       datasets: [
-
+        { label: 'Initially Planned SP', data: plannedSP, borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,0.3)', fill: false, tension: 0.1 },
         { label: 'Completed SP', data: completedSP, borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.3)', fill: false, tension: 0.1 },
         { label: 'Average Velocity', data: avgBySprint, borderColor: '#000000', borderDash: [5,5], fill: false, tension: 0 }
-
       ]
     },
     options: {
