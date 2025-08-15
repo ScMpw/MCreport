@@ -72,7 +72,9 @@ export function computeBucketSeries({ team, product, sprints = [], issues = [], 
   filtered.forEach(issue => {
     const issueKey = issue.key || '';
     const parentKey = issue.parentKey || issue.epicKey || (issue.parent && issue.parent.key) || '';
-    const labels = Array.isArray(issue.epicLabels) ? issue.epicLabels : [];
+    const labels = Array.isArray(issue.parentLabels)
+      ? issue.parentLabels
+      : (Array.isArray(issue.epicLabels) ? issue.epicLabels : []);
     if (typeof console !== 'undefined' && typeof console.log === 'function') {
       console.log(`${issueKey} - ${parentKey} - [${labels.join(', ')}]`);
     }
@@ -101,9 +103,12 @@ export function computeBucketSeries({ team, product, sprints = [], issues = [], 
       .sort((a, b) => new Date(a.at) - new Date(b.at));
     const doneEntry = statusChanges.find(c => /done/i.test(c.to));
     const completion = doneEntry ? new Date(doneEntry.at) : null;
+    const labels = Array.isArray(issue.parentLabels)
+      ? issue.parentLabels
+      : (Array.isArray(issue.epicLabels) ? issue.epicLabels : []);
     return {
-      isPi: checkFn(issue.epicLabels || [], piLabelTemplate),
-      piId: extractPiId(issue.epicLabels || [], piLabelTemplate),
+      isPi: checkFn(labels, piLabelTemplate),
+      piId: extractPiId(labels, piLabelTemplate),
       storyPoints: issue.storyPoints || 0,
       sprintTimeline: sprintChanges,
       completionTime: completion
