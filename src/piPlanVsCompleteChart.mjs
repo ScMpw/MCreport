@@ -19,7 +19,7 @@ function getSprintAt(timeline = [], time) {
   return current;
 }
 
-export function computeBucketSeries({ team, product, sprints = [], issues = [], piBuckets = [], piLabelTemplate = 'YEAR_PIX_committed' } = {}) {
+export function computeBucketSeries({ team, product, sprints = [], issues = [], piBuckets = [], piLabelTemplate = 'YEAR_PIX_committed', piCheck } = {}) {
   const sprintMap = new Map();
   sprints.forEach(s => sprintMap.set(s.id, s));
   const metrics = new Map();
@@ -28,6 +28,8 @@ export function computeBucketSeries({ team, product, sprints = [], issues = [], 
   });
 
   const filtered = (issues || []).filter(i => i.team === team && i.product === product);
+
+  const checkFn = typeof piCheck === 'function' ? piCheck : isPiCommitted;
 
   const processed = filtered.map(issue => {
     const sprintChanges = [];
@@ -47,7 +49,7 @@ export function computeBucketSeries({ team, product, sprints = [], issues = [], 
     const doneEntry = statusChanges.find(c => /done/i.test(c.to));
     const completion = doneEntry ? new Date(doneEntry.at) : null;
     return {
-      isPi: isPiCommitted(issue.epicLabels || [], piLabelTemplate),
+      isPi: checkFn(issue.epicLabels || [], piLabelTemplate),
       storyPoints: issue.storyPoints || 0,
       sprintTimeline: sprintChanges,
       completionTime: completion
@@ -123,7 +125,7 @@ function createHatch(color, bg) {
   return ctx.createPattern(canvas, 'repeat');
 }
 
-export function renderPiPlanVsCompleteChart({ canvasId, team, product, sprints = [], issues = [], piBuckets = [], piLabelTemplate = 'YEAR_PIX_committed' }) {
+export function renderPiPlanVsCompleteChart({ canvasId, team, product, sprints = [], issues = [], piBuckets = [], piLabelTemplate = 'YEAR_PIX_committed', piCheck } = {}) {
   const canvas = document.getElementById(canvasId);
   if (!canvas) return null;
   canvas.setAttribute('role', 'img');
@@ -132,7 +134,7 @@ export function renderPiPlanVsCompleteChart({ canvasId, team, product, sprints =
     canvas._chart.destroy();
   }
 
-  const series = computeBucketSeries({ team, product, sprints, issues, piBuckets, piLabelTemplate });
+  const series = computeBucketSeries({ team, product, sprints, issues, piBuckets, piLabelTemplate, piCheck });
 
   const blue = '#0EA5E9';
   const blueBorder = '#0284C7';
