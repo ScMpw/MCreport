@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>PI Plan vs Completed Demo</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+  <style>
+    body { font-family: sans-serif; padding:20px; }
+    canvas { max-width: 800px; }
+  </style>
+</head>
+<body>
+  <h1>PI Plan vs Completed Chart Demo</h1>
+  <canvas id="pi-plan-vs-complete"></canvas>
+  <script type="module">
+    import { renderPiPlanVsCompleteChart } from './src/piPlanVsCompleteChart.mjs';
+
+    const sprints = [
+      { id: 's1', name: 'Sprint 1/2', start: '2024-01-01', end: '2024-01-14' },
+      { id: 's2', name: 'Sprint 3/4', start: '2024-01-15', end: '2024-01-28' },
+      { id: 's3', name: 'Sprint 5/6', start: '2024-01-29', end: '2024-02-11' }
+    ];
+
+    const piBuckets = [
+      { id: 'b1', labelTop: 'Sprint 1+2', labelBottom: 'PI 1', sprintIds: ['s1'] },
+      { id: 'b2', labelTop: 'Sprint 3+4', labelBottom: 'PI 1', sprintIds: ['s2'] },
+      { id: 'b3', labelTop: 'Sprint 5+6', labelBottom: 'PI 1', sprintIds: ['s3'] }
+    ];
+
+    const issues = [
+      {
+        id: 'ISSUE-1',
+        team: 'PAY',
+        product: 'POS',
+        storyPoints: 3,
+        epicLabels: ['2024_PI1_committed'],
+        changelog: [
+          { field: 'Sprint', to: 's1', at: '2023-12-30T00:00:00Z' },
+          { field: 'Status', to: 'Done', at: '2024-01-10T00:00:00Z' }
+        ]
+      },
+      {
+        id: 'ISSUE-2',
+        team: 'PAY',
+        product: 'POS',
+        storyPoints: 5,
+        epicLabels: [],
+        changelog: [
+          { field: 'Sprint', to: 's1', at: '2023-12-29T00:00:00Z' },
+          { field: 'Sprint', from: 's1', to: 's2', at: '2024-01-16T00:00:00Z' },
+          { field: 'Status', to: 'Done', at: '2024-01-25T00:00:00Z' }
+        ]
+      }
+    ];
+
+    renderPiPlanVsCompleteChart({
+      canvasId: 'pi-plan-vs-complete',
+      team: 'PAY',
+      product: 'POS',
+      sprints,
+      issues,
+      piBuckets
+    });
+  </script>
+</body>
+</html>
