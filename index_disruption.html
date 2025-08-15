@@ -10,7 +10,6 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
-  <script src="./src/piLabel.js"></script>
   <style>
     body { background: #f7f8fa; font-family: 'Inter', Arial, sans-serif; margin:0; padding:0; }
     .main { max-width: 950px; margin: 30px auto; background:#fff; border-radius:18px; padding:36px 32px; box-shadow:0 2px 12px #d1d5db70; }
@@ -728,8 +727,7 @@ function renderCharts(displaySprints, allSprints) {
         product: CHART_PRODUCT,
         sprints: fetchedSprints.map(s => ({ id: s.id, name: s.name, start: s.start, end: s.end })),
         issues,
-        piBuckets,
-        piCheck: PiLabel.isPiRelevant
+        piBuckets
       });
     }
     Logger.info('Disruption report rendered');
