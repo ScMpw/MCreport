@@ -390,8 +390,9 @@
                     ev.typeChanged = true;
                   }
 
-                  if (!issueDetails.has(ev.key)) {
-                    const changelog = (histories || []).flatMap(h =>
+                  const existingIssue = issueDetails.get(ev.key);
+                  if (!existingIssue || ((existingIssue.storyPoints || 0) === 0 && (ev.points || 0) > 0)) {
+                    const changelog = existingIssue ? existingIssue.changelog : (histories || []).flatMap(h =>
                       (h.items || []).filter(it => {
                         const f = (it.field || '').toLowerCase();
                         return f === 'sprint' || f === 'status';
@@ -406,9 +407,9 @@
                       id: ev.key,
                       team: CHART_TEAM,
                       product: CHART_PRODUCT,
-                      storyPoints: ev.points || 0,
+                      storyPoints: (ev.points || existingIssue?.storyPoints || 0),
                       parentKey,
-                      epicLabels: [],
+                      epicLabels: existingIssue?.epicLabels || [],
                       changelog
                     });
                   }
