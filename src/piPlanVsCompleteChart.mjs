@@ -1,0 +1,278 @@
+export function isPiCommitted(epicLabels = [], template = 'YEAR_PIX_committed') {
+  if (!Array.isArray(epicLabels) || epicLabels.length === 0) return false;
+  const escaped = template.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp('^' + escaped
+    .replace('YEAR', '(\\\d{4})')
+    .replace('PIX', 'PI(\\\d+)') + '$', 'i');
+  return epicLabels.some(l => regex.test(l));
+}
+
+function getSprintAt(timeline = [], time) {
+  let current = null;
+  for (const entry of timeline) {
+    if (entry.at <= time) {
+      current = entry.sprintId;
+    } else {
+      break;
+    }
+  }
+  return current;
+}
+
+export function computeBucketSeries({ team, product, sprints = [], issues = [], piBuckets = [], piLabelTemplate = 'YEAR_PIX_committed' } = {}) {
+  const sprintMap = new Map();
+  sprints.forEach(s => sprintMap.set(s.id, s));
+  const metrics = new Map();
+  sprints.forEach(s => {
+    metrics.set(s.id, { plannedPi: 0, plannedNonPi: 0, completedPi: 0, completedNonPi: 0 });
+  });
+
+  const filtered = (issues || []).filter(i => i.team === team && i.product === product);
+
+  const processed = filtered.map(issue => {
+    const sprintChanges = [];
+    (issue.changelog || [])
+      .filter(c => c.field === 'Sprint')
+      .sort((a, b) => new Date(a.at) - new Date(b.at))
+      .forEach(c => {
+        const at = new Date(c.at);
+        if (c.from !== undefined) {
+          sprintChanges.push({ at: new Date(at.getTime() - 1), sprintId: c.from });
+        }
+        sprintChanges.push({ at, sprintId: c.to });
+      });
+    const statusChanges = (issue.changelog || [])
+      .filter(c => c.field === 'Status')
+      .sort((a, b) => new Date(a.at) - new Date(b.at));
+    const doneEntry = statusChanges.find(c => /done/i.test(c.to));
+    const completion = doneEntry ? new Date(doneEntry.at) : null;
+    return {
+      isPi: isPiCommitted(issue.epicLabels || [], piLabelTemplate),
+      storyPoints: issue.storyPoints || 0,
+      sprintTimeline: sprintChanges,
+      completionTime: completion
+    };
+  });
+
+  sprints.forEach(sprint => {
+    const start = new Date(sprint.start);
+    const end = new Date(sprint.end);
+    end.setHours(23, 59, 59, 999);
+    processed.forEach(issue => {
+      const plannedSprint = getSprintAt(issue.sprintTimeline, start);
+      if (plannedSprint === sprint.id) {
+        const key = issue.isPi ? 'plannedPi' : 'plannedNonPi';
+        metrics.get(sprint.id)[key] += issue.storyPoints;
+      }
+      if (issue.completionTime && issue.completionTime <= end) {
+        const compSprint = getSprintAt(issue.sprintTimeline, issue.completionTime);
+        if (compSprint === sprint.id) {
+          const key = issue.isPi ? 'completedPi' : 'completedNonPi';
+          metrics.get(sprint.id)[key] += issue.storyPoints;
+        }
+      }
+    });
+  });
+
+  const series = {
+    labels: [],
+    plannedPi: [],
+    plannedNonPi: [],
+    completedPi: [],
+    completedNonPi: [],
+    plannedTotals: [],
+    completedTotals: []
+  };
+
+  (piBuckets || []).forEach(bucket => {
+    let pPi = 0, pNonPi = 0, cPi = 0, cNonPi = 0;
+    (bucket.sprintIds || []).forEach(id => {
+      const m = metrics.get(id);
+      if (m) {
+        pPi += m.plannedPi;
+        pNonPi += m.plannedNonPi;
+        cPi += m.completedPi;
+        cNonPi += m.completedNonPi;
+      }
+    });
+    series.labels.push(`${bucket.labelTop}\n${bucket.labelBottom}`);
+    series.plannedPi.push(pPi);
+    series.plannedNonPi.push(pNonPi);
+    series.completedPi.push(cPi);
+    series.completedNonPi.push(cNonPi);
+    series.plannedTotals.push(pPi + pNonPi);
+    series.completedTotals.push(cPi + cNonPi);
+  });
+
+  return series;
+}
+
+function createHatch(color, bg) {
+  const size = 6;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0,0,size,size);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(0, size);
+  ctx.lineTo(size, 0);
+  ctx.stroke();
+  return ctx.createPattern(canvas, 'repeat');
+}
+
+export function renderPiPlanVsCompleteChart({ canvasId, team, product, sprints = [], issues = [], piBuckets = [], piLabelTemplate = 'YEAR_PIX_committed' }) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return null;
+  canvas.setAttribute('role', 'img');
+  canvas.setAttribute('aria-label', `Planned vs Completed story points for team ${team} product ${product}`);
+  if (canvas._chart) {
+    canvas._chart.destroy();
+  }
+
+  const series = computeBucketSeries({ team, product, sprints, issues, piBuckets, piLabelTemplate });
+
+  const blue = '#0EA5E9';
+  const blueBorder = '#0284C7';
+  const green = '#22C55E';
+  const greenBorder = '#16A34A';
+
+  const chart = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels: series.labels,
+      datasets: [
+        {
+          label: 'Initially Planned PI contributions',
+          data: series.plannedPi,
+          backgroundColor: blue,
+          borderColor: blueBorder,
+          stack: 'planned',
+          borderWidth: 1,
+          borderRadius: 6,
+          order: 1
+        },
+        {
+          label: '',
+          data: series.plannedNonPi,
+          backgroundColor: createHatch(blueBorder, 'rgba(14,165,233,0.7)'),
+          borderColor: blueBorder,
+          stack: 'planned',
+          borderWidth: 1,
+          borderRadius: 6,
+          order: 1,
+          datalabels: {
+            anchor: 'end',
+            align: 'start',
+            offset: -4,
+            color: '#000',
+            font: { weight: 'bold' },
+            formatter: (v, ctx) => series.plannedTotals[ctx.dataIndex]
+          }
+        },
+        {
+          label: '',
+          data: series.completedNonPi.map(v => -v),
+          backgroundColor: createHatch(greenBorder, 'rgba(34,197,94,0.7)'),
+          borderColor: greenBorder,
+          stack: 'completed',
+          borderWidth: 1,
+          borderRadius: 6,
+          order: 1,
+          datalabels: {
+            anchor: 'start',
+            align: 'end',
+            offset: -4,
+            color: '#000',
+            font: { weight: 'bold' },
+            formatter: (v, ctx) => series.completedTotals[ctx.dataIndex]
+          }
+        },
+        {
+          label: 'Completed PI contributions',
+          data: series.completedPi.map(v => -v),
+          backgroundColor: green,
+          borderColor: greenBorder,
+          stack: 'completed',
+          borderWidth: 1,
+          borderRadius: 6,
+          order: 1
+        },
+        {
+          type: 'line',
+          label: 'Initially Planned',
+          data: series.plannedTotals,
+          borderColor: blue,
+          backgroundColor: blue,
+          tension: 0.3,
+          fill: false,
+          order: 2,
+          datalabels: { display: false }
+        },
+        {
+          type: 'line',
+          label: 'Completed',
+          data: series.completedTotals.map(v => -v),
+          borderColor: green,
+          backgroundColor: green,
+          tension: 0.3,
+          fill: false,
+          order: 2,
+          datalabels: { display: false }
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        x: {
+          stacked: true,
+          ticks: { font: { size: 12 } }
+        },
+        y: {
+          stacked: true,
+          beginAtZero: true,
+          title: {
+            display: true,
+            text: 'Story Points'
+          },
+          grid: {
+            color: '#e5e7eb'
+          }
+        }
+      },
+      plugins: {
+        legend: {
+          labels: {
+            filter: item => item.text
+          }
+        },
+        datalabels: {
+          clamp: true
+        },
+        tooltip: {
+          callbacks: {
+            label: () => '',
+            afterBody: ctx => {
+              const i = ctx[0].dataIndex;
+              return [
+                `Planned PI: ${series.plannedPi[i]}`,
+                `Planned non-PI: ${series.plannedNonPi[i]}`,
+                `Planned total: ${series.plannedTotals[i]}`,
+                `Completed PI: ${series.completedPi[i]}`,
+                `Completed non-PI: ${series.completedNonPi[i]}`,
+                `Completed total: ${series.completedTotals[i]}`
+              ];
+            }
+          }
+        }
+      }
+    },
+    plugins: [ChartDataLabels]
+  });
+
+  canvas._chart = chart;
+  return chart;
+}
