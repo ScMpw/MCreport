@@ -37,6 +37,18 @@ export function computeBucketSeries({ team, product, sprints = [], issues = [], 
 
   const filtered = (issues || []).filter(i => i.team === team && i.product === product);
 
+  // Display the epic labels associated with each story in the console so
+  // consumers can verify which PI or main driver an issue belongs to. This
+  // mirrors the behaviour in the web UI where labels are fetched for every
+  // epic. If a story has no labels, an empty array is shown.
+  filtered.forEach(issue => {
+    // `issue.key` is optional in the input but if present it helps to identify
+    // the story in the output. Fallback to an empty string to avoid `undefined`
+    // appearing in the log.
+    const ident = issue.key ? ` ${issue.key}` : '';
+    console.log(`Epic labels for story${ident}:`, issue.epicLabels || []);
+  });
+
   const checkFn = typeof piCheck === 'function' ? piCheck : isPiCommitted;
 
   const processed = filtered.map(issue => {
