@@ -133,6 +133,8 @@
   let cycleChartInstance;
   const DISPLAY_SPRINT_COUNT = 6;
   const RATING_WINDOW = 4;
+  const CHART_TEAM = 'ALL';
+  const CHART_PRODUCT = 'ALL';
   let sprints = [];
   let allSprints = [];
   let teamVelocityData = {};
@@ -178,6 +180,7 @@
       const combined = {};
       const teamVelocity = {};
       const issueCache = new Map();
+      const issueDetails = new Map();
       try {
         await Promise.all(boardNums.map(async boardNum => {
           const url = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/velocity?rapidViewId=${boardNum}`;
@@ -384,6 +387,28 @@
                   if (typeChangedDuringSprint && allowedTypes.has((initialType || '').toLowerCase()) && currentType && currentType !== initialType) {
                     ev.typeChanged = true;
                   }
+
+                  if (!issueDetails.has(ev.key)) {
+                    const changelog = (histories || []).flatMap(h =>
+                      (h.items || []).filter(it => {
+                        const f = (it.field || '').toLowerCase();
+                        return f === 'sprint' || f === 'status';
+                      }).map(it => ({
+                        field: (it.field || '').toLowerCase() === 'sprint' ? 'Sprint' : 'Status',
+                        from: it.fromString || it.from || '',
+                        to: it.toString || it.to || '',
+                        at: h.created
+                      }))
+                    );
+                    issueDetails.set(ev.key, {
+                      id: ev.key,
+                      team: CHART_TEAM,
+                      product: CHART_PRODUCT,
+                      storyPoints: ev.points || 0,
+                      epicLabels: [],
+                      changelog
+                    });
+                  }
                 } catch (e) {}
               }));
 
@@ -392,9 +417,24 @@
                                          .reduce((sum, ev) => sum + ev.points, 0);
                 initiallyPlannedSource = 'sum of events not added after start';
               }
-              const existing = combined[s.name] || { id: s.id, name: s.name, startDate: s.startDate, events: [], initiallyPlanned: 0, completed: 0, initiallyPlannedSource, completedSource };
+              const existing = combined[s.name] || {
+                id: s.id,
+                name: s.name,
+                startDate: s.startDate,
+                endDate: s.completeDate || s.endDate,
+                start: s.startDate,
+                end: s.completeDate || s.endDate,
+                events: [],
+                initiallyPlanned: 0,
+                completed: 0,
+                initiallyPlannedSource,
+                completedSource
+              };
               existing.id = existing.id || s.id;
               existing.startDate = existing.startDate || s.startDate;
+              existing.endDate = existing.endDate || s.completeDate || s.endDate;
+              existing.start = existing.start || s.startDate;
+              existing.end = existing.end || s.completeDate || s.endDate;
               existing.events = existing.events.concat(events);
               existing.initiallyPlanned += initiallyPlanned || 0;
               existing.completed += completed || 0;
@@ -406,11 +446,13 @@
         }));
         Logger.info('Disruption data fetched for', Object.keys(combined).length, 'sprints');
         const sprintsArr = Object.values(combined).sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
-        return { sprints: sprintsArr, teamVelocity };
+        const issues = Array.from(issueDetails.values());
+        const piBuckets = sprintsArr.map(s => ({ id: String(s.id), labelTop: s.name, labelBottom: '', sprintIds: [s.id] }));
+        return { sprints: sprintsArr, teamVelocity, issues, piBuckets };
       } catch (e) {
         Logger.error('Failed to fetch disruption data', e);
         alert('Failed to fetch disruption data.');
-        return { sprints: [], teamVelocity: {} };
+        return { sprints: [], teamVelocity: {}, issues: [], piBuckets: [] };
       }
     }
 
@@ -661,7 +703,7 @@ function renderCharts(displaySprints, allSprints) {
       return;
     }
     Logger.info('Loading disruption report for boards', boards.join(','));
-    const { sprints: fetchedSprints, teamVelocity } = await fetchDisruptionData(jiraDomain, boards);
+    const { sprints: fetchedSprints, teamVelocity, issues, piBuckets } = await fetchDisruptionData(jiraDomain, boards);
     allSprints = fetchedSprints;
     sprints = fetchedSprints.slice(-DISPLAY_SPRINT_COUNT);
     renderTable(sprints);
@@ -673,6 +715,23 @@ function renderCharts(displaySprints, allSprints) {
     teamVelocityData = teamVelocity;
     renderVelocityStats(boardNamesData, teamVelocityData);
     renderCharts(sprints, allSprints);
+
+    const canvas = document.getElementById('piPlanChart');
+    if (canvas) {
+      canvas.width = 600;
+      canvas.height = 300;
+    }
+    if (window.renderPiPlanVsCompleteChart) {
+      window.renderPiPlanVsCompleteChart({
+        canvasId: 'piPlanChart',
+        team: CHART_TEAM,
+        product: CHART_PRODUCT,
+        sprints: fetchedSprints.map(s => ({ id: s.id, name: s.name, start: s.start, end: s.end })),
+        issues,
+        piBuckets,
+        piCheck: PiLabel.isPiRelevant
+      });
+    }
     Logger.info('Disruption report rendered');
   }
 
@@ -698,29 +757,7 @@ function renderCharts(displaySprints, allSprints) {
 </script>
 <script type="module">
   import { renderPiPlanVsCompleteChart } from './src/piPlanVsCompleteChart.mjs';
-
-  async function init() {
-    const resp = await fetch('./disruption-data.json');
-    const data = await resp.json();
-
-    const canvas = document.getElementById('piPlanChart');
-    if (canvas) {
-      canvas.width = 600;
-      canvas.height = 300;
-    }
-
-    renderPiPlanVsCompleteChart({
-      canvasId: 'piPlanChart',
-      team: data.team,
-      product: data.product,
-      sprints: data.sprints,
-      issues: data.issues,
-      piBuckets: data.piBuckets,
-      piCheck: PiLabel.isPiRelevant
-    });
-  }
-
-  init();
+  window.renderPiPlanVsCompleteChart = renderPiPlanVsCompleteChart;
 </script>
 </body>
 </html>
