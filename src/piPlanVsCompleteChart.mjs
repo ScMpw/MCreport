@@ -37,15 +37,16 @@ export function computeBucketSeries({ team, product, sprints = [], issues = [], 
 
   const filtered = (issues || []).filter(i => i.team === team && i.product === product);
 
-  // Collect the issue, its epic and associated labels so they can be printed
-  // once at the end of the computation. This helps consumers verify which
-  // labels were retrieved for each epic.
-  const issueEpicSummary = [];
+  // For each issue print its key, its parent epic and all labels retrieved for
+  // that epic. This allows consumers to verify which labels were associated
+  // with each story's parent.
   filtered.forEach(issue => {
     const issueKey = issue.key || '';
     const epicKey = issue.epicKey || '';
     const labels = Array.isArray(issue.epicLabels) ? issue.epicLabels : [];
-    issueEpicSummary.push(`${issueKey} - ${epicKey} - [${labels.join(', ')}]`);
+    if (typeof console !== 'undefined' && typeof console.log === 'function') {
+      console.log(`${issueKey} - ${epicKey} - [${labels.join(', ')}]`);
+    }
   });
 
   const checkFn = typeof piCheck === 'function' ? piCheck : isPiCommitted;
@@ -128,17 +129,6 @@ export function computeBucketSeries({ team, product, sprints = [], issues = [], 
     series.plannedTotals.push(pPi + pNonPi);
     series.completedTotals.push(cPi + cNonPi);
   });
-  // Print the collected issue/epic/label information as the last output in
-  // the console so users can easily inspect which labels were fetched for
-  // each epic.
-  issueEpicSummary.forEach(line => {
-    if (typeof Logger !== 'undefined' && typeof Logger.info === 'function') {
-      Logger.info(line);
-    } else if (typeof console !== 'undefined' && typeof console.log === 'function') {
-      console.log(line);
-    }
-  });
-
   return series;
 }
 
