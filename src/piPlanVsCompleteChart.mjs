@@ -131,7 +131,13 @@ export function computeBucketSeries({ team, product, sprints = [], issues = [], 
   // Print the collected issue/epic/label information as the last output in
   // the console so users can easily inspect which labels were fetched for
   // each epic.
-  issueEpicSummary.forEach(line => console.log(line));
+  issueEpicSummary.forEach(line => {
+    if (typeof Logger !== 'undefined' && typeof Logger.info === 'function') {
+      Logger.info(line);
+    } else if (typeof console !== 'undefined' && typeof console.log === 'function') {
+      console.log(line);
+    }
+  });
 
   return series;
 }
