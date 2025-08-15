@@ -4,8 +4,36 @@ export function isPiCommitted(epicLabels = [], template = 'YEAR_PIX_committed') 
   const regex = new RegExp('^' + escaped
     .replace('YEAR', '(\\\d{4})')
     .replace('PIX', 'PI(\\\d+)') + '$', 'i');
-  const mainDriverRegex = /^maindriver$/i;
+  const mainDriverRegex = /^main[-_ ]?driver$/i;
   return epicLabels.some(l => regex.test(l) || mainDriverRegex.test(l));
+}
+
+function extractPiId(epicLabels = [], template = 'YEAR_PIX_committed') {
+  if (!Array.isArray(epicLabels) || epicLabels.length === 0) return null;
+  const escaped = template.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp('^' + escaped
+    .replace('YEAR', '(\\\d{4})')
+    .replace('PIX', 'PI(\\\d+)') + '$', 'i');
+  for (const l of epicLabels) {
+    const m = l.match(regex);
+    if (m) {
+      return `${m[1]}-PI${m[2]}`;
+    }
+  }
+  return null;
+}
+
+function sprintPiId(name = '') {
+  if (typeof name !== 'string') return null;
+  let m = name.match(/(\d{4}).*PI\s*(\d+)/i);
+  if (m) {
+    return `${m[1]}-PI${m[2]}`;
+  }
+  m = name.match(/PI\s*(\d+)/i);
+  if (m) {
+    return `PI${m[1]}`;
+  }
+  return null;
 }
 
 // Extracts a numeric sprint id from various formats (e.g. "123", "Sprint 123",
@@ -75,6 +103,7 @@ export function computeBucketSeries({ team, product, sprints = [], issues = [], 
     const completion = doneEntry ? new Date(doneEntry.at) : null;
     return {
       isPi: checkFn(issue.epicLabels || [], piLabelTemplate),
+      piId: extractPiId(issue.epicLabels || [], piLabelTemplate),
       storyPoints: issue.storyPoints || 0,
       sprintTimeline: sprintChanges,
       completionTime: completion
@@ -85,16 +114,19 @@ export function computeBucketSeries({ team, product, sprints = [], issues = [], 
     const start = new Date(sprint.start);
     const end = new Date(sprint.end);
     end.setHours(23, 59, 59, 999);
+    const sprintPi = sprintPiId(sprint.name);
     processed.forEach(issue => {
       const plannedSprint = normalizeSprintId(getSprintAt(issue.sprintTimeline, start));
       if (plannedSprint === normalizeSprintId(sprint.id)) {
-        const key = issue.isPi ? 'plannedPi' : 'plannedNonPi';
+        const isPiForSprint = issue.isPi && (!issue.piId || !sprintPi || issue.piId === sprintPi);
+        const key = isPiForSprint ? 'plannedPi' : 'plannedNonPi';
         metrics.get(sprint.id)[key] += issue.storyPoints;
       }
       if (issue.completionTime && issue.completionTime <= end) {
         const compSprint = normalizeSprintId(getSprintAt(issue.sprintTimeline, issue.completionTime));
         if (compSprint === normalizeSprintId(sprint.id)) {
-          const key = issue.isPi ? 'completedPi' : 'completedNonPi';
+          const isPiForSprint = issue.isPi && (!issue.piId || !sprintPi || issue.piId === sprintPi);
+          const key = isPiForSprint ? 'completedPi' : 'completedNonPi';
           metrics.get(sprint.id)[key] += issue.storyPoints;
         }
       }
