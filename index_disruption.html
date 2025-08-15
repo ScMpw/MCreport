@@ -180,6 +180,7 @@
       const teamVelocity = {};
       const issueCache = new Map();
       const issueDetails = new Map();
+      const epicKeys = new Set();
       try {
         await Promise.all(boardNums.map(async boardNum => {
           const url = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/velocity?rapidViewId=${boardNum}`;
@@ -261,11 +262,11 @@
               await Promise.all(events.map(async ev => {
                 try {
                   let cached = issueCache.get(ev.key);
-                  let histories, initialType, currentType, currentStatus, created, resolutionDate;
+                  let histories, initialType, currentType, currentStatus, created, resolutionDate, parentKey;
                   if (cached) {
-                    ({ histories, initialType, currentType, currentStatus, created, resolutionDate } = cached);
+                    ({ histories, initialType, currentType, currentStatus, created, resolutionDate, parentKey } = cached);
                   } else {
-                    const u = `https://${jiraDomain}/rest/api/3/issue/${ev.key}?expand=changelog&fields=issuetype,flagged,status,created,resolutiondate`;
+                    const u = `https://${jiraDomain}/rest/api/3/issue/${ev.key}?expand=changelog&fields=issuetype,flagged,status,created,resolutiondate,parent`;
                     const ir = await fetch(u, { credentials: 'include' });
                     if (!ir.ok) return;
                     const id = await ir.json();
@@ -274,6 +275,8 @@
                     currentStatus = id.fields?.status?.name || '';
                     created = id.fields?.created;
                     resolutionDate = id.fields?.resolutiondate;
+                    parentKey = id.fields?.parent?.key;
+                    if (parentKey) epicKeys.add(parentKey);
                     ev.blocked = ev.blocked || !!(id.fields?.flagged && id.fields.flagged.length);
                     ev.blocked = ev.blocked || currentStatus.toLowerCase().includes('block');
                     const sorted = histories.slice().sort((a, b) => new Date(a.created) - new Date(b.created));
@@ -285,7 +288,7 @@
                         break;
                       }
                     }
-                    issueCache.set(ev.key, { histories, initialType, currentType, currentStatus, created, resolutionDate });
+                    issueCache.set(ev.key, { histories, initialType, currentType, currentStatus, created, resolutionDate, parentKey });
                   }
 
                   const isBlockedStatus = name => (name || '').toLowerCase().includes('block');
@@ -404,6 +407,7 @@
                       team: CHART_TEAM,
                       product: CHART_PRODUCT,
                       storyPoints: ev.points || 0,
+                      parentKey,
                       epicLabels: [],
                       changelog
                     });
@@ -444,6 +448,27 @@
           }));
         }));
         Logger.info('Disruption data fetched for', Object.keys(combined).length, 'sprints');
+
+        const epicLabelMap = new Map();
+        await Promise.all(Array.from(epicKeys).map(async key => {
+          try {
+            const eurl = `https://${jiraDomain}/rest/api/3/issue/${key}?fields=labels`;
+            const eresp = await fetch(eurl, { credentials: 'include' });
+            if (eresp.ok) {
+              const edata = await eresp.json();
+              epicLabelMap.set(key, edata.fields?.labels || []);
+            } else {
+              epicLabelMap.set(key, []);
+            }
+          } catch (e) {
+            epicLabelMap.set(key, []);
+          }
+        }));
+
+        issueDetails.forEach(issue => {
+          issue.epicLabels = epicLabelMap.get(issue.parentKey) || [];
+        });
+
         const sprintsArr = Object.values(combined).sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
         const issues = Array.from(issueDetails.values());
         const piBuckets = sprintsArr.map(s => ({ id: String(s.id), labelTop: s.name, labelBottom: '', sprintIds: [s.id] }));
