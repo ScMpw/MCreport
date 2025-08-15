@@ -37,15 +37,16 @@ export function computeBucketSeries({ team, product, sprints = [], issues = [], 
 
   const filtered = (issues || []).filter(i => i.team === team && i.product === product);
 
-  // For each issue print its key, its parent epic and all labels retrieved for
-  // that epic. This allows consumers to verify which labels were associated
-  // with each story's parent.
+  // For each issue print its key, its parent (typically an epic) and all
+  // labels retrieved for that parent. This mirrors the behaviour in other
+  // MCreport variants and helps verify which labels were associated with each
+  // story's parent.
   filtered.forEach(issue => {
     const issueKey = issue.key || '';
-    const epicKey = issue.epicKey || '';
+    const parentKey = issue.parentKey || issue.epicKey || (issue.parent && issue.parent.key) || '';
     const labels = Array.isArray(issue.epicLabels) ? issue.epicLabels : [];
     if (typeof console !== 'undefined' && typeof console.log === 'function') {
-      console.log(`${issueKey} - ${epicKey} - [${labels.join(', ')}]`);
+      console.log(`${issueKey} - ${parentKey} - [${labels.join(', ')}]`);
     }
   });
 
