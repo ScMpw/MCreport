@@ -7,8 +7,9 @@
 }(typeof self !== 'undefined' ? self : this, function() {
   function isPiRelevant(epicLabels = []) {
     if (!Array.isArray(epicLabels) || epicLabels.length === 0) return false;
-    const regex = /^\d{4}_PI\d+_committed$/i;
-    return epicLabels.some(label => regex.test(label));
+    const piRegex = /^\d{4}_PI\d+_committed$/i;
+    const mainDriverRegex = /^maindriver$/i;
+    return epicLabels.some(label => piRegex.test(label) || mainDriverRegex.test(label));
   }
   return { isPiRelevant };
 }));
