@@ -101,8 +101,10 @@ export function computeBucketSeries({ team, product, sprints = [], issues = [], 
     const statusChanges = (issue.changelog || [])
       .filter(c => c.field === 'Status')
       .sort((a, b) => new Date(a.at) - new Date(b.at));
-    const doneEntry = statusChanges.find(c => /done/i.test(c.to));
-    const completion = doneEntry ? new Date(doneEntry.at) : null;
+    const doneEntry = statusChanges.find(c => /(done|closed|resolved)/i.test(c.to));
+    const completion = doneEntry
+      ? new Date(doneEntry.at)
+      : (issue.resolutionDate ? new Date(issue.resolutionDate) : null);
     const labels = Array.isArray(issue.parentLabels)
       ? issue.parentLabels
       : (Array.isArray(issue.epicLabels) ? issue.epicLabels : []);

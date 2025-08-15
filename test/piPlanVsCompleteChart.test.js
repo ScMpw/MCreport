@@ -40,6 +40,17 @@ const assert = require('assert');
         { field: 'Sprint', from: '1', to: '2', at: '2024-01-09' },
         { field: 'Status', from: 'To Do', to: 'Done', at: '2024-01-13' }
       ]
+    },
+    {
+      team: 'ALL',
+      product: 'ALL',
+      storyPoints: 2,
+      epicLabels: ['2024_PI2_committed'],
+      resolutionDate: '2024-01-13',
+      changelog: [
+        { field: 'Sprint', from: '', to: '2', at: '2023-12-30' },
+        { field: 'Status', from: 'To Do', to: 'In Progress', at: '2024-01-10' }
+      ]
     }
   ];
 
@@ -56,9 +67,9 @@ const assert = require('assert');
     piBuckets
   });
 
-  assert.deepStrictEqual(series.plannedPi, [16, 0]);
+  assert.deepStrictEqual(series.plannedPi, [16, 2]);
   assert.deepStrictEqual(series.plannedNonPi, [0, 0]);
-  assert.deepStrictEqual(series.completedPi, [5, 8]);
+  assert.deepStrictEqual(series.completedPi, [5, 10]);
   assert.deepStrictEqual(series.completedNonPi, [0, 3]);
   console.log('piPlanVsCompleteChart tests passed');
 })();
