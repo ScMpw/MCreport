@@ -7,6 +7,13 @@ export function isPiCommitted(epicLabels = [], template = 'YEAR_PIX_committed') 
   return epicLabels.some(l => regex.test(l));
 }
 
+// Extracts a numeric sprint id from various formats (e.g. "123", "Sprint 123",
+// "[123]"). Returns `undefined` if no digits are found.
+function normalizeSprintId(id) {
+  const match = String(id ?? '').match(/\d+/);
+  return match ? Number(match[0]) : undefined;
+}
+
 function getSprintAt(timeline = [], time) {
   let current = null;
   for (const entry of timeline) {
@@ -38,10 +45,14 @@ export function computeBucketSeries({ team, product, sprints = [], issues = [], 
       .sort((a, b) => new Date(a.at) - new Date(b.at))
       .forEach(c => {
         const at = new Date(c.at);
-        if (c.from !== undefined) {
-          sprintChanges.push({ at: new Date(at.getTime() - 1), sprintId: c.from });
+        const fromId = normalizeSprintId(c.from);
+        const toId = normalizeSprintId(c.to);
+        if (fromId !== undefined) {
+          sprintChanges.push({ at: new Date(at.getTime() - 1), sprintId: fromId });
         }
-        sprintChanges.push({ at, sprintId: c.to });
+        if (toId !== undefined) {
+          sprintChanges.push({ at, sprintId: toId });
+        }
       });
     const statusChanges = (issue.changelog || [])
       .filter(c => c.field === 'Status')
@@ -61,14 +72,14 @@ export function computeBucketSeries({ team, product, sprints = [], issues = [], 
     const end = new Date(sprint.end);
     end.setHours(23, 59, 59, 999);
     processed.forEach(issue => {
-      const plannedSprint = getSprintAt(issue.sprintTimeline, start);
-      if (plannedSprint === sprint.id) {
+      const plannedSprint = normalizeSprintId(getSprintAt(issue.sprintTimeline, start));
+      if (plannedSprint === normalizeSprintId(sprint.id)) {
         const key = issue.isPi ? 'plannedPi' : 'plannedNonPi';
         metrics.get(sprint.id)[key] += issue.storyPoints;
       }
       if (issue.completionTime && issue.completionTime <= end) {
-        const compSprint = getSprintAt(issue.sprintTimeline, issue.completionTime);
-        if (compSprint === sprint.id) {
+        const compSprint = normalizeSprintId(getSprintAt(issue.sprintTimeline, issue.completionTime));
+        if (compSprint === normalizeSprintId(sprint.id)) {
           const key = issue.isPi ? 'completedPi' : 'completedNonPi';
           metrics.get(sprint.id)[key] += issue.storyPoints;
         }
