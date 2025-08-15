@@ -14,7 +14,7 @@ const assert = require('assert');
       product: 'ALL',
       storyPoints: 3,
       parentKey: 'EP-1',
-      epicLabels: ['L1'],
+      parentLabels: ['L1'],
       changelog: [
         { field: 'Sprint', from: '', to: '1', at: '2022-12-20' }
       ]
@@ -25,7 +25,7 @@ const assert = require('assert');
       product: 'ALL',
       storyPoints: 5,
       parentKey: 'EP-2',
-      epicLabels: ['L2'],
+      parentLabels: ['L2'],
       changelog: [
         { field: 'Sprint', from: '', to: '1', at: '2022-12-21' }
       ]

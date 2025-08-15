@@ -410,6 +410,7 @@
                       product: CHART_PRODUCT,
                       storyPoints: (ev.points || existingIssue?.storyPoints || 0),
                       parentKey,
+                      parentLabels: existingIssue?.parentLabels || [],
                       epicLabels: existingIssue?.epicLabels || [],
                       changelog
                     });
@@ -468,7 +469,9 @@
         }));
 
         issueDetails.forEach(issue => {
-          issue.epicLabels = epicLabelMap.get(issue.parentKey) || [];
+          const labels = epicLabelMap.get(issue.parentKey) || [];
+          issue.parentLabels = labels;
+          issue.epicLabels = labels;
         });
 
         const sprintsArr = Object.values(combined).sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
