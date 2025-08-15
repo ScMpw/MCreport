@@ -13,6 +13,7 @@ const assert = require('assert');
       team: 'ALL',
       product: 'ALL',
       storyPoints: 3,
+      epicKey: 'EP-1',
       epicLabels: ['L1'],
       changelog: [
         { field: 'Sprint', from: '', to: '1', at: '2022-12-20' }
@@ -23,6 +24,7 @@ const assert = require('assert');
       team: 'ALL',
       product: 'ALL',
       storyPoints: 5,
+      epicKey: 'EP-2',
       epicLabels: ['L2'],
       changelog: [
         { field: 'Sprint', from: '', to: '1', at: '2022-12-21' }
@@ -42,10 +44,9 @@ const assert = require('assert');
 
   console.log = orig;
 
-  const epicLogs = logs.filter(l => l.startsWith('Epic labels for story'));
-  assert.strictEqual(epicLogs.length, issues.length);
-  assert(epicLogs.some(l => l.includes('L1')));
-  assert(epicLogs.some(l => l.includes('L2')));
+  assert.strictEqual(logs.length, issues.length);
+  assert(logs.some(l => l.includes('ST-1') && l.includes('EP-1') && l.includes('L1')));
+  assert(logs.some(l => l.includes('ST-2') && l.includes('EP-2') && l.includes('L2')));
 
   console.log('epicLabelsConsole tests passed');
 })();

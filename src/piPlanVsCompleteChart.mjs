@@ -37,16 +37,15 @@ export function computeBucketSeries({ team, product, sprints = [], issues = [], 
 
   const filtered = (issues || []).filter(i => i.team === team && i.product === product);
 
-  // Display the epic labels associated with each story in the console so
-  // consumers can verify which PI or main driver an issue belongs to. This
-  // mirrors the behaviour in the web UI where labels are fetched for every
-  // epic. If a story has no labels, an empty array is shown.
+  // Collect the issue, its epic and associated labels so they can be printed
+  // once at the end of the computation. This helps consumers verify which
+  // labels were retrieved for each epic.
+  const issueEpicSummary = [];
   filtered.forEach(issue => {
-    // `issue.key` is optional in the input but if present it helps to identify
-    // the story in the output. Fallback to an empty string to avoid `undefined`
-    // appearing in the log.
-    const ident = issue.key ? ` ${issue.key}` : '';
-    console.log(`Epic labels for story${ident}:`, issue.epicLabels || []);
+    const issueKey = issue.key || '';
+    const epicKey = issue.epicKey || '';
+    const labels = Array.isArray(issue.epicLabels) ? issue.epicLabels : [];
+    issueEpicSummary.push(`${issueKey} - ${epicKey} - [${labels.join(', ')}]`);
   });
 
   const checkFn = typeof piCheck === 'function' ? piCheck : isPiCommitted;
@@ -129,6 +128,10 @@ export function computeBucketSeries({ team, product, sprints = [], issues = [], 
     series.plannedTotals.push(pPi + pNonPi);
     series.completedTotals.push(cPi + cNonPi);
   });
+  // Print the collected issue/epic/label information as the last output in
+  // the console so users can easily inspect which labels were fetched for
+  // each epic.
+  issueEpicSummary.forEach(line => console.log(line));
 
   return series;
 }
