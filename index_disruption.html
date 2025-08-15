@@ -9,7 +9,6 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
   <style>
     body { background: #f7f8fa; font-family: 'Inter', Arial, sans-serif; margin:0; padding:0; }
     .main { max-width: 950px; margin: 30px auto; background:#fff; border-radius:18px; padding:36px 32px; box-shadow:0 2px 12px #d1d5db70; }
@@ -75,7 +74,6 @@
     <div class="table-description"><strong>Legend:</strong> Initially Planned and Completed show story points. Pulled In, Type Changed, and Moved Out list story points with the number of affected issues in parentheses. Blocked Days lists days with the number of blocked issues in parentheses.</div>
     <div id="velocityStats"></div>
     <div id="chartSection" class="chart-section">
-      <canvas id="piPlanChart"></canvas>
       <div id="plannedInfo" style="font-size:0.9em; margin-bottom:10px;"></div>
       <canvas id="completedChart"></canvas>
       <div class="rating-zone-description">
@@ -132,8 +130,6 @@
   let cycleChartInstance;
   const DISPLAY_SPRINT_COUNT = 6;
   const RATING_WINDOW = 4;
-  const CHART_TEAM = 'ALL';
-  const CHART_PRODUCT = 'ALL';
   let sprints = [];
   let allSprints = [];
   let teamVelocityData = {};
@@ -179,8 +175,6 @@
       const combined = {};
       const teamVelocity = {};
       const issueCache = new Map();
-      const issueDetails = new Map();
-      const epicKeys = new Set();
       try {
         await Promise.all(boardNums.map(async boardNum => {
           const url = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/velocity?rapidViewId=${boardNum}`;
@@ -262,11 +256,11 @@
               await Promise.all(events.map(async ev => {
                 try {
                   let cached = issueCache.get(ev.key);
-                  let histories, initialType, currentType, currentStatus, created, resolutionDate, parentKey;
+                  let histories, initialType, currentType, currentStatus, created, resolutionDate;
                   if (cached) {
-                    ({ histories, initialType, currentType, currentStatus, created, resolutionDate, parentKey } = cached);
+                    ({ histories, initialType, currentType, currentStatus, created, resolutionDate } = cached);
                   } else {
-                    const u = `https://${jiraDomain}/rest/api/3/issue/${ev.key}?expand=changelog&fields=issuetype,flagged,status,created,resolutiondate,parent`;
+                    const u = `https://${jiraDomain}/rest/api/3/issue/${ev.key}?expand=changelog&fields=issuetype,flagged,status,created,resolutiondate`;
                     const ir = await fetch(u, { credentials: 'include' });
                     if (!ir.ok) return;
                     const id = await ir.json();
@@ -275,8 +269,6 @@
                     currentStatus = id.fields?.status?.name || '';
                     created = id.fields?.created;
                     resolutionDate = id.fields?.resolutiondate;
-                    parentKey = id.fields?.parent?.key;
-                    if (parentKey) epicKeys.add(parentKey);
                     ev.blocked = ev.blocked || !!(id.fields?.flagged && id.fields.flagged.length);
                     ev.blocked = ev.blocked || currentStatus.toLowerCase().includes('block');
                     const sorted = histories.slice().sort((a, b) => new Date(a.created) - new Date(b.created));
@@ -288,7 +280,7 @@
                         break;
                       }
                     }
-                    issueCache.set(ev.key, { histories, initialType, currentType, currentStatus, created, resolutionDate, parentKey });
+                    issueCache.set(ev.key, { histories, initialType, currentType, currentStatus, created, resolutionDate });
                   }
 
                   const isBlockedStatus = name => (name || '').toLowerCase().includes('block');
@@ -389,33 +381,6 @@
                   if (typeChangedDuringSprint && allowedTypes.has((initialType || '').toLowerCase()) && currentType && currentType !== initialType) {
                     ev.typeChanged = true;
                   }
-
-                  const existingIssue = issueDetails.get(ev.key);
-                  if (!existingIssue || ((existingIssue.storyPoints || 0) === 0 && (ev.points || 0) > 0)) {
-                    const changelog = existingIssue ? existingIssue.changelog : (histories || []).flatMap(h =>
-                      (h.items || []).filter(it => {
-                        const f = (it.field || '').toLowerCase();
-                        return f === 'sprint' || f === 'status';
-                      }).map(it => ({
-                        field: (it.field || '').toLowerCase() === 'sprint' ? 'Sprint' : 'Status',
-                        from: it.fromString || it.from || '',
-                        to: it.toString || it.to || '',
-                        at: h.created
-                      }))
-                    );
-                    issueDetails.set(ev.key, {
-                      id: ev.key,
-                      key: ev.key,
-                      team: CHART_TEAM,
-                      product: CHART_PRODUCT,
-                      storyPoints: (ev.points || existingIssue?.storyPoints || 0),
-                      parentKey,
-                      parentLabels: existingIssue?.parentLabels || [],
-                      epicLabels: existingIssue?.epicLabels || [],
-                      resolutionDate,
-                      changelog
-                    });
-                  }
                 } catch (e) {}
               }));
 
@@ -424,24 +389,9 @@
                                          .reduce((sum, ev) => sum + ev.points, 0);
                 initiallyPlannedSource = 'sum of events not added after start';
               }
-              const existing = combined[s.name] || {
-                id: s.id,
-                name: s.name,
-                startDate: s.startDate,
-                endDate: s.completeDate || s.endDate,
-                start: s.startDate,
-                end: s.completeDate || s.endDate,
-                events: [],
-                initiallyPlanned: 0,
-                completed: 0,
-                initiallyPlannedSource,
-                completedSource
-              };
+              const existing = combined[s.name] || { id: s.id, name: s.name, startDate: s.startDate, events: [], initiallyPlanned: 0, completed: 0, initiallyPlannedSource, completedSource };
               existing.id = existing.id || s.id;
               existing.startDate = existing.startDate || s.startDate;
-              existing.endDate = existing.endDate || s.completeDate || s.endDate;
-              existing.start = existing.start || s.startDate;
-              existing.end = existing.end || s.completeDate || s.endDate;
               existing.events = existing.events.concat(events);
               existing.initiallyPlanned += initiallyPlanned || 0;
               existing.completed += completed || 0;
@@ -452,37 +402,12 @@
           }));
         }));
         Logger.info('Disruption data fetched for', Object.keys(combined).length, 'sprints');
-
-        const epicLabelMap = new Map();
-        await Promise.all(Array.from(epicKeys).map(async key => {
-          try {
-            const eurl = `https://${jiraDomain}/rest/api/3/issue/${key}?fields=labels`;
-            const eresp = await fetch(eurl, { credentials: 'include' });
-            if (eresp.ok) {
-              const edata = await eresp.json();
-              epicLabelMap.set(key, edata.fields?.labels || []);
-            } else {
-              epicLabelMap.set(key, []);
-            }
-          } catch (e) {
-            epicLabelMap.set(key, []);
-          }
-        }));
-
-        issueDetails.forEach(issue => {
-          const labels = epicLabelMap.get(issue.parentKey) || [];
-          issue.parentLabels = labels;
-          issue.epicLabels = labels;
-        });
-
         const sprintsArr = Object.values(combined).sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
-        const issues = Array.from(issueDetails.values());
-        const piBuckets = sprintsArr.map(s => ({ id: String(s.id), labelTop: s.name, labelBottom: '', sprintIds: [s.id] }));
-        return { sprints: sprintsArr, teamVelocity, issues, piBuckets };
+        return { sprints: sprintsArr, teamVelocity };
       } catch (e) {
         Logger.error('Failed to fetch disruption data', e);
         alert('Failed to fetch disruption data.');
-        return { sprints: [], teamVelocity: {}, issues: [], piBuckets: [] };
+        return { sprints: [], teamVelocity: {} };
       }
     }
 
@@ -733,7 +658,7 @@ function renderCharts(displaySprints, allSprints) {
       return;
     }
     Logger.info('Loading disruption report for boards', boards.join(','));
-    const { sprints: fetchedSprints, teamVelocity, issues, piBuckets } = await fetchDisruptionData(jiraDomain, boards);
+    const { sprints: fetchedSprints, teamVelocity } = await fetchDisruptionData(jiraDomain, boards);
     allSprints = fetchedSprints;
     sprints = fetchedSprints.slice(-DISPLAY_SPRINT_COUNT);
     renderTable(sprints);
@@ -745,22 +670,6 @@ function renderCharts(displaySprints, allSprints) {
     teamVelocityData = teamVelocity;
     renderVelocityStats(boardNamesData, teamVelocityData);
     renderCharts(sprints, allSprints);
-
-    const canvas = document.getElementById('piPlanChart');
-    if (canvas) {
-      canvas.width = 600;
-      canvas.height = 300;
-    }
-    if (window.renderPiPlanVsCompleteChart) {
-      window.renderPiPlanVsCompleteChart({
-        canvasId: 'piPlanChart',
-        team: CHART_TEAM,
-        product: CHART_PRODUCT,
-        sprints: fetchedSprints.map(s => ({ id: s.id, name: s.name, start: s.start, end: s.end })),
-        issues,
-        piBuckets
-      });
-    }
     Logger.info('Disruption report rendered');
   }
 
@@ -783,10 +692,6 @@ function renderCharts(displaySprints, allSprints) {
   }
 
   document.getElementById('versionSelect').value = 'index_disruption.html';
-</script>
-<script type="module">
-  import { renderPiPlanVsCompleteChart } from './src/piPlanVsCompleteChart.mjs';
-  window.renderPiPlanVsCompleteChart = renderPiPlanVsCompleteChart;
 </script>
 </body>
 </html>
