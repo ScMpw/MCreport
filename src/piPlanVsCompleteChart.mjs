@@ -4,7 +4,8 @@ export function isPiCommitted(epicLabels = [], template = 'YEAR_PIX_committed') 
   const regex = new RegExp('^' + escaped
     .replace('YEAR', '(\\\d{4})')
     .replace('PIX', 'PI(\\\d+)') + '$', 'i');
-  return epicLabels.some(l => regex.test(l));
+  const mainDriverRegex = /^maindriver$/i;
+  return epicLabels.some(l => regex.test(l) || mainDriverRegex.test(l));
 }
 
 // Extracts a numeric sprint id from various formats (e.g. "123", "Sprint 123",

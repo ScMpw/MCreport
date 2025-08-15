@@ -23,7 +23,7 @@ const assert = require('assert');
       team: 'ALL',
       product: 'ALL',
       storyPoints: 8,
-      epicLabels: [],
+      epicLabels: ['maindriver'],
       changelog: [
         { field: 'Sprint', from: '', to: '1', at: '2022-12-20' },
         { field: 'Sprint', from: '1', to: '2', at: '2023-01-09' },
@@ -45,9 +45,9 @@ const assert = require('assert');
     piBuckets
   });
 
-  assert.deepStrictEqual(series.plannedPi, [5, 0]);
-  assert.deepStrictEqual(series.plannedNonPi, [8, 0]);
-  assert.deepStrictEqual(series.completedPi, [5, 0]);
-  assert.deepStrictEqual(series.completedNonPi, [0, 8]);
+  assert.deepStrictEqual(series.plannedPi, [13, 0]);
+  assert.deepStrictEqual(series.plannedNonPi, [0, 0]);
+  assert.deepStrictEqual(series.completedPi, [5, 8]);
+  assert.deepStrictEqual(series.completedNonPi, [0, 0]);
   console.log('piPlanVsCompleteChart tests passed');
 })();
