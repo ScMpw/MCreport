@@ -75,6 +75,7 @@
     <div id="velocityStats"></div>
     <div id="chartSection" class="chart-section">
       <div id="plannedInfo" style="font-size:0.9em; margin-bottom:10px;"></div>
+      <canvas id="piMixChart"></canvas>
       <canvas id="completedChart"></canvas>
       <div class="rating-zone-description">
         <div id="ratingZoneToggle" style="cursor:pointer;"><strong>Rating zones (show)</strong></div>
@@ -128,12 +129,15 @@
   let completedChartInstance;
   let disruptionChartInstance;
   let cycleChartInstance;
+  let piMixChartInstance;
   const DISPLAY_SPRINT_COUNT = 6;
   const RATING_WINDOW = 4;
   let sprints = [];
   let allSprints = [];
   let teamVelocityData = {};
   let boardNamesData = {};
+  let epicCache = new Map();
+  const PI_LABEL_RE = /\b\d{4}_PI\d+_committed\b/i;
 
 
   function filterRecentSprints(allSprints, excludeIds = [], desiredCount = DISPLAY_SPRINT_COUNT) {
@@ -169,6 +173,20 @@
 
   document.getElementById('jiraDomain').addEventListener('change', populateBoards);
   populateBoards();
+
+  async function getEpicInfo(domain, epicKey) {
+    let cached = epicCache.get(epicKey);
+    if (cached) return cached;
+    const url = `https://${domain}/rest/api/3/issue/${epicKey}?fields=issuetype,labels`;
+    const r = await fetch(url, { credentials: 'include' });
+    if (!r.ok) return null;
+    const j = await r.json();
+    const isEpic = (j.fields?.issuetype?.name || '').toLowerCase() === 'epic';
+    const labels = j.fields?.labels || [];
+    const info = { isEpic, labels };
+    epicCache.set(epicKey, info);
+    return info;
+  }
 
     async function fetchDisruptionData(jiraDomain, boardNums = []) {
       Logger.info('Fetching disruption data for boards', boardNums.join(','));
@@ -256,11 +274,11 @@
               await Promise.all(events.map(async ev => {
                 try {
                   let cached = issueCache.get(ev.key);
-                  let histories, initialType, currentType, currentStatus, created, resolutionDate;
+                  let histories, initialType, currentType, currentStatus, created, resolutionDate, piRelevant, parentKey;
                   if (cached) {
-                    ({ histories, initialType, currentType, currentStatus, created, resolutionDate } = cached);
+                    ({ histories, initialType, currentType, currentStatus, created, resolutionDate, piRelevant, parentKey } = cached);
                   } else {
-                    const u = `https://${jiraDomain}/rest/api/3/issue/${ev.key}?expand=changelog&fields=issuetype,flagged,status,created,resolutiondate`;
+                    const u = `https://${jiraDomain}/rest/api/3/issue/${ev.key}?expand=changelog&fields=issuetype,flagged,status,created,resolutiondate,labels,parent`;
                     const ir = await fetch(u, { credentials: 'include' });
                     if (!ir.ok) return;
                     const id = await ir.json();
@@ -269,6 +287,7 @@
                     currentStatus = id.fields?.status?.name || '';
                     created = id.fields?.created;
                     resolutionDate = id.fields?.resolutiondate;
+                    parentKey = id.fields?.parent?.key;
                     ev.blocked = ev.blocked || !!(id.fields?.flagged && id.fields.flagged.length);
                     ev.blocked = ev.blocked || currentStatus.toLowerCase().includes('block');
                     const sorted = histories.slice().sort((a, b) => new Date(a.created) - new Date(b.created));
@@ -280,8 +299,16 @@
                         break;
                       }
                     }
-                    issueCache.set(ev.key, { histories, initialType, currentType, currentStatus, created, resolutionDate });
+                    piRelevant = false;
+                    if (parentKey) {
+                      const epic = await getEpicInfo(jiraDomain, parentKey);
+                      if (epic?.isEpic && (epic.labels || []).some(l => PI_LABEL_RE.test(l))) {
+                        piRelevant = true;
+                      }
+                    }
+                    issueCache.set(ev.key, { histories, initialType, currentType, currentStatus, created, resolutionDate, piRelevant, parentKey });
                   }
+                  ev.piRelevant = piRelevant || false;
 
                   const isBlockedStatus = name => (name || '').toLowerCase().includes('block');
 
@@ -473,6 +500,14 @@ function renderCharts(displaySprints, allSprints) {
   const typeChangedCount = metricsArr.map(m => m.typeChangedCount || 0);
   const movedOutCount = metricsArr.map(m => m.movedOutCount || 0);
 
+  function sumSP(events, pred) {
+    return (events || []).reduce((sum, ev) => sum + (pred(ev) ? (ev.points || 0) : 0), 0);
+  }
+  const plannedPI = displaySprints.map(s => sumSP(s.events, ev => !ev.addedAfterStart && !ev.movedOut && ev.piRelevant));
+  const plannedOther = displaySprints.map((s, i) => Math.max(0, (s.initiallyPlanned || 0) - plannedPI[i]));
+  const completedPI = displaySprints.map(s => sumSP(s.events, ev => ev.completed && ev.piRelevant));
+  const completedOther = displaySprints.map((s, i) => Math.max(0, (s.completed || 0) - completedPI[i]));
+
   const remainingInitial = displaySprints.map(s =>
     (s.events || []).filter(ev => !ev.addedAfterStart && !ev.movedOut)
       .reduce((sum, ev) => sum + (ev.points || 0), 0)
@@ -503,7 +538,7 @@ function renderCharts(displaySprints, allSprints) {
   const throughputPerSprint = cycleData.map(c => c.count);
 
   const chartWidth = Math.max(sprintLabels.length * 120, 600);
-  ['completedChart','disruptionChart','cycleChart'].forEach(id => {
+  ['piMixChart','completedChart','disruptionChart','cycleChart'].forEach(id => {
     const canvas = document.getElementById(id);
     canvas.width = chartWidth;
     canvas.height = 300;
@@ -561,6 +596,9 @@ function renderCharts(displaySprints, allSprints) {
   };
 
   // Destroy existing charts if they exist to allow re-rendering without errors
+  if (piMixChartInstance) {
+    piMixChartInstance.destroy();
+  }
   if (completedChartInstance) {
     completedChartInstance.destroy();
   }
@@ -570,6 +608,65 @@ function renderCharts(displaySprints, allSprints) {
   if (cycleChartInstance) {
     cycleChartInstance.destroy();
   }
+
+  const pctx = document.getElementById('piMixChart').getContext('2d');
+
+  function makeDiagonalPattern(ctx, color) {
+    const size = 8;
+    const c = document.createElement('canvas');
+    c.width = c.height = size;
+    const g = c.getContext('2d');
+    g.fillStyle = color;
+    g.fillRect(0,0,size,size);
+    g.strokeStyle = 'rgba(255,255,255,0.7)';
+    g.lineWidth = 2;
+    g.beginPath();
+    g.moveTo(-2, 6); g.lineTo(6, -2);
+    g.moveTo(2, 10); g.lineTo(10, 2);
+    g.stroke();
+    return ctx.createPattern(c, 'repeat');
+  }
+  const plannedPIColor = '#1d4ed8';
+  const plannedOtherColor = '#60a5fa';
+  const completedPIColor = '#16a34a';
+  const completedOtherColor = '#86efac';
+
+  const plannedPIFill = makeDiagonalPattern(pctx, plannedPIColor);
+  const plannedOtherFill = makeDiagonalPattern(pctx, plannedOtherColor);
+
+  piMixChartInstance = new Chart(pctx, {
+    type: 'bar',
+    data: {
+      labels: sprintLabels,
+      datasets: [
+        { label: 'Initially Planned PI contributions', data: plannedPI, backgroundColor: plannedPIFill, borderColor: plannedPIColor, stack: 'planned' },
+        { label: 'Initially Planned other', data: plannedOther, backgroundColor: plannedOtherFill, borderColor: plannedOtherColor, stack: 'planned' },
+        { label: 'Completed PI contributions', data: completedPI, backgroundColor: completedPIColor, borderColor: completedPIColor, stack: 'completed' },
+        { label: 'Completed other', data: completedOther, backgroundColor: completedOtherColor, borderColor: completedOtherColor, stack: 'completed' },
+      ]
+    },
+    options: {
+      responsive: false,
+      maintainAspectRatio: false,
+      scales: {
+        x: { stacked: true, offset: true },
+        y: { stacked: true, beginAtZero: true, title: { display: true, text: 'Story Points' } }
+      },
+      plugins: {
+        legend: { position: 'bottom' },
+        tooltip: {
+          callbacks: {
+            footer(items) {
+              const i = items[0].dataIndex;
+              const plannedTotal = (plannedPI[i] || 0) + (plannedOther[i] || 0);
+              const completedTotal = (completedPI[i] || 0) + (completedOther[i] || 0);
+              return `Initially Planned total: ${plannedTotal}\nCompleted total: ${completedTotal}`;
+            }
+          }
+        }
+      }
+    }
+  });
 
   const vctx = document.getElementById('completedChart').getContext('2d');
   completedChartInstance = new Chart(vctx, {
