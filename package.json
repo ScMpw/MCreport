@@ -3,9 +3,16 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
-  "scripts": {},
+  "scripts": {
+    "build:css": "tailwindcss -o public/tailwind.css --minify"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs"
+  "type": "commonjs",
+  "devDependencies": {
+    "tailwindcss": "^3.4.4",
+    "postcss": "^8.4.31",
+    "autoprefixer": "^10.4.16"
+  }
 }
