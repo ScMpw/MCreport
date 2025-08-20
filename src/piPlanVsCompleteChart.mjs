@@ -322,14 +322,28 @@ export function renderPiPlanVsCompleteChart({ canvasId, team, product, sprints =
             label: () => '',
             afterBody: ctx => {
               const i = ctx[0].dataIndex;
-              return [
-                `Planned PI: ${series.plannedPi[i]}`,
-                `Planned non-PI: ${series.plannedNonPi[i]}`,
-                `Planned total: ${series.plannedTotals[i]}`,
-                `Completed PI: ${series.completedPi[i]}`,
-                `Completed non-PI: ${series.completedNonPi[i]}`,
-                `Completed total: ${series.completedTotals[i]}`
-              ];
+              const dataset = ctx[0].dataset || {};
+              const label = dataset.label || '';
+              // Determine which group to show based on the hovered dataset
+              const isPlanned = dataset.stack === 'planned' || /Initially Planned/i.test(label);
+              const isCompleted = dataset.stack === 'completed' || /Completed/i.test(label);
+              const lines = [];
+              if (isPlanned) {
+                if (/PI contributions/i.test(label)) {
+                  lines.push(`Planned PI: ${series.plannedPi[i]}`);
+                } else if (dataset.stack === 'planned') {
+                  lines.push(`Planned non-PI: ${series.plannedNonPi[i]}`);
+                }
+                lines.push(`Planned total: ${series.plannedTotals[i]}`);
+              } else if (isCompleted) {
+                if (/PI contributions/i.test(label)) {
+                  lines.push(`Completed PI: ${series.completedPi[i]}`);
+                } else if (dataset.stack === 'completed') {
+                  lines.push(`Completed non-PI: ${series.completedNonPi[i]}`);
+                }
+                lines.push(`Completed total: ${series.completedTotals[i]}`);
+              }
+              return lines;
             }
           }
         }
