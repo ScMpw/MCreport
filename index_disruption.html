@@ -89,7 +89,6 @@
         </div>
       </div>
       <canvas id="disruptionChart"></canvas>
-      <canvas id="cycleChart"></canvas>
     </div>
   </div>
 </div>
@@ -130,7 +129,6 @@
   let completedChartInstance;
   let disruptionChartInstance;
   let piMixChartInstance;
-  let cycleChartInstance;
   const DISPLAY_SPRINT_COUNT = 6;
   const RATING_WINDOW = 4;
   let sprints = [];
@@ -541,15 +539,8 @@ function renderCharts(displaySprints, allSprints) {
     (s.events || []).filter(ev => ev.completedDate).length
   );
 
-  const avgCycleTime = displaySprints.map(s => {
-    const cycles = (s.events || [])
-      .map(ev => ev.cycleTime)
-      .filter(t => typeof t === 'number');
-    return cycles.length ? cycles.reduce((a, b) => a + b, 0) / cycles.length : 0;
-  });
-
   const chartWidth = Math.max(sprintLabels.length * 120, 600);
-  ['piMixChart','completedChart','disruptionChart','cycleChart'].forEach(id => {
+  ['piMixChart','completedChart','disruptionChart'].forEach(id => {
     const canvas = document.getElementById(id);
     canvas.width = chartWidth;
     canvas.height = 300;
@@ -615,9 +606,6 @@ function renderCharts(displaySprints, allSprints) {
   }
   if (disruptionChartInstance) {
     disruptionChartInstance.destroy();
-  }
-  if (cycleChartInstance) {
-    cycleChartInstance.destroy();
   }
 
   const pctx = document.getElementById('piMixChart').getContext('2d');
@@ -749,35 +737,6 @@ function renderCharts(displaySprints, allSprints) {
     }
   });
 
-  const cctx = document.getElementById('cycleChart').getContext('2d');
-  cycleChartInstance = new Chart(cctx, {
-    type: 'line',
-    data: {
-      labels: sprintLabels,
-      datasets: [
-        { label: 'Mean Cycle Time (days)', data: avgCycleTime, borderColor: '#8b5cf6', backgroundColor: 'rgba(139,92,246,0.3)', yAxisID: 'y1', fill: false, tension: 0.1 },
-        { label: 'Throughput per Sprint', data: throughputPerSprint, borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,0.3)', yAxisID: 'y2', fill: false, tension: 0.1 }
-      ]
-    },
-    options: {
-      responsive: false,
-      maintainAspectRatio: false,
-      scales: {
-        x: { offset: true },
-        y1: { type: 'linear', position: 'left', beginAtZero: true, title: { display: true, text: 'Mean Cycle Time (days)' } },
-        y2: { type: 'linear', position: 'right', beginAtZero: true, title: { display: true, text: 'Throughput' }, grid: { drawOnChartArea: false } }
-      },
-      plugins: {
-        legend: { position: 'bottom' },
-        datalabels: {
-          display: false,
-          color: '#000',
-          anchor: 'end',
-          align: 'top'
-        }
-      }
-    }
-  });
 }
 
   function toggleDetails(id, btn) {
@@ -812,7 +771,7 @@ function renderCharts(displaySprints, allSprints) {
   function exportPDF() {
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
-    const charts = [piMixChartInstance, completedChartInstance, disruptionChartInstance, cycleChartInstance];
+    const charts = [piMixChartInstance, completedChartInstance, disruptionChartInstance];
     charts.forEach(ch => {
       if (ch && ch.options.plugins?.datalabels) {
         ch.options.plugins.datalabels.display = true;
