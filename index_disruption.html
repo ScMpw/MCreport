@@ -89,7 +89,6 @@
         </div>
       </div>
       <canvas id="disruptionChart"></canvas>
-      <canvas id="cycleChart"></canvas>
     </div>
   </div>
 </div>
@@ -128,7 +127,6 @@
   // an error about reusing a canvas that is already in use.
   let completedChartInstance;
   let disruptionChartInstance;
-  let cycleChartInstance;
   let piMixChartInstance;
   const DISPLAY_SPRINT_COUNT = 6;
   const RATING_WINDOW = 4;
@@ -536,17 +534,12 @@ function renderCharts(displaySprints, allSprints) {
     plannedInfoEl.innerHTML = infoHtml;
   }
 
-  const cycleData = displaySprints.map(s => {
-    const completed = (s.events || []).filter(ev => ev.completedDate);
-    const withCycle = completed.filter(ev => typeof ev.cycleTime === 'number');
-    const avg = withCycle.length ? withCycle.reduce((sum, ev) => sum + ev.cycleTime, 0) / withCycle.length : 0;
-    return { avg, count: completed.length };
-  });
-  const avgCycleTime = cycleData.map(c => c.avg);
-  const throughputPerSprint = cycleData.map(c => c.count);
+  const throughputPerSprint = displaySprints.map(s =>
+    (s.events || []).filter(ev => ev.completedDate).length
+  );
 
   const chartWidth = Math.max(sprintLabels.length * 120, 600);
-  ['piMixChart','completedChart','disruptionChart','cycleChart'].forEach(id => {
+  ['piMixChart','completedChart','disruptionChart'].forEach(id => {
     const canvas = document.getElementById(id);
     canvas.width = chartWidth;
     canvas.height = 300;
@@ -612,9 +605,6 @@ function renderCharts(displaySprints, allSprints) {
   }
   if (disruptionChartInstance) {
     disruptionChartInstance.destroy();
-  }
-  if (cycleChartInstance) {
-    cycleChartInstance.destroy();
   }
 
   const pctx = document.getElementById('piMixChart').getContext('2d');
@@ -701,14 +691,15 @@ function renderCharts(displaySprints, allSprints) {
 
   const dctx = document.getElementById('disruptionChart').getContext('2d');
   disruptionChartInstance = new Chart(dctx, {
-    type: 'line',
+    type: 'bar',
     data: {
       labels: sprintLabels,
       datasets: [
-        { label: 'Pulled In Issues', data: pulledInCount, borderColor: '#3b82f6', backgroundColor: '#3b82f6', fill: false, tension: 0.1 },
-        { label: 'Blocked Days', data: blockedDays, borderColor: '#ef4444', backgroundColor: '#ef4444', fill: false, tension: 0.1 },
-        { label: 'Type Changed Issues', data: typeChangedCount, borderColor: '#f59e0b', backgroundColor: '#f59e0b', fill: false, tension: 0.1 },
-        { label: 'Moved Out Issues', data: movedOutCount, borderColor: '#10b981', backgroundColor: '#10b981', fill: false, tension: 0.1 }
+        { label: 'Pulled In Issues', data: pulledInCount, backgroundColor: '#3b82f6', borderColor: '#3b82f6' },
+        { label: 'Blocked Days', data: blockedDays, backgroundColor: '#ef4444', borderColor: '#ef4444' },
+        { label: 'Type Changed Issues', data: typeChangedCount, backgroundColor: '#f59e0b', borderColor: '#f59e0b' },
+        { label: 'Moved Out Issues', data: movedOutCount, backgroundColor: '#10b981', borderColor: '#10b981' },
+        { label: 'Throughput per Sprint', data: throughputPerSprint, backgroundColor: '#f97316', borderColor: '#f97316' }
       ]
     },
     options: {
@@ -722,27 +713,6 @@ function renderCharts(displaySprints, allSprints) {
     }
   });
 
-  const cctx = document.getElementById('cycleChart').getContext('2d');
-  cycleChartInstance = new Chart(cctx, {
-    type: 'line',
-    data: {
-      labels: sprintLabels,
-      datasets: [
-        { label: 'Mean Cycle Time (days)', data: avgCycleTime, borderColor: '#8b5cf6', backgroundColor: 'rgba(139,92,246,0.3)', yAxisID: 'y1', fill: false, tension: 0.1 },
-        { label: 'Throughput per Sprint', data: throughputPerSprint, borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,0.3)', yAxisID: 'y2', fill: false, tension: 0.1 }
-      ]
-    },
-    options: {
-      responsive: false,
-      maintainAspectRatio: false,
-      scales: {
-        x: { offset: true },
-        y1: { type: 'linear', position: 'left', beginAtZero: true, title: { display: true, text: 'Mean Cycle Time (days)' } },
-        y2: { type: 'linear', position: 'right', beginAtZero: true, title: { display: true, text: 'Throughput' }, grid: { drawOnChartArea: false } }
-      },
-      plugins: { legend: { position: 'bottom' } }
-    }
-  });
 }
 
   function toggleDetails(id, btn) {
