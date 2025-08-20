@@ -8,8 +8,8 @@
   <link rel="stylesheet" href="public/tailwind.css">
   <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
   <style>
     body { background: #f7f8fa; font-family: 'Inter', Arial, sans-serif; margin:0; padding:0; }
     .main { max-width: 950px; margin: 30px auto; background:#fff; border-radius:18px; padding:36px 32px; box-shadow:0 2px 12px #d1d5db70; }
@@ -109,6 +109,7 @@
 <script src="src/disruption.js"></script>
 <script src="src/kpis.js"></script>
 <script>
+  Chart.register(ChartDataLabels);
   function switchVersion(v){ window.location.href = v; }
   const ratingToggle = document.getElementById('ratingZoneToggle');
   const ratingDetails = document.getElementById('ratingZoneDetails');
@@ -661,6 +662,12 @@ function renderCharts(displaySprints, allSprints) {
               return `Initially Planned total: ${plannedTotal}\nCompleted total: ${completedTotal}`;
             }
           }
+        },
+        datalabels: {
+          display: false,
+          color: '#000',
+          anchor: 'end',
+          align: 'top'
         }
       }
     }
@@ -684,7 +691,16 @@ function renderCharts(displaySprints, allSprints) {
         x: { offset: true },
         y: { beginAtZero: true, suggestedMax: maxY, title: { display: true, text: 'Completed Story Points' } }
       },
-      plugins: { legend: { position: 'bottom' }, ratingZones: { zonesBySprint } }
+      plugins: {
+        legend: { position: 'bottom' },
+        ratingZones: { zonesBySprint },
+        datalabels: {
+          display: false,
+          color: '#000',
+          anchor: 'end',
+          align: 'top'
+        }
+      }
     },
     plugins: [ratingZonesPlugin]
   });
@@ -709,10 +725,47 @@ function renderCharts(displaySprints, allSprints) {
         x: { offset: true },
         y: { beginAtZero: true, title: { display: true, text: 'Issue Count / Blocked Days' } }
       },
-      plugins: { legend: { position: 'bottom' } }
+      plugins: {
+        legend: { position: 'bottom' },
+        datalabels: {
+          display: false,
+          color: '#000',
+          anchor: 'end',
+          align: 'top'
+        }
+      }
     }
   });
 
+  const cctx = document.getElementById('cycleChart').getContext('2d');
+  cycleChartInstance = new Chart(cctx, {
+    type: 'line',
+    data: {
+      labels: sprintLabels,
+      datasets: [
+        { label: 'Mean Cycle Time (days)', data: avgCycleTime, borderColor: '#8b5cf6', backgroundColor: 'rgba(139,92,246,0.3)', yAxisID: 'y1', fill: false, tension: 0.1 },
+        { label: 'Throughput per Sprint', data: throughputPerSprint, borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,0.3)', yAxisID: 'y2', fill: false, tension: 0.1 }
+      ]
+    },
+    options: {
+      responsive: false,
+      maintainAspectRatio: false,
+      scales: {
+        x: { offset: true },
+        y1: { type: 'linear', position: 'left', beginAtZero: true, title: { display: true, text: 'Mean Cycle Time (days)' } },
+        y2: { type: 'linear', position: 'right', beginAtZero: true, title: { display: true, text: 'Throughput' }, grid: { drawOnChartArea: false } }
+      },
+      plugins: {
+        legend: { position: 'bottom' },
+        datalabels: {
+          display: false,
+          color: '#000',
+          anchor: 'end',
+          align: 'top'
+        }
+      }
+    }
+  });
 }
 
   function toggleDetails(id, btn) {
@@ -747,18 +800,35 @@ function renderCharts(displaySprints, allSprints) {
   function exportPDF() {
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
-    const elem = document.getElementById('pdfContent');
-    html2canvas(elem).then(canvas => {
-      const img = canvas.toDataURL('image/png');
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      const margin = 20;
-      const ratio = Math.min((pageWidth - margin * 2) / canvas.width, (pageHeight - margin * 2) / canvas.height);
-      const imgWidth = canvas.width * ratio;
-      const imgHeight = canvas.height * ratio;
-      const x = (pageWidth - imgWidth) / 2;
-      pdf.addImage(img, 'PNG', x, margin, imgWidth, imgHeight);
-      pdf.save('Disruption_Report.pdf');
+    const charts = [piMixChartInstance, completedChartInstance, disruptionChartInstance, cycleChartInstance];
+    charts.forEach(ch => {
+      if (ch && ch.options.plugins?.datalabels) {
+        ch.options.plugins.datalabels.display = true;
+        ch.update();
+      }
+    });
+    const canvases = document.querySelectorAll('#chartSection canvas');
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const margin = 20;
+    let y = margin;
+    canvases.forEach(cv => {
+      const img = cv.toDataURL('image/png');
+      const width = pageWidth - margin * 2;
+      const height = cv.height * width / cv.width;
+      if (y + height > pageHeight - margin) {
+        pdf.addPage();
+        y = margin;
+      }
+      pdf.addImage(img, 'PNG', margin, y, width, height);
+      y += height + 10;
+    });
+    pdf.save('Disruption_Report.pdf');
+    charts.forEach(ch => {
+      if (ch && ch.options.plugins?.datalabels) {
+        ch.options.plugins.datalabels.display = false;
+        ch.update();
+      }
     });
   }
 
