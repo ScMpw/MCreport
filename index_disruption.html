@@ -89,6 +89,7 @@
         </div>
       </div>
       <canvas id="disruptionChart"></canvas>
+      <canvas id="cycleChart"></canvas>
     </div>
   </div>
 </div>
@@ -129,6 +130,7 @@
   let completedChartInstance;
   let disruptionChartInstance;
   let piMixChartInstance;
+  let cycleChartInstance;
   const DISPLAY_SPRINT_COUNT = 6;
   const RATING_WINDOW = 4;
   let sprints = [];
@@ -539,8 +541,15 @@ function renderCharts(displaySprints, allSprints) {
     (s.events || []).filter(ev => ev.completedDate).length
   );
 
+  const avgCycleTime = displaySprints.map(s => {
+    const cycles = (s.events || [])
+      .map(ev => ev.cycleTime)
+      .filter(t => typeof t === 'number');
+    return cycles.length ? cycles.reduce((a, b) => a + b, 0) / cycles.length : 0;
+  });
+
   const chartWidth = Math.max(sprintLabels.length * 120, 600);
-  ['piMixChart','completedChart','disruptionChart'].forEach(id => {
+  ['piMixChart','completedChart','disruptionChart','cycleChart'].forEach(id => {
     const canvas = document.getElementById(id);
     canvas.width = chartWidth;
     canvas.height = 300;
@@ -606,6 +615,9 @@ function renderCharts(displaySprints, allSprints) {
   }
   if (disruptionChartInstance) {
     disruptionChartInstance.destroy();
+  }
+  if (cycleChartInstance) {
+    cycleChartInstance.destroy();
   }
 
   const pctx = document.getElementById('piMixChart').getContext('2d');
