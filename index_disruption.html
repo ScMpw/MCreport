@@ -44,7 +44,7 @@
   </div>
   <div style="margin-top:20px;">
     <label>Jira Domain: <input id="jiraDomain" value="aldi-sued.atlassian.net" size="28"></label>
-    <label style="margin-left:10px;">Boards:
+    <label style="margin-left:10px;">Please select a Board:
       <select id="boardNum" multiple></select>
     </label>
     <button class="btn" onclick="loadDisruption()">Load Data</button>
@@ -60,18 +60,17 @@
       <thead>
         <tr>
           <th>Sprint</th>
-          <th>Initially Planned</th>
-          <th>Completed</th>
-          <th>Pulled In</th>
-          <th>Blocked Days</th>
-          <th>Type Changed</th>
-          <th>Moved Out</th>
+          <th>Initially Planned (SP)</th>
+          <th>Completed (SP)</th>
+          <th>Pulled In (SP / Issues)</th>
+          <th>Blocked Days (Days / Issues)</th>
+          <th>Type Changed (SP / Issues)</th>
+          <th>Moved Out (SP / Issues)</th>
           <th>Details</th>
         </tr>
       </thead>
       <tbody id="metricsBody"></tbody>
     </table>
-    <div class="table-description"><strong>Legend:</strong> Initially Planned and Completed show story points. Pulled In, Type Changed, and Moved Out list story points with the number of affected issues in parentheses. Blocked Days lists days with the number of blocked issues in parentheses.</div>
     <div id="velocityStats"></div>
     <div id="chartSection" class="chart-section">
       <div id="plannedInfo" style="font-size:0.9em; margin-bottom:10px;"></div>
@@ -134,8 +133,6 @@
   const RATING_WINDOW = 4;
   let sprints = [];
   let allSprints = [];
-  let teamVelocityData = {};
-  let boardNamesData = {};
   let epicCache = new Map();
   const PI_LABEL_RE = /\b\d{4}_PI\d+_committed\b/i;
 
@@ -191,7 +188,6 @@
     async function fetchDisruptionData(jiraDomain, boardNums = []) {
       Logger.info('Fetching disruption data for boards', boardNums.join(','));
       const combined = {};
-      const teamVelocity = {};
       const issueCache = new Map();
       try {
         await Promise.all(boardNums.map(async boardNum => {
@@ -233,7 +229,6 @@
           }
 
           closed = filterRecentSprints(closed, [], DISPLAY_SPRINT_COUNT + RATING_WINDOW);
-          teamVelocity[boardNum] = new Array(closed.length).fill(0);
 
           await Promise.all(closed.map(async (s, idx) => {
             const surl = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/sprintreport?rapidViewId=${boardNum}&sprintId=${s.id}`;
@@ -267,7 +262,6 @@
               }
               let initiallyPlanned = entry.estimated?.value || 0;
               let initiallyPlannedSource = 'velocityStatEntries.estimated';
-              teamVelocity[boardNum][idx] = completed || 0;
               const sprintStart = s.startDate ? new Date(s.startDate) : null;
               const sprintEnd = s.completeDate ? new Date(s.completeDate) : (s.endDate ? new Date(s.endDate) : null);
 
@@ -430,11 +424,11 @@
         }));
         Logger.info('Disruption data fetched for', Object.keys(combined).length, 'sprints');
         const sprintsArr = Object.values(combined).sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
-        return { sprints: sprintsArr, teamVelocity };
+        return { sprints: sprintsArr };
       } catch (e) {
         Logger.error('Failed to fetch disruption data', e);
         alert('Failed to fetch disruption data.');
-        return { sprints: [], teamVelocity: {} };
+        return { sprints: [] };
       }
     }
 
@@ -470,20 +464,39 @@
     tbody.innerHTML = html;
   }
 
-  function renderVelocityStats(boardNames, teamVelocity) {
+function renderVelocityStats(allSprints) {
     const wrap = document.getElementById('velocityStats');
     if (!wrap) return;
 
-    let html = '<h2>Velocity (last 12 sprints)</h2>';
-    html += '<table><thead><tr><th>Team</th><th>Average Velocity</th><th>Std Dev</th></tr></thead><tbody>';
+    let totalCompleted = 0;
+    let totalCycle = 0;
+    let cycleCount = 0;
+    let earliestStart = null;
+    let latestEnd = null;
 
-    Object.keys(boardNames).forEach(id => {
-      const vals = teamVelocity[id] || [];
-      const avg = Kpis.calculateVelocity(vals);
-      const sd = Kpis.calculateStdDev(vals, avg);
-      html += `<tr><td>${boardNames[id]}</td><td>${avg.toFixed(2)}</td><td>${sd.toFixed(2)}</td></tr>`;
+    (allSprints || []).forEach(s => {
+      const start = s.startDate ? new Date(s.startDate) : null;
+      const end = s.completeDate ? new Date(s.completeDate) : (s.endDate ? new Date(s.endDate) : null);
+      if (start && (!earliestStart || start < earliestStart)) earliestStart = start;
+      if (end && (!latestEnd || end > latestEnd)) latestEnd = end;
+      (s.events || []).forEach(ev => {
+        if (ev.completedDate) {
+          totalCompleted++;
+          if (typeof ev.cycleTime === 'number') {
+            totalCycle += ev.cycleTime;
+            cycleCount++;
+          }
+        }
+      });
     });
-    html += '</tbody></table>';
+
+    const weeks = (earliestStart && latestEnd) ? (latestEnd - earliestStart) / (1000 * 60 * 60 * 24 * 7) : 0;
+    const weeklyThroughput = weeks ? totalCompleted / weeks : 0;
+    const meanCycleTime = cycleCount ? totalCycle / cycleCount : 0;
+
+    const html = '<h2>Throughput & Cycle Time</h2>' +
+      '<table><thead><tr><th>Weekly Throughput</th><th>Mean Cycle Time (days)</th></tr></thead><tbody>' +
+      `<tr><td>${weeklyThroughput.toFixed(2)}</td><td>${meanCycleTime.toFixed(2)}</td></tr></tbody></table>`;
     wrap.innerHTML = html;
   }
 
@@ -755,17 +768,13 @@ function renderCharts(displaySprints, allSprints) {
       return;
     }
     Logger.info('Loading disruption report for boards', boards.join(','));
-    const { sprints: fetchedSprints, teamVelocity } = await fetchDisruptionData(jiraDomain, boards);
+    const { sprints: fetchedSprints } = await fetchDisruptionData(jiraDomain, boards);
     allSprints = fetchedSprints;
     sprints = fetchedSprints.slice(-DISPLAY_SPRINT_COUNT);
     renderTable(sprints);
     renderSprintList();
     document.getElementById('sprintRow').style.display = sprints.length ? '' : 'none';
-    const boardNames = {};
-    selected.forEach(b => { boardNames[b.value] = b.label; });
-    boardNamesData = boardNames;
-    teamVelocityData = teamVelocity;
-    renderVelocityStats(boardNamesData, teamVelocityData);
+    renderVelocityStats(allSprints);
     renderCharts(sprints, allSprints);
     Logger.info('Disruption report rendered');
   }
