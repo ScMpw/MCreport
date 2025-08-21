@@ -75,7 +75,6 @@
     <div id="velocityStats"></div>
     <div id="chartSection" class="chart-section">
       <canvas id="piMixChart"></canvas>
-      <canvas id="initialPlanChart"></canvas>
       <canvas id="completedChart"></canvas>
       <div class="rating-zone-description">
         <div id="ratingZoneToggle" style="cursor:pointer;"><strong>Rating zones (show)</strong></div>
@@ -129,7 +128,6 @@
   let completedChartInstance;
   let disruptionChartInstance;
   let piMixChartInstance;
-  let initialPlanChartInstance;
   const DISPLAY_SPRINT_COUNT = 6;
   const RATING_WINDOW = 4;
   let sprints = [];
@@ -511,17 +509,15 @@ function renderCharts(displaySprints, allSprints) {
   function sumSP(events, pred) {
     return (events || []).reduce((sum, ev) => sum + (pred(ev) ? (ev.points || 0) : 0), 0);
   }
-  const plannedPI = displaySprints.map(s => sumSP(s.events, ev => !ev.addedAfterStart && !ev.movedOut && ev.piRelevant));
-  const plannedOther = displaySprints.map((s, i) => Math.max(0, (s.initiallyPlanned || 0) - plannedPI[i]));
   const completedPI = displaySprints.map(s => sumSP(s.events, ev => ev.completed && ev.piRelevant));
   const completedOther = displaySprints.map((s, i) => Math.max(0, (s.completed || 0) - completedPI[i]));
 
-  const remainingInitial = displaySprints.map(s =>
-    (s.events || []).filter(ev => !ev.addedAfterStart && !ev.movedOut)
+  const initialCompleted = displaySprints.map(s =>
+    (s.events || []).filter(ev => !ev.addedAfterStart && !ev.movedOut && ev.completed)
       .reduce((sum, ev) => sum + (ev.points || 0), 0)
   );
-  const completedInitial = displaySprints.map(s =>
-    (s.events || []).filter(ev => !ev.addedAfterStart && !ev.movedOut && ev.completed)
+  const initialRetained = displaySprints.map(s =>
+    (s.events || []).filter(ev => !ev.addedAfterStart && !ev.movedOut && !ev.completed)
       .reduce((sum, ev) => sum + (ev.points || 0), 0)
   );
 
@@ -530,7 +526,7 @@ function renderCharts(displaySprints, allSprints) {
   );
 
   const chartWidth = Math.max(sprintLabels.length * 120, 600);
-  ['piMixChart','initialPlanChart','completedChart','disruptionChart'].forEach(id => {
+  ['piMixChart','completedChart','disruptionChart'].forEach(id => {
     const canvas = document.getElementById(id);
     canvas.width = chartWidth;
     canvas.height = 300;
@@ -591,9 +587,6 @@ function renderCharts(displaySprints, allSprints) {
   if (piMixChartInstance) {
     piMixChartInstance.destroy();
   }
-  if (initialPlanChartInstance) {
-    initialPlanChartInstance.destroy();
-  }
   if (completedChartInstance) {
     completedChartInstance.destroy();
   }
@@ -618,21 +611,21 @@ function renderCharts(displaySprints, allSprints) {
     g.stroke();
     return ctx.createPattern(c, 'repeat');
   }
-  const plannedPIColor = '#1d4ed8';
-  const plannedOtherColor = '#60a5fa';
+  const initialCompletedColor = '#1d4ed8';
+  const initialRetainedColor = '#60a5fa';
   const completedPIColor = '#16a34a';
   const completedOtherColor = '#86efac';
 
-  const plannedPIFill = makeDiagonalPattern(pctx, plannedPIColor);
-  const plannedOtherFill = makeDiagonalPattern(pctx, plannedOtherColor);
+  const initialCompletedFill = makeDiagonalPattern(pctx, initialCompletedColor);
+  const initialRetainedFill = makeDiagonalPattern(pctx, initialRetainedColor);
 
   piMixChartInstance = new Chart(pctx, {
     type: 'bar',
     data: {
       labels: sprintLabels,
       datasets: [
-        { label: 'Initially Planned PI contributions', data: plannedPI, backgroundColor: plannedPIFill, borderColor: plannedPIColor, stack: 'planned' },
-        { label: 'Initially Planned other', data: plannedOther, backgroundColor: plannedOtherFill, borderColor: plannedOtherColor, stack: 'planned' },
+        { label: 'Initial Plan Retained', data: initialRetained, backgroundColor: initialRetainedFill, borderColor: initialRetainedColor, stack: 'initial' },
+        { label: 'Initial Plan Completed', data: initialCompleted, backgroundColor: initialCompletedFill, borderColor: initialCompletedColor, stack: 'initial' },
         { label: 'Completed PI contributions', data: completedPI, backgroundColor: completedPIColor, borderColor: completedPIColor, stack: 'completed' },
         { label: 'Completed other', data: completedOther, backgroundColor: completedOtherColor, borderColor: completedOtherColor, stack: 'completed' },
       ]
@@ -650,41 +643,14 @@ function renderCharts(displaySprints, allSprints) {
           callbacks: {
             footer(items) {
               const i = items[0].dataIndex;
-              const plannedTotal = (plannedPI[i] || 0) + (plannedOther[i] || 0);
+              const retained = initialRetained[i] || 0;
+              const initCompleted = initialCompleted[i] || 0;
+              const initialTotal = retained + initCompleted;
               const completedTotal = (completedPI[i] || 0) + (completedOther[i] || 0);
-              return `Initially Planned total: ${plannedTotal}\nCompleted total: ${completedTotal}`;
+              return `Initial Plan retained: ${retained}\nInitial Plan completed: ${initCompleted}\nInitial Plan total: ${initialTotal}\nCompleted total: ${completedTotal}`;
             }
           }
         },
-        datalabels: {
-          display: false,
-          color: '#000',
-          anchor: 'end',
-          align: 'top'
-        }
-      }
-    }
-  });
-
-  const rctx = document.getElementById('initialPlanChart').getContext('2d');
-  initialPlanChartInstance = new Chart(rctx, {
-    type: 'bar',
-    data: {
-      labels: sprintLabels,
-      datasets: [
-        { label: 'Initial Plan Retained', data: remainingInitial, backgroundColor: plannedOtherColor, borderColor: plannedOtherColor },
-        { label: 'Initial Plan Completed', data: completedInitial, backgroundColor: completedPIColor, borderColor: completedPIColor }
-      ]
-    },
-    options: {
-      responsive: false,
-      maintainAspectRatio: false,
-      scales: {
-        x: { offset: true },
-        y: { beginAtZero: true, title: { display: true, text: 'Story Points' } }
-      },
-      plugins: {
-        legend: { position: 'bottom' },
         datalabels: {
           display: false,
           color: '#000',
@@ -793,7 +759,7 @@ function renderCharts(displaySprints, allSprints) {
   function exportPDF() {
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
-    const charts = [piMixChartInstance, initialPlanChartInstance, completedChartInstance, disruptionChartInstance];
+    const charts = [piMixChartInstance, completedChartInstance, disruptionChartInstance];
     charts.forEach(ch => {
       if (ch && ch.options.plugins?.datalabels) {
         ch.options.plugins.datalabels.display = true;
