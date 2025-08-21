@@ -622,6 +622,7 @@ function renderCharts(displaySprints, allSprints) {
   const plannedOtherColor = '#60a5fa';
   const completedPIColor = '#16a34a';
   const completedOtherColor = '#86efac';
+  const initialCompletedColor = '#f59e0b';
 
   const plannedPIFill = makeDiagonalPattern(pctx, plannedPIColor);
   const plannedOtherFill = makeDiagonalPattern(pctx, plannedOtherColor);
@@ -633,6 +634,7 @@ function renderCharts(displaySprints, allSprints) {
       datasets: [
         { label: 'Initially Planned PI contributions', data: plannedPI, backgroundColor: plannedPIFill, borderColor: plannedPIColor, stack: 'planned' },
         { label: 'Initially Planned other', data: plannedOther, backgroundColor: plannedOtherFill, borderColor: plannedOtherColor, stack: 'planned' },
+        { label: 'Initial Plan completed', data: initialCompleted, backgroundColor: initialCompletedColor, borderColor: initialCompletedColor, stack: 'initialCompleted' },
         { label: 'Completed PI contributions', data: completedPI, backgroundColor: completedPIColor, borderColor: completedPIColor, stack: 'completed' },
         { label: 'Completed other', data: completedOther, backgroundColor: completedOtherColor, borderColor: completedOtherColor, stack: 'completed' },
       ]
