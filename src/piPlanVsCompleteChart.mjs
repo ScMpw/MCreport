@@ -234,7 +234,7 @@ export function renderPiPlanVsCompleteChart({ canvasId, team, product, sprints =
             offset: -4,
             color: '#000',
             font: { weight: 'bold' },
-            formatter: (v, ctx) => series.plannedTotals[ctx.dataIndex]
+            formatter: (v, ctx) => `${series.completedTotals[ctx.dataIndex]} of ${series.plannedTotals[ctx.dataIndex]}`
           }
         },
         {
@@ -246,14 +246,7 @@ export function renderPiPlanVsCompleteChart({ canvasId, team, product, sprints =
           borderWidth: 1,
           borderRadius: 6,
           order: 1,
-          datalabels: {
-            anchor: 'start',
-            align: 'end',
-            offset: -4,
-            color: '#000',
-            font: { weight: 'bold' },
-            formatter: (v, ctx) => series.completedTotals[ctx.dataIndex]
-          }
+          datalabels: { display: false }
         },
         {
           label: 'Completed PI contributions',
