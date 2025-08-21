@@ -509,15 +509,22 @@ function renderCharts(displaySprints, allSprints) {
   function sumSP(events, pred) {
     return (events || []).reduce((sum, ev) => sum + (pred(ev) ? (ev.points || 0) : 0), 0);
   }
-  const completedPI = displaySprints.map(s => sumSP(s.events, ev => ev.completed && ev.piRelevant));
-  const completedOther = displaySprints.map((s, i) => Math.max(0, (s.completed || 0) - completedPI[i]));
+  const plannedPI = displaySprints.map(s =>
+    sumSP(s.events, ev => !ev.addedAfterStart && !ev.movedOut && ev.piRelevant)
+  );
+  const plannedOther = displaySprints.map((s, i) =>
+    Math.max(0, (s.initiallyPlanned || 0) - plannedPI[i])
+  );
+  const completedPI = displaySprints.map(s =>
+    sumSP(s.events, ev => ev.completed && ev.piRelevant)
+  );
+  const completedOther = displaySprints.map((s, i) =>
+    Math.max(0, (s.completed || 0) - completedPI[i])
+  );
 
   const initialCompleted = displaySprints.map(s =>
-    (s.events || []).filter(ev => !ev.addedAfterStart && !ev.movedOut && ev.completed)
-      .reduce((sum, ev) => sum + (ev.points || 0), 0)
-  );
-  const initialRetained = displaySprints.map(s =>
-    (s.events || []).filter(ev => !ev.addedAfterStart && !ev.movedOut && !ev.completed)
+    (s.events || [])
+      .filter(ev => !ev.addedAfterStart && !ev.movedOut && ev.completed)
       .reduce((sum, ev) => sum + (ev.points || 0), 0)
   );
 
@@ -611,21 +618,21 @@ function renderCharts(displaySprints, allSprints) {
     g.stroke();
     return ctx.createPattern(c, 'repeat');
   }
-  const initialCompletedColor = '#1d4ed8';
-  const initialRetainedColor = '#60a5fa';
+  const plannedPIColor = '#1d4ed8';
+  const plannedOtherColor = '#60a5fa';
   const completedPIColor = '#16a34a';
   const completedOtherColor = '#86efac';
 
-  const initialCompletedFill = makeDiagonalPattern(pctx, initialCompletedColor);
-  const initialRetainedFill = makeDiagonalPattern(pctx, initialRetainedColor);
+  const plannedPIFill = makeDiagonalPattern(pctx, plannedPIColor);
+  const plannedOtherFill = makeDiagonalPattern(pctx, plannedOtherColor);
 
   piMixChartInstance = new Chart(pctx, {
     type: 'bar',
     data: {
       labels: sprintLabels,
       datasets: [
-        { label: 'Initial Plan Retained', data: initialRetained, backgroundColor: initialRetainedFill, borderColor: initialRetainedColor, stack: 'initial' },
-        { label: 'Initial Plan Completed', data: initialCompleted, backgroundColor: initialCompletedFill, borderColor: initialCompletedColor, stack: 'initial' },
+        { label: 'Initially Planned PI contributions', data: plannedPI, backgroundColor: plannedPIFill, borderColor: plannedPIColor, stack: 'planned' },
+        { label: 'Initially Planned other', data: plannedOther, backgroundColor: plannedOtherFill, borderColor: plannedOtherColor, stack: 'planned' },
         { label: 'Completed PI contributions', data: completedPI, backgroundColor: completedPIColor, borderColor: completedPIColor, stack: 'completed' },
         { label: 'Completed other', data: completedOther, backgroundColor: completedOtherColor, borderColor: completedOtherColor, stack: 'completed' },
       ]
@@ -643,11 +650,10 @@ function renderCharts(displaySprints, allSprints) {
           callbacks: {
             footer(items) {
               const i = items[0].dataIndex;
-              const retained = initialRetained[i] || 0;
+              const plannedTotal = (plannedPI[i] || 0) + (plannedOther[i] || 0);
               const initCompleted = initialCompleted[i] || 0;
-              const initialTotal = retained + initCompleted;
               const completedTotal = (completedPI[i] || 0) + (completedOther[i] || 0);
-              return `Initial Plan retained: ${retained}\nInitial Plan completed: ${initCompleted}\nInitial Plan total: ${initialTotal}\nCompleted total: ${completedTotal}`;
+              return `Initially Planned total: ${plannedTotal}\nInitial Plan completed: ${initCompleted}\nCompleted total: ${completedTotal}`;
             }
           }
         },
