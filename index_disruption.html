@@ -74,8 +74,8 @@
     </table>
     <div id="velocityStats"></div>
     <div id="chartSection" class="chart-section">
-      <div id="plannedInfo" style="font-size:0.9em; margin-bottom:10px;"></div>
       <canvas id="piMixChart"></canvas>
+      <canvas id="initialPlanChart"></canvas>
       <canvas id="completedChart"></canvas>
       <div class="rating-zone-description">
         <div id="ratingZoneToggle" style="cursor:pointer;"><strong>Rating zones (show)</strong></div>
@@ -129,6 +129,7 @@
   let completedChartInstance;
   let disruptionChartInstance;
   let piMixChartInstance;
+  let initialPlanChartInstance;
   const DISPLAY_SPRINT_COUNT = 6;
   const RATING_WINDOW = 4;
   let sprints = [];
@@ -523,24 +524,13 @@ function renderCharts(displaySprints, allSprints) {
     (s.events || []).filter(ev => !ev.addedAfterStart && !ev.movedOut && ev.completed)
       .reduce((sum, ev) => sum + (ev.points || 0), 0)
   );
-  const plannedInfoEl = document.getElementById('plannedInfo');
-  if (plannedInfoEl) {
-    let infoHtml = '<strong>Initial plan retained vs completed:</strong>';
-    displaySprints.forEach((s, idx) => {
-      const init = s.initiallyPlanned || 0;
-      const rem = remainingInitial[idx] || 0;
-      const comp = completedInitial[idx] || 0;
-      infoHtml += `<div>${s.name}: ${rem} of ${init} remained; ${comp} completed</div>`;
-    });
-    plannedInfoEl.innerHTML = infoHtml;
-  }
 
   const throughputPerSprint = displaySprints.map(s =>
     (s.events || []).filter(ev => ev.completedDate).length
   );
 
   const chartWidth = Math.max(sprintLabels.length * 120, 600);
-  ['piMixChart','completedChart','disruptionChart'].forEach(id => {
+  ['piMixChart','initialPlanChart','completedChart','disruptionChart'].forEach(id => {
     const canvas = document.getElementById(id);
     canvas.width = chartWidth;
     canvas.height = 300;
@@ -600,6 +590,9 @@ function renderCharts(displaySprints, allSprints) {
   // Destroy existing charts if they exist to allow re-rendering without errors
   if (piMixChartInstance) {
     piMixChartInstance.destroy();
+  }
+  if (initialPlanChartInstance) {
+    initialPlanChartInstance.destroy();
   }
   if (completedChartInstance) {
     completedChartInstance.destroy();
@@ -663,6 +656,35 @@ function renderCharts(displaySprints, allSprints) {
             }
           }
         },
+        datalabels: {
+          display: false,
+          color: '#000',
+          anchor: 'end',
+          align: 'top'
+        }
+      }
+    }
+  });
+
+  const rctx = document.getElementById('initialPlanChart').getContext('2d');
+  initialPlanChartInstance = new Chart(rctx, {
+    type: 'bar',
+    data: {
+      labels: sprintLabels,
+      datasets: [
+        { label: 'Initial Plan Retained', data: remainingInitial, backgroundColor: plannedOtherColor, borderColor: plannedOtherColor },
+        { label: 'Initial Plan Completed', data: completedInitial, backgroundColor: completedPIColor, borderColor: completedPIColor }
+      ]
+    },
+    options: {
+      responsive: false,
+      maintainAspectRatio: false,
+      scales: {
+        x: { offset: true },
+        y: { beginAtZero: true, title: { display: true, text: 'Story Points' } }
+      },
+      plugins: {
+        legend: { position: 'bottom' },
         datalabels: {
           display: false,
           color: '#000',
@@ -771,7 +793,7 @@ function renderCharts(displaySprints, allSprints) {
   function exportPDF() {
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
-    const charts = [piMixChartInstance, completedChartInstance, disruptionChartInstance];
+    const charts = [piMixChartInstance, initialPlanChartInstance, completedChartInstance, disruptionChartInstance];
     charts.forEach(ch => {
       if (ch && ch.options.plugins?.datalabels) {
         ch.options.plugins.datalabels.display = true;
