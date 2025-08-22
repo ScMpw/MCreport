@@ -23,6 +23,7 @@
     .story-table th { background:#e0e7ef; }
     .chart-section { margin-top: 30px; overflow-x: auto; }
     .chart-section canvas { margin-top: 20px; }
+    .chart-section h2 { margin-top: 20px; }
     .rating-zone-description { margin-top: 10px; font-size: 0.9em; }
     .rating-zone-description div { margin-top: 4px; }
     .rating-zone-description span { display:inline-block; width:12px; height:12px; margin-right:6px; vertical-align:middle; }
@@ -74,7 +75,9 @@
     </table>
     <div id="velocityStats"></div>
     <div id="chartSection" class="chart-section">
+      <h2>Initially planned &amp; completed</h2>
       <canvas id="piMixChart"></canvas>
+      <h2>Rating Zone Chart</h2>
       <canvas id="completedChart"></canvas>
       <div class="rating-zone-description">
         <div id="ratingZoneToggle" style="cursor:pointer;"><strong>Rating zones (show)</strong></div>
@@ -87,6 +90,7 @@
           <div><span style="background:rgba(254,202,202,0.5);"></span><strong>Alarming: 0…AV-2SD.</strong> The major share of this plummeting output was probably caused by factors beyond the team‘s influence. Thorough analysis is needed which will lead to profound learning and change.</div>
         </div>
       </div>
+      <h2>Disruption Metrics</h2>
       <canvas id="disruptionChart"></canvas>
     </div>
   </div>
