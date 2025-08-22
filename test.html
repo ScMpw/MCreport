@@ -717,7 +717,7 @@ function renderCharts(displaySprints, allSprints) {
           { label: 'Type Changed Issues', data: typeChangedCount, backgroundColor: '#f59e0b', borderColor: '#f59e0b' },
           { label: 'Moved Out Issues', data: movedOutCount, backgroundColor: '#10b981', borderColor: '#10b981' },
           { label: 'Throughput per Sprint', data: throughputPerSprint, backgroundColor: '#f97316', borderColor: '#f97316' },
-          { label: 'Cycle Time per Sprint', data: cycleTimePerSprint, type: 'line', borderColor: '#8b5cf6', backgroundColor: '#8b5cf6', yAxisID: 'y1' }
+          { label: 'Cycle Time per Sprint', data: cycleTimePerSprint, type: 'bar', backgroundColor: '#8b5cf6', borderColor: '#8b5cf6', yAxisID: 'y1' }
         ]
       },
       options: {
@@ -725,7 +725,7 @@ function renderCharts(displaySprints, allSprints) {
         maintainAspectRatio: false,
         scales: {
           x: { offset: true },
-          y: { beginAtZero: true, title: { display: true, text: 'Issue Count / Blocked Days' } },
+          y: { beginAtZero: true, title: { display: true, text: 'Issue Count / Days' } },
           y1: { beginAtZero: true, position: 'right', title: { display: true, text: 'Cycle Time (days)' } }
         },
         plugins: {
