@@ -38,7 +38,7 @@
   </div>
   <div id="teamRow" style="margin-top:10px; display:none;">
     <label>Teams:
-      <select id="teamSelect" multiple></select>
+      <select id="teamSelect"></select>
     </label>
   </div>
   <div id="chartSection" class="chart-section" style="display:none;">
@@ -126,7 +126,6 @@ async function fetchTopicMixData(jiraDomain, boardNums = []) {
       }
       closed = all.filter(s => (s.state || '').toUpperCase() === 'CLOSED' && s.startDate && String(s.originBoardId) === String(boardNum));
     }
-    closed = filterRecentSprints(closed, [], DISPLAY_SPRINT_COUNT);
     await Promise.all(closed.map(async s => {
       const surl = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/sprintreport?rapidViewId=${boardNum}&sprintId=${s.id}`;
       const r = await fetch(surl, { credentials:'include' });
@@ -168,28 +167,28 @@ async function fetchTopicMixData(jiraDomain, boardNums = []) {
       combined[s.name] = existing;
     }));
   }));
-  return { sprints: Object.values(combined).sort((a,b)=> new Date(a.startDate)-new Date(b.startDate)) };
+  return { sprints: Object.values(combined) };
 }
 
 function renderTeamSelect(teams) {
   const select = document.getElementById('teamSelect');
-  select.innerHTML = teams.map(t => `<option value="${t}">${t}</option>`).join('');
+  select.innerHTML = '<option value="">All Teams</option>' + teams.map(t => `<option value="${t}">${t}</option>`).join('');
   if (teamChoices) teamChoices.destroy();
-  teamChoices = new Choices(select, { removeItemButton:true, shouldSort:true });
+  teamChoices = new Choices(select, { shouldSort:true });
   document.getElementById('teamRow').style.display = teams.length ? '' : 'none';
   select.addEventListener('change', renderChart);
 }
 
 function renderChart() {
   if (!allSprints.length) return;
-  const selectedTeams = new Set(teamChoices ? teamChoices.getValue(true) : []);
+  const selectedTeam = teamChoices ? teamChoices.getValue(true) : '';
   const sprintLabels = allSprints.map(s => s.name);
   const sums = allSprints.map(s => {
     const acc = { maindriver:0, pi:0, other:0 };
     (s.events || []).forEach(ev => {
       if (!ev.completed) return;
       const teams = (ev.team || '').split(',').map(t=>t.trim()).filter(Boolean);
-      if (selectedTeams.size && !teams.some(t => selectedTeams.has(t))) return;
+      if (selectedTeam && !teams.includes(selectedTeam)) return;
       acc[ev.topicType] = (acc[ev.topicType] || 0) + (ev.points || 0);
     });
     return acc;
@@ -225,7 +224,7 @@ async function loadTopicMix() {
   const boards = selected.map(b => b.value);
   if (!jiraDomain || !boards.length) { alert('Enter Jira domain and select boards.'); return; }
   const { sprints } = await fetchTopicMixData(jiraDomain, boards);
-  allSprints = sprints.slice(-DISPLAY_SPRINT_COUNT);
+  allSprints = filterRecentSprints(sprints).reverse();
   const teams = new Set();
   allSprints.forEach(s => (s.events || []).forEach(ev => (ev.team || '').split(',').forEach(t => { t = t.trim(); if (t) teams.add(t); })));
   renderTeamSelect(Array.from(teams).sort());
