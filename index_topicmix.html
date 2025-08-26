@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Stakeholder PI Status Report – Topic Mix</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css" />
+  <link rel="stylesheet" href="public/tailwind.css">
+  <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { background:#f7f8fa; font-family:'Inter',Arial,sans-serif; margin:0;padding:0; }
+    .main { max-width:950px; margin:30px auto; background:#fff; border-radius:18px; padding:36px 32px; box-shadow:0 2px 12px #d1d5db70; }
+    .btn { background:#6366f1; color:#fff; border:none; border-radius:6px; padding:7px 18px; cursor:pointer; font-size:1em; }
+    .chart-section { margin-top:30px; overflow-x:auto; }
+  </style>
+</head>
+<body>
+<div class="main">
+  <h1>Topic Mix Report</h1>
+  <div>
+    <label>Version:
+      <select id="versionSelect" onchange="switchVersion(this.value)">
+        <option value="index.html">Velocity</option>
+        <option value="index_throughput.html">Throughput</option>
+        <option value="index_throughput_week.html">Weekly Throughput</option>
+        <option value="index_disruption.html">Disruption</option>
+        <option value="index_topicmix.html">Topic Mix</option>
+      </select>
+    </label>
+  </div>
+  <div style="margin-top:20px;">
+    <label>Jira Domain: <input id="jiraDomain" value="aldi-sued.atlassian.net" size="28"></label>
+    <label style="margin-left:10px;">Please select a Board:
+      <select id="boardNum" multiple></select>
+    </label>
+    <button class="btn" onclick="loadTopicMix()">Load Data</button>
+  </div>
+  <div id="teamRow" style="margin-top:10px; display:none;">
+    <label>Teams:
+      <select id="teamSelect" multiple></select>
+    </label>
+  </div>
+  <div id="chartSection" class="chart-section" style="display:none;">
+    <h2>Completed Story Points by Topic</h2>
+    <canvas id="topicMixChart"></canvas>
+  </div>
+</div>
+<script src="src/logger.js"></script>
+<script src="src/jira.js"></script>
+<script>
+function switchVersion(v){ window.location.href = v; }
+
+const DISPLAY_SPRINT_COUNT = 6;
+const PI_LABEL_RE = /\b\d{4}_PI\d+_committed\b/i;
+const MAIN_DRIVER_RE = /^main[-_ ]?driver$/i;
+
+let boardChoices = new Choices('#boardNum', { removeItemButton: true });
+let teamChoices = null;
+let allSprints = [];
+let topicMixChartInstance;
+let epicCache = new Map();
+
+document.getElementById('jiraDomain').addEventListener('change', populateBoards);
+populateBoards();
+
+async function populateBoards() {
+  const domain = document.getElementById('jiraDomain').value.trim();
+  if (!domain) return;
+  try {
+    const boards = await Jira.fetchBoardsByJql(domain);
+    boardChoices.clearChoices();
+    boardChoices.setChoices(boards.map(b => ({ value: b.id, label: b.name })), 'value','label', true);
+  } catch (e) {
+    console.error('Failed to load boards', e);
+  }
+}
+
+function filterRecentSprints(allSprints, excludeIds = [], desiredCount = DISPLAY_SPRINT_COUNT) {
+  const excluded = new Set((excludeIds || []).map(String));
+  const sorted = allSprints.slice().sort((a,b) => {
+    const ad = a.endDate || a.completeDate || a.startDate || '';
+    const bd = b.endDate || b.completeDate || b.startDate || '';
+    return ad && bd ? new Date(bd) - new Date(ad) : 0;
+  });
+  return sorted.filter(s => !excluded.has(String(s.id))).slice(0, desiredCount);
+}
+
+async function getEpicInfo(domain, epicKey) {
+  let cached = epicCache.get(epicKey);
+  if (cached) return cached;
+  const url = `https://${domain}/rest/api/3/issue/${epicKey}?fields=issuetype,labels`;
+  const r = await fetch(url, { credentials:'include' });
+  if (!r.ok) return null;
+  const j = await r.json();
+  const isEpic = (j.fields?.issuetype?.name || '').toLowerCase() === 'epic';
+  const labels = j.fields?.labels || [];
+  const info = { isEpic, labels };
+  epicCache.set(epicKey, info);
+  return info;
+}
+
+async function fetchTopicMixData(jiraDomain, boardNums = []) {
+  const combined = {};
+  const issueCache = new Map();
+
+  await Promise.all(boardNums.map(async boardNum => {
+    const url = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/velocity?rapidViewId=${boardNum}`;
+    let data = {};
+    const resp = await fetch(url, { credentials:'include' });
+    if (resp.ok) data = await resp.json();
+    let closed = (data.sprints || []).filter(s => s.state === 'CLOSED' && s.startDate && String(s.originBoardId) === String(boardNum));
+    if (!closed.length) {
+      let all = [];
+      let startAt=0, maxResults=50, loops=0;
+      while (true) {
+        const sUrl = `https://${jiraDomain}/rest/agile/1.0/board/${boardNum}/sprint?state=closed&maxResults=${maxResults}&startAt=${startAt}`;
+        const sResp = await fetch(sUrl, { credentials:'include' });
+        if (!sResp.ok) break;
+        const sData = await sResp.json();
+        const vals = sData.values || [];
+        all = all.concat(vals);
+        startAt += vals.length;
+        loops++;
+        if (sData.isLast || vals.length < maxResults || loops > 100) break;
+      }
+      closed = all.filter(s => (s.state || '').toUpperCase() === 'CLOSED' && s.startDate && String(s.originBoardId) === String(boardNum));
+    }
+    closed = filterRecentSprints(closed, [], DISPLAY_SPRINT_COUNT);
+    await Promise.all(closed.map(async s => {
+      const surl = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/sprintreport?rapidViewId=${boardNum}&sprintId=${s.id}`;
+      const r = await fetch(surl, { credentials:'include' });
+      if (!r.ok) return;
+      const d = await r.json();
+      const events = [];
+      const collect = (arr, completed=false) => {
+        (arr || []).forEach(it => {
+          events.push({ key: it.key, points: it.estimateStatistic?.statFieldValue?.value || 0, completed });
+        });
+      };
+      collect(d.contents.completedIssues, true);
+      collect(d.contents.incompleteIssues, false);
+      collect(d.contents.puntedIssues, false);
+      await Promise.all(events.map(async ev => {
+        let cached = issueCache.get(ev.key);
+        let team, parentKey, topicType='other';
+        if (cached) ({team, parentKey, topicType} = cached);
+        else {
+          const u = `https://${jiraDomain}/rest/api/3/issue/${ev.key}?fields=customfield_12600,parent`;
+          const ir = await fetch(u, { credentials:'include' });
+          if (!ir.ok) return;
+          const id = await ir.json();
+          team = (id.fields?.customfield_12600 || []).join(', ');
+          parentKey = id.fields?.parent?.key;
+          if (parentKey) {
+            const epic = await getEpicInfo(jiraDomain, parentKey);
+            const labels = epic?.labels || [];
+            if (labels.some(l => MAIN_DRIVER_RE.test(l))) topicType = 'maindriver';
+            else if (labels.some(l => PI_LABEL_RE.test(l))) topicType = 'pi';
+          }
+          issueCache.set(ev.key, {team, parentKey, topicType});
+        }
+        ev.team = team;
+        ev.topicType = topicType;
+      }));
+      const existing = combined[s.name] || { id:s.id, name:s.name, startDate:s.startDate, events:[] };
+      existing.events = existing.events.concat(events);
+      combined[s.name] = existing;
+    }));
+  }));
+  return { sprints: Object.values(combined).sort((a,b)=> new Date(a.startDate)-new Date(b.startDate)) };
+}
+
+function renderTeamSelect(teams) {
+  const select = document.getElementById('teamSelect');
+  select.innerHTML = teams.map(t => `<option value="${t}">${t}</option>`).join('');
+  if (teamChoices) teamChoices.destroy();
+  teamChoices = new Choices(select, { removeItemButton:true, shouldSort:true });
+  document.getElementById('teamRow').style.display = teams.length ? '' : 'none';
+  select.addEventListener('change', renderChart);
+}
+
+function renderChart() {
+  if (!allSprints.length) return;
+  const selectedTeams = new Set(teamChoices ? teamChoices.getValue(true) : []);
+  const sprintLabels = allSprints.map(s => s.name);
+  const sums = allSprints.map(s => {
+    const acc = { maindriver:0, pi:0, other:0 };
+    (s.events || []).forEach(ev => {
+      if (!ev.completed) return;
+      const teams = (ev.team || '').split(',').map(t=>t.trim()).filter(Boolean);
+      if (selectedTeams.size && !teams.some(t => selectedTeams.has(t))) return;
+      acc[ev.topicType] = (acc[ev.topicType] || 0) + (ev.points || 0);
+    });
+    return acc;
+  });
+  const md = sums.map(s => s.maindriver || 0);
+  const pi = sums.map(s => s.pi || 0);
+  const other = sums.map(s => s.other || 0);
+  if (topicMixChartInstance) topicMixChartInstance.destroy();
+  const ctx = document.getElementById('topicMixChart').getContext('2d');
+  topicMixChartInstance = new Chart(ctx, {
+    type:'bar',
+    data:{
+      labels:sprintLabels,
+      datasets:[
+        { label:'Main Driver', data:md, backgroundColor:'#f59e0b', stack:'topics' },
+        { label:'PI Topics', data:pi, backgroundColor:'#3b82f6', stack:'topics' },
+        { label:'Other Topics', data:other, backgroundColor:'#10b981', stack:'topics' }
+      ]
+    },
+    options:{
+      responsive:false,
+      maintainAspectRatio:false,
+      scales:{ x:{ stacked:true, offset:true }, y:{ stacked:true, beginAtZero:true, title:{ display:true, text:'Completed Story Points' } } },
+      plugins:{ legend:{ position:'bottom' } }
+    }
+  });
+  document.getElementById('chartSection').style.display = '';
+}
+
+async function loadTopicMix() {
+  const jiraDomain = document.getElementById('jiraDomain').value.trim();
+  const selected = boardChoices ? boardChoices.getValue() : [];
+  const boards = selected.map(b => b.value);
+  if (!jiraDomain || !boards.length) { alert('Enter Jira domain and select boards.'); return; }
+  const { sprints } = await fetchTopicMixData(jiraDomain, boards);
+  allSprints = sprints.slice(-DISPLAY_SPRINT_COUNT);
+  const teams = new Set();
+  allSprints.forEach(s => (s.events || []).forEach(ev => (ev.team || '').split(',').forEach(t => { t = t.trim(); if (t) teams.add(t); })));
+  renderTeamSelect(Array.from(teams).sort());
+  renderChart();
+}
+
+document.getElementById('versionSelect').value = 'index_topicmix.html';
+</script>
+</body>
+</html>
