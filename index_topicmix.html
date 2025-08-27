@@ -35,6 +35,7 @@
       <select id="sprintSelect"></select>
     </label>
   </div>
+  <div id="loadingMessage" style="display:none; font-weight:bold; margin:10px 0;"></div>
   <div id="chartSection" class="chart-section" style="display:none;">
     <h2>Completed Story Points by Topic</h2>
     <canvas id="topicMixChart"></canvas>
@@ -71,6 +72,19 @@ let sprintGroups = {};
 let topicMixChartInstance;
 let epicCache = new Map();
 
+function showLoading(msg) {
+  const el = document.getElementById('loadingMessage');
+  if (el) {
+    el.textContent = msg || 'Loading...';
+    el.style.display = '';
+  }
+}
+
+function hideLoading() {
+  const el = document.getElementById('loadingMessage');
+  if (el) el.style.display = 'none';
+}
+
 document.getElementById('jiraDomain').addEventListener('change', populateBoards);
 document.getElementById('sprintSelect').addEventListener('change', renderChart);
 populateBoards();
@@ -78,11 +92,14 @@ populateBoards();
 async function populateBoards() {
   const domain = document.getElementById('jiraDomain').value.trim();
   if (!domain) return;
+  showLoading('Loading boards...');
   try {
     availableBoards = await Jira.fetchBoardsByJql(domain);
     await loadTopicMix();
   } catch (e) {
     console.error('Failed to load boards', e);
+  } finally {
+    hideLoading();
   }
 }
 
@@ -221,25 +238,33 @@ async function loadTopicMix() {
   const jiraDomain = document.getElementById('jiraDomain').value.trim();
   const boards = availableBoards.map(b => b.id);
   if (!jiraDomain || !boards.length) { alert('Enter Jira domain'); return; }
-  const { sprints } = await fetchTopicMixData(jiraDomain, boards);
-  sprintGroups = {};
-  sprints.forEach(s => {
-    const key = extractSprintKey(s.name);
-    if (!key) return;
-    const board = availableBoards.find(b => String(b.id) === String(s.boardId));
-    s.boardName = board ? board.name : `Board ${s.boardId}`;
-    (sprintGroups[key] = sprintGroups[key] || []).push(s);
-  });
-  const entries = Object.keys(sprintGroups).map(k => {
-    const arr = sprintGroups[k];
-    const d = arr[0].endDate || arr[0].completeDate || arr[0].startDate || '';
-    return { key: k, date: new Date(d) };
-  }).sort((a,b) => b.date - a.date).slice(0,6);
+  showLoading('Loading topic mix data...');
+  try {
+    const { sprints } = await fetchTopicMixData(jiraDomain, boards);
+    sprintGroups = {};
+    sprints.forEach(s => {
+      const key = extractSprintKey(s.name);
+      if (!key) return;
+      const board = availableBoards.find(b => String(b.id) === String(s.boardId));
+      s.boardName = board ? board.name : `Board ${s.boardId}`;
+      (sprintGroups[key] = sprintGroups[key] || []).push(s);
+    });
+    const entries = Object.keys(sprintGroups).map(k => {
+      const arr = sprintGroups[k];
+      const d = arr[0].endDate || arr[0].completeDate || arr[0].startDate || '';
+      return { key: k, date: new Date(d) };
+    }).sort((a,b) => b.date - a.date).slice(0,6);
 
-  const sprintSelect = document.getElementById('sprintSelect');
-  sprintSelect.innerHTML = entries.map(e => `<option value="${e.key}">${e.key}</option>`).join('');
-  if (entries.length) sprintSelect.value = entries[0].key;
-  renderChart();
+    const sprintSelect = document.getElementById('sprintSelect');
+    sprintSelect.innerHTML = entries.map(e => `<option value="${e.key}">${e.key}</option>`).join('');
+    if (entries.length) sprintSelect.value = entries[0].key;
+    renderChart();
+  } catch (e) {
+    console.error('Failed to load topic mix data', e);
+    alert('Failed to load topic mix data.');
+  } finally {
+    hideLoading();
+  }
 }
 
 document.getElementById('versionSelect').value = 'index_topicmix.html';
