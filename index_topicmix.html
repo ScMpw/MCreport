@@ -47,20 +47,22 @@ function switchVersion(v){ window.location.href = v; }
 
 const PI_LABEL_RE = /\b\d{4}_PI\d+_committed\b/i;
 const MAIN_DRIVER_RE = /^main[-_ ]?driver$/i;
-const SPRINT_KEY_RE = /\b(?:(\d{4})[-_ ]?)?(?:PI)?(\d+)[-_ ]?(\d+)(?:[|/](\d+))?\b/i;
+// Match sprint names that include optional year prefixes (e.g., "2025_PI3-1")
+// but ignore the year when constructing a normalized key. This ensures that
+// sprints named both "PI3-1" and "2025_PI3-1" are treated as the same sprint.
+const SPRINT_KEY_RE = /\b(?:\d{4}[-_ ]?)?(?:PI)?(\d+)[-_ ]?(\d+)(?:[|/](\d+))?\b/i;
 
 function extractSprintKey(name) {
   const m = (name || '').match(SPRINT_KEY_RE);
   if (!m) return null;
-  const year = m[1] ? m[1] + '_' : '';
-  const pi = m[2];
-  let sprint = m[3] || '';
-  if (m[4]) {
-    sprint = m[3];
+  const pi = m[1];
+  let sprint = m[2] || '';
+  if (m[3]) {
+    sprint = m[2];
   } else if (sprint.length > 1) {
     sprint = sprint[0];
   }
-  return `${year}PI${pi}-${sprint}`;
+  return `PI${pi}-${sprint}`;
 }
 
 let availableBoards = [];
