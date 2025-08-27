@@ -47,11 +47,15 @@ function switchVersion(v){ window.location.href = v; }
 
 const PI_LABEL_RE = /\b\d{4}_PI\d+_committed\b/i;
 const MAIN_DRIVER_RE = /^main[-_ ]?driver$/i;
-const SPRINT_KEY_RE = /\bPI\d+[-_ ]?\d+\b/i;
+const SPRINT_KEY_RE = /\b(?:\d{4}[-_ ]?)?PI\d+[-_ ]?\d+(?:\|\d+)?\b/i;
 
 function extractSprintKey(name) {
   const m = (name || '').match(SPRINT_KEY_RE);
-  return m ? m[0].replace(/[-_ ]/, '-') : null;
+  if (!m) return null;
+  let key = m[0];
+  key = key.replace(/(\d{4})[- ]PI/, '$1_PI');
+  key = key.replace(/(PI\d+)[-_ ](\d+)/, '$1-$2');
+  return key;
 }
 
 let availableBoards = [];
