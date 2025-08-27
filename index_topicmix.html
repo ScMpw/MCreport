@@ -30,12 +30,9 @@
   <div style="margin-top:20px;">
     <label>Jira Domain: <input id="jiraDomain" value="aldi-sued.atlassian.net" size="28"></label>
   </div>
-  <div id="sortRow" style="margin-top:10px;">
-    <label>Sort Sprints:
-      <select id="sortSelect">
-        <option value="desc">Newest First</option>
-        <option value="asc">Oldest First</option>
-      </select>
+  <div id="sprintRow" style="margin-top:10px;">
+    <label>Select Sprint:
+      <select id="sprintSelect"></select>
     </label>
   </div>
   <div id="chartSection" class="chart-section" style="display:none;">
@@ -50,14 +47,21 @@ function switchVersion(v){ window.location.href = v; }
 
 const PI_LABEL_RE = /\b\d{4}_PI\d+_committed\b/i;
 const MAIN_DRIVER_RE = /^main[-_ ]?driver$/i;
+const SPRINT_KEY_RE = /\bPI\d+[-_ ]?\d+\b/i;
+
+function extractSprintKey(name) {
+  const m = (name || '').match(SPRINT_KEY_RE);
+  return m ? m[0].replace(/[-_ ]/, '-') : null;
+}
 
 let availableBoards = [];
 let latestSprints = [];
+let sprintGroups = {};
 let topicMixChartInstance;
 let epicCache = new Map();
 
 document.getElementById('jiraDomain').addEventListener('change', populateBoards);
-document.getElementById('sortSelect').addEventListener('change', renderChart);
+document.getElementById('sprintSelect').addEventListener('change', renderChart);
 populateBoards();
 
 async function populateBoards() {
@@ -160,21 +164,16 @@ async function fetchTopicMixData(jiraDomain, boardNums = []) {
 }
 
 function renderChart() {
-  const order = document.getElementById('sortSelect').value || 'desc';
-  let sprints = latestSprints.slice();
-  sprints.sort((a, b) => {
-    const ad = a.endDate || a.completeDate || a.startDate || '';
-    const bd = b.endDate || b.completeDate || b.startDate || '';
-    const diff = new Date(ad) - new Date(bd);
-    return order === 'asc' ? diff : -diff;
-  });
-  if (!sprints.length) { document.getElementById('chartSection').style.display = 'none'; return; }
-  const sprintLabels = sprints.map(s => s.name);
+  const key = document.getElementById('sprintSelect').value;
+  latestSprints = sprintGroups[key] ? sprintGroups[key].slice() : [];
+  latestSprints.sort((a,b) => (a.boardName || '').localeCompare(b.boardName || ''));
+  if (!latestSprints.length) { document.getElementById('chartSection').style.display = 'none'; return; }
+  const sprintLabels = latestSprints.map(s => s.boardName || s.name);
   const chartWidth = Math.max(sprintLabels.length * 120, 600);
   const canvas = document.getElementById('topicMixChart');
   canvas.width = chartWidth;
   canvas.height = 300;
-  const sums = sprints.map(s => {
+  const sums = latestSprints.map(s => {
     const acc = { maindriver:0, pi:0, other:0 };
     (s.events || []).forEach(ev => {
       if (!ev.completed) return;
@@ -212,20 +211,23 @@ async function loadTopicMix() {
   const boards = availableBoards.map(b => b.id);
   if (!jiraDomain || !boards.length) { alert('Enter Jira domain'); return; }
   const { sprints } = await fetchTopicMixData(jiraDomain, boards);
-  const byBoard = {};
+  sprintGroups = {};
   sprints.forEach(s => {
-    const arr = byBoard[s.boardId] || [];
-    arr.push(s);
-    byBoard[s.boardId] = arr;
+    const key = extractSprintKey(s.name);
+    if (!key) return;
+    const board = availableBoards.find(b => String(b.id) === String(s.boardId));
+    s.boardName = board ? board.name : `Board ${s.boardId}`;
+    (sprintGroups[key] = sprintGroups[key] || []).push(s);
   });
-  latestSprints = Object.values(byBoard).map(arr => {
-    arr.sort((a,b) => {
-      const ad = a.endDate || a.completeDate || a.startDate || '';
-      const bd = b.endDate || b.completeDate || b.startDate || '';
-      return bd && ad ? new Date(bd) - new Date(ad) : 0;
-    });
-    return arr[0];
-  }).filter(Boolean);
+  const entries = Object.keys(sprintGroups).map(k => {
+    const arr = sprintGroups[k];
+    const d = arr[0].endDate || arr[0].completeDate || arr[0].startDate || '';
+    return { key: k, date: new Date(d) };
+  }).sort((a,b) => b.date - a.date).slice(0,6);
+
+  const sprintSelect = document.getElementById('sprintSelect');
+  sprintSelect.innerHTML = entries.map(e => `<option value="${e.key}">${e.key}</option>`).join('');
+  if (entries.length) sprintSelect.value = entries[0].key;
   renderChart();
 }
 
