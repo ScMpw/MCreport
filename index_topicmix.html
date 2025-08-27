@@ -135,28 +135,32 @@ async function fetchTopicMixData(jiraDomain, boardNums = []) {
       collect(d.contents.completedIssues, true);
       collect(d.contents.incompleteIssues, false);
       collect(d.contents.puntedIssues, false);
-      await Promise.all(events.map(async ev => {
+      for (const ev of events) {
         let cached = issueCache.get(ev.key);
         let team, parentKey, topicType = 'other';
         if (cached) ({ team, parentKey, topicType } = cached);
         else {
-          const u = `https://${jiraDomain}/rest/api/3/issue/${ev.key}?fields=customfield_12600,parent`;
-          const ir = await fetch(u, { credentials:'include' });
-          if (!ir.ok) return;
-          const id = await ir.json();
-          team = (id.fields?.customfield_12600 || []).join(', ');
-          parentKey = id.fields?.parent?.key;
-          if (parentKey) {
-            const epic = await getEpicInfo(jiraDomain, parentKey);
-            const labels = epic?.labels || [];
-            if (labels.some(l => MAIN_DRIVER_RE.test(l))) topicType = 'maindriver';
-            else if (labels.some(l => PI_LABEL_RE.test(l))) topicType = 'pi';
+          try {
+            const u = `https://${jiraDomain}/rest/api/3/issue/${ev.key}?fields=customfield_12600,parent`;
+            const ir = await fetch(u, { credentials:'include' });
+            if (!ir.ok) continue;
+            const id = await ir.json();
+            team = (id.fields?.customfield_12600 || []).join(', ');
+            parentKey = id.fields?.parent?.key;
+            if (parentKey) {
+              const epic = await getEpicInfo(jiraDomain, parentKey);
+              const labels = epic?.labels || [];
+              if (labels.some(l => MAIN_DRIVER_RE.test(l))) topicType = 'maindriver';
+              else if (labels.some(l => PI_LABEL_RE.test(l))) topicType = 'pi';
+            }
+            issueCache.set(ev.key, { team, parentKey, topicType });
+          } catch (err) {
+            continue;
           }
-          issueCache.set(ev.key, { team, parentKey, topicType });
         }
         ev.team = team;
         ev.topicType = topicType;
-      }));
+      }
       const existing = combined[s.id] || { id: s.id, boardId: boardNum, name: s.name, startDate: s.startDate, events: [] };
       existing.events = existing.events.concat(events);
       combined[s.id] = existing;
