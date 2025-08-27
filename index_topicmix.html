@@ -183,6 +183,10 @@ function renderChart() {
   if (!allSprints.length) return;
   const selectedTeam = teamChoices ? teamChoices.getValue(true) : '';
   const sprintLabels = allSprints.map(s => s.name);
+  const chartWidth = Math.max(sprintLabels.length * 120, 600);
+  const canvas = document.getElementById('topicMixChart');
+  canvas.width = chartWidth;
+  canvas.height = 300;
   const sums = allSprints.map(s => {
     const acc = { maindriver:0, pi:0, other:0 };
     (s.events || []).forEach(ev => {
@@ -197,7 +201,7 @@ function renderChart() {
   const pi = sums.map(s => s.pi || 0);
   const other = sums.map(s => s.other || 0);
   if (topicMixChartInstance) topicMixChartInstance.destroy();
-  const ctx = document.getElementById('topicMixChart').getContext('2d');
+  const ctx = canvas.getContext('2d');
   topicMixChartInstance = new Chart(ctx, {
     type:'bar',
     data:{
