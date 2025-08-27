@@ -31,14 +31,10 @@
   </div>
   <div style="margin-top:20px;">
     <label>Jira Domain: <input id="jiraDomain" value="aldi-sued.atlassian.net" size="28"></label>
-    <label style="margin-left:10px;">Please select a Board:
-      <select id="boardNum" multiple></select>
-    </label>
-    <button class="btn" onclick="loadTopicMix()">Load Data</button>
   </div>
-  <div id="teamRow" style="margin-top:10px; display:none;">
-    <label>Teams:
-      <select id="teamSelect"></select>
+  <div id="boardRow" style="margin-top:10px; display:none;">
+    <label>Boards:
+      <select id="boardSelect"></select>
     </label>
   </div>
   <div id="chartSection" class="chart-section" style="display:none;">
@@ -55,8 +51,8 @@ const DISPLAY_SPRINT_COUNT = 6;
 const PI_LABEL_RE = /\b\d{4}_PI\d+_committed\b/i;
 const MAIN_DRIVER_RE = /^main[-_ ]?driver$/i;
 
-let boardChoices = new Choices('#boardNum', { removeItemButton: true });
-let teamChoices = null;
+let boardChoices = null;
+let availableBoards = [];
 let allSprints = [];
 let topicMixChartInstance;
 let epicCache = new Map();
@@ -68,9 +64,8 @@ async function populateBoards() {
   const domain = document.getElementById('jiraDomain').value.trim();
   if (!domain) return;
   try {
-    const boards = await Jira.fetchBoardsByJql(domain);
-    boardChoices.clearChoices();
-    boardChoices.setChoices(boards.map(b => ({ value: b.id, label: b.name })), 'value','label', true);
+    availableBoards = await Jira.fetchBoardsByJql(domain);
+    await loadTopicMix();
   } catch (e) {
     console.error('Failed to load boards', e);
   }
@@ -142,8 +137,8 @@ async function fetchTopicMixData(jiraDomain, boardNums = []) {
       collect(d.contents.puntedIssues, false);
       await Promise.all(events.map(async ev => {
         let cached = issueCache.get(ev.key);
-        let team, parentKey, topicType='other';
-        if (cached) ({team, parentKey, topicType} = cached);
+        let team, parentKey, topicType = 'other';
+        if (cached) ({ team, parentKey, topicType } = cached);
         else {
           const u = `https://${jiraDomain}/rest/api/3/issue/${ev.key}?fields=customfield_12600,parent`;
           const ir = await fetch(u, { credentials:'include' });
@@ -157,42 +152,40 @@ async function fetchTopicMixData(jiraDomain, boardNums = []) {
             if (labels.some(l => MAIN_DRIVER_RE.test(l))) topicType = 'maindriver';
             else if (labels.some(l => PI_LABEL_RE.test(l))) topicType = 'pi';
           }
-          issueCache.set(ev.key, {team, parentKey, topicType});
+          issueCache.set(ev.key, { team, parentKey, topicType });
         }
         ev.team = team;
         ev.topicType = topicType;
       }));
-      const existing = combined[s.name] || { id:s.id, name:s.name, startDate:s.startDate, events:[] };
+      const existing = combined[s.id] || { id: s.id, boardId: boardNum, name: s.name, startDate: s.startDate, events: [] };
       existing.events = existing.events.concat(events);
-      combined[s.name] = existing;
+      combined[s.id] = existing;
     }));
   }));
   return { sprints: Object.values(combined) };
 }
-
-function renderTeamSelect(teams) {
-  const select = document.getElementById('teamSelect');
-  select.innerHTML = '<option value="">All Teams</option>' + teams.map(t => `<option value="${t}">${t}</option>`).join('');
-  if (teamChoices) teamChoices.destroy();
-  teamChoices = new Choices(select, { shouldSort:true });
-  document.getElementById('teamRow').style.display = teams.length ? '' : 'none';
+function renderBoardSelect(boards) {
+  const select = document.getElementById('boardSelect');
+  select.innerHTML = '<option value="">All Boards</option>' + boards.map(b => `<option value="${b.id}">${b.name}</option>`).join('');
+  if (boardChoices) boardChoices.destroy();
+  boardChoices = new Choices(select, { shouldSort:true });
+  document.getElementById('boardRow').style.display = boards.length ? '' : 'none';
   select.addEventListener('change', renderChart);
 }
 
 function renderChart() {
   if (!allSprints.length) return;
-  const selectedTeam = teamChoices ? teamChoices.getValue(true) : '';
-  const sprintLabels = allSprints.map(s => s.name);
+  const selectedBoard = boardChoices ? boardChoices.getValue(true) : '';
+  const sprints = selectedBoard ? allSprints.filter(s => String(s.boardId) === String(selectedBoard)) : allSprints;
+  const sprintLabels = sprints.map(s => s.name);
   const chartWidth = Math.max(sprintLabels.length * 120, 600);
   const canvas = document.getElementById('topicMixChart');
   canvas.width = chartWidth;
   canvas.height = 300;
-  const sums = allSprints.map(s => {
+  const sums = sprints.map(s => {
     const acc = { maindriver:0, pi:0, other:0 };
     (s.events || []).forEach(ev => {
       if (!ev.completed) return;
-      const teams = (ev.team || '').split(',').map(t=>t.trim()).filter(Boolean);
-      if (selectedTeam && !teams.includes(selectedTeam)) return;
       acc[ev.topicType] = (acc[ev.topicType] || 0) + (ev.points || 0);
     });
     return acc;
@@ -224,14 +217,11 @@ function renderChart() {
 
 async function loadTopicMix() {
   const jiraDomain = document.getElementById('jiraDomain').value.trim();
-  const selected = boardChoices ? boardChoices.getValue() : [];
-  const boards = selected.map(b => b.value);
-  if (!jiraDomain || !boards.length) { alert('Enter Jira domain and select boards.'); return; }
+  const boards = availableBoards.map(b => b.id);
+  if (!jiraDomain || !boards.length) { alert('Enter Jira domain'); return; }
   const { sprints } = await fetchTopicMixData(jiraDomain, boards);
   allSprints = filterRecentSprints(sprints).reverse();
-  const teams = new Set();
-  allSprints.forEach(s => (s.events || []).forEach(ev => (ev.team || '').split(',').forEach(t => { t = t.trim(); if (t) teams.add(t); })));
-  renderTeamSelect(Array.from(teams).sort());
+  renderBoardSelect(availableBoards);
   renderChart();
 }
 
