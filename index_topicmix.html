@@ -4,9 +4,7 @@
   <meta charset="UTF-8">
   <title>Stakeholder PI Status Report – Topic Mix</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css" />
   <link rel="stylesheet" href="public/tailwind.css">
-  <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body { background:#f7f8fa; font-family:'Inter',Arial,sans-serif; margin:0;padding:0; }
@@ -32,14 +30,12 @@
   <div style="margin-top:20px;">
     <label>Jira Domain: <input id="jiraDomain" value="aldi-sued.atlassian.net" size="28"></label>
   </div>
-  <div id="boardRow" style="margin-top:10px; display:none;">
-    <label>Boards:
-      <select id="boardSelect"></select>
-    </label>
-  </div>
-  <div id="sprintRow" style="margin-top:10px; display:none;">
-    <label>Sprint:
-      <select id="sprintSelect"></select>
+  <div id="sortRow" style="margin-top:10px;">
+    <label>Sort Sprints:
+      <select id="sortSelect">
+        <option value="desc">Newest First</option>
+        <option value="asc">Oldest First</option>
+      </select>
     </label>
   </div>
   <div id="chartSection" class="chart-section" style="display:none;">
@@ -55,15 +51,13 @@ function switchVersion(v){ window.location.href = v; }
 const PI_LABEL_RE = /\b\d{4}_PI\d+_committed\b/i;
 const MAIN_DRIVER_RE = /^main[-_ ]?driver$/i;
 
-let boardChoices = null;
-let sprintChoices = null;
 let availableBoards = [];
-let sprintsByBoard = {};
 let latestSprints = [];
 let topicMixChartInstance;
 let epicCache = new Map();
 
 document.getElementById('jiraDomain').addEventListener('change', populateBoards);
+document.getElementById('sortSelect').addEventListener('change', renderChart);
 populateBoards();
 
 async function populateBoards() {
@@ -164,48 +158,16 @@ async function fetchTopicMixData(jiraDomain, boardNums = []) {
   }));
   return { sprints: Object.values(combined) };
 }
-function renderBoardSelect(boards) {
-  const select = document.getElementById('boardSelect');
-  select.innerHTML = '<option value="">All Boards</option>' + boards.map(b => `<option value="${b.id}">${b.name}</option>`).join('');
-  if (boardChoices) boardChoices.destroy();
-  boardChoices = new Choices(select, { shouldSort:true });
-  document.getElementById('boardRow').style.display = boards.length ? '' : 'none';
-  select.addEventListener('change', populateSprintOptions);
-}
-function populateSprintOptions() {
-  const selectedBoard = boardChoices ? boardChoices.getValue(true) : '';
-  const sprintRow = document.getElementById('sprintRow');
-  const select = document.getElementById('sprintSelect');
-  if (sprintChoices) { sprintChoices.destroy(); sprintChoices = null; }
-  if (!selectedBoard) {
-    sprintRow.style.display = 'none';
-    select.innerHTML = '';
-    renderChart();
-    return;
-  }
-  const sprints = sprintsByBoard[selectedBoard] || [];
-  select.innerHTML = sprints.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
-  sprintChoices = new Choices(select, { shouldSort:true });
-  sprintRow.style.display = sprints.length ? '' : 'none';
-  if (sprints.length) sprintChoices.setChoiceByValue(String(sprints[0].id));
-  select.addEventListener('change', renderChart);
-  renderChart();
-}
 
 function renderChart() {
-  const selectedBoard = boardChoices ? boardChoices.getValue(true) : '';
-  const selectedSprint = sprintChoices ? sprintChoices.getValue(true) : '';
-  let sprints = [];
-  if (selectedSprint && selectedBoard) {
-    const arr = sprintsByBoard[selectedBoard] || [];
-    const found = arr.find(s => String(s.id) === String(selectedSprint));
-    if (found) sprints = [found];
-  } else if (selectedBoard) {
-    const arr = sprintsByBoard[selectedBoard] || [];
-    if (arr.length) sprints = [arr[0]];
-  } else {
-    sprints = latestSprints;
-  }
+  const order = document.getElementById('sortSelect').value || 'desc';
+  let sprints = latestSprints.slice();
+  sprints.sort((a, b) => {
+    const ad = a.endDate || a.completeDate || a.startDate || '';
+    const bd = b.endDate || b.completeDate || b.startDate || '';
+    const diff = new Date(ad) - new Date(bd);
+    return order === 'asc' ? diff : -diff;
+  });
   if (!sprints.length) { document.getElementById('chartSection').style.display = 'none'; return; }
   const sprintLabels = sprints.map(s => s.name);
   const chartWidth = Math.max(sprintLabels.length * 120, 600);
@@ -250,22 +212,21 @@ async function loadTopicMix() {
   const boards = availableBoards.map(b => b.id);
   if (!jiraDomain || !boards.length) { alert('Enter Jira domain'); return; }
   const { sprints } = await fetchTopicMixData(jiraDomain, boards);
-  sprintsByBoard = {};
+  const byBoard = {};
   sprints.forEach(s => {
-    const arr = sprintsByBoard[s.boardId] || [];
+    const arr = byBoard[s.boardId] || [];
     arr.push(s);
-    sprintsByBoard[s.boardId] = arr;
+    byBoard[s.boardId] = arr;
   });
-  for (const b in sprintsByBoard) {
-    sprintsByBoard[b].sort((a,b) => {
+  latestSprints = Object.values(byBoard).map(arr => {
+    arr.sort((a,b) => {
       const ad = a.endDate || a.completeDate || a.startDate || '';
       const bd = b.endDate || b.completeDate || b.startDate || '';
       return bd && ad ? new Date(bd) - new Date(ad) : 0;
     });
-  }
-  latestSprints = Object.values(sprintsByBoard).map(arr => arr[0]).filter(Boolean);
-  renderBoardSelect(availableBoards);
-  populateSprintOptions();
+    return arr[0];
+  }).filter(Boolean);
+  renderChart();
 }
 
 document.getElementById('versionSelect').value = 'index_topicmix.html';
