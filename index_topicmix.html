@@ -37,6 +37,11 @@
       <select id="boardSelect"></select>
     </label>
   </div>
+  <div id="sprintRow" style="margin-top:10px; display:none;">
+    <label>Sprint:
+      <select id="sprintSelect"></select>
+    </label>
+  </div>
   <div id="chartSection" class="chart-section" style="display:none;">
     <h2>Completed Story Points by Topic</h2>
     <canvas id="topicMixChart"></canvas>
@@ -47,13 +52,14 @@
 <script>
 function switchVersion(v){ window.location.href = v; }
 
-const DISPLAY_SPRINT_COUNT = 6;
 const PI_LABEL_RE = /\b\d{4}_PI\d+_committed\b/i;
 const MAIN_DRIVER_RE = /^main[-_ ]?driver$/i;
 
 let boardChoices = null;
+let sprintChoices = null;
 let availableBoards = [];
-let allSprints = [];
+let sprintsByBoard = {};
+let latestSprints = [];
 let topicMixChartInstance;
 let epicCache = new Map();
 
@@ -69,16 +75,6 @@ async function populateBoards() {
   } catch (e) {
     console.error('Failed to load boards', e);
   }
-}
-
-function filterRecentSprints(allSprints, excludeIds = [], desiredCount = DISPLAY_SPRINT_COUNT) {
-  const excluded = new Set((excludeIds || []).map(String));
-  const sorted = allSprints.slice().sort((a,b) => {
-    const ad = a.endDate || a.completeDate || a.startDate || '';
-    const bd = b.endDate || b.completeDate || b.startDate || '';
-    return ad && bd ? new Date(bd) - new Date(ad) : 0;
-  });
-  return sorted.filter(s => !excluded.has(String(s.id))).slice(0, desiredCount);
 }
 
 async function getEpicInfo(domain, epicKey) {
@@ -174,13 +170,43 @@ function renderBoardSelect(boards) {
   if (boardChoices) boardChoices.destroy();
   boardChoices = new Choices(select, { shouldSort:true });
   document.getElementById('boardRow').style.display = boards.length ? '' : 'none';
+  select.addEventListener('change', populateSprintOptions);
+}
+function populateSprintOptions() {
+  const selectedBoard = boardChoices ? boardChoices.getValue(true) : '';
+  const sprintRow = document.getElementById('sprintRow');
+  const select = document.getElementById('sprintSelect');
+  if (sprintChoices) { sprintChoices.destroy(); sprintChoices = null; }
+  if (!selectedBoard) {
+    sprintRow.style.display = 'none';
+    select.innerHTML = '';
+    renderChart();
+    return;
+  }
+  const sprints = sprintsByBoard[selectedBoard] || [];
+  select.innerHTML = sprints.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+  sprintChoices = new Choices(select, { shouldSort:true });
+  sprintRow.style.display = sprints.length ? '' : 'none';
+  if (sprints.length) sprintChoices.setChoiceByValue(String(sprints[0].id));
   select.addEventListener('change', renderChart);
+  renderChart();
 }
 
 function renderChart() {
-  if (!allSprints.length) return;
   const selectedBoard = boardChoices ? boardChoices.getValue(true) : '';
-  const sprints = selectedBoard ? allSprints.filter(s => String(s.boardId) === String(selectedBoard)) : allSprints;
+  const selectedSprint = sprintChoices ? sprintChoices.getValue(true) : '';
+  let sprints = [];
+  if (selectedSprint && selectedBoard) {
+    const arr = sprintsByBoard[selectedBoard] || [];
+    const found = arr.find(s => String(s.id) === String(selectedSprint));
+    if (found) sprints = [found];
+  } else if (selectedBoard) {
+    const arr = sprintsByBoard[selectedBoard] || [];
+    if (arr.length) sprints = [arr[0]];
+  } else {
+    sprints = latestSprints;
+  }
+  if (!sprints.length) { document.getElementById('chartSection').style.display = 'none'; return; }
   const sprintLabels = sprints.map(s => s.name);
   const chartWidth = Math.max(sprintLabels.length * 120, 600);
   const canvas = document.getElementById('topicMixChart');
@@ -224,9 +250,22 @@ async function loadTopicMix() {
   const boards = availableBoards.map(b => b.id);
   if (!jiraDomain || !boards.length) { alert('Enter Jira domain'); return; }
   const { sprints } = await fetchTopicMixData(jiraDomain, boards);
-  allSprints = filterRecentSprints(sprints).reverse();
+  sprintsByBoard = {};
+  sprints.forEach(s => {
+    const arr = sprintsByBoard[s.boardId] || [];
+    arr.push(s);
+    sprintsByBoard[s.boardId] = arr;
+  });
+  for (const b in sprintsByBoard) {
+    sprintsByBoard[b].sort((a,b) => {
+      const ad = a.endDate || a.completeDate || a.startDate || '';
+      const bd = b.endDate || b.completeDate || b.startDate || '';
+      return bd && ad ? new Date(bd) - new Date(ad) : 0;
+    });
+  }
+  latestSprints = Object.values(sprintsByBoard).map(arr => arr[0]).filter(Boolean);
   renderBoardSelect(availableBoards);
-  renderChart();
+  populateSprintOptions();
 }
 
 document.getElementById('versionSelect').value = 'index_topicmix.html';
