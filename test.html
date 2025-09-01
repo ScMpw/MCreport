@@ -770,6 +770,16 @@ function renderCharts(displaySprints, allSprints) {
     Logger.info('Disruption report rendered');
   }
 
+  function canvasToHighResDataURL(canvas, scale = 2) {
+    const tmp = document.createElement('canvas');
+    tmp.width = canvas.width * scale;
+    tmp.height = canvas.height * scale;
+    const ctx = tmp.getContext('2d');
+    ctx.scale(scale, scale);
+    ctx.drawImage(canvas, 0, 0);
+    return tmp.toDataURL('image/png');
+  }
+
   function exportPDF() {
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
@@ -786,7 +796,7 @@ function renderCharts(displaySprints, allSprints) {
     const margin = 20;
     let y = margin;
     canvases.forEach(cv => {
-      const img = cv.toDataURL('image/png');
+      const img = canvasToHighResDataURL(cv);
       const width = pageWidth - margin * 2;
       const height = cv.height * width / cv.width;
       if (y + height > pageHeight - margin) {

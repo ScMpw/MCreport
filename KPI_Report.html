@@ -828,6 +828,16 @@ function renderCharts(displaySprints, allSprints) {
     Logger.info('Disruption report rendered');
   }
 
+  function canvasToHighResDataURL(canvas, scale = 2) {
+    const tmp = document.createElement('canvas');
+    tmp.width = canvas.width * scale;
+    tmp.height = canvas.height * scale;
+    const ctx = tmp.getContext('2d');
+    ctx.scale(scale, scale);
+    ctx.drawImage(canvas, 0, 0);
+    return tmp.toDataURL('image/png');
+  }
+
   function exportPDF() {
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
@@ -863,7 +873,7 @@ function renderCharts(displaySprints, allSprints) {
         pdf.setFontSize(12);
         pdf.text(`${boardTitle} - ${chartTitleEl.textContent.trim()}`, margin, y);
         y += 14;
-        pdf.addImage(canvas.toDataURL('image/png'), 'PNG', margin, y, width, height);
+        pdf.addImage(canvasToHighResDataURL(canvas), 'PNG', margin, y, width, height);
         y += height + 10;
       }
     }
