@@ -54,6 +54,12 @@
     <button id="loadBtn" class="btn" style="display:none;" onclick="loadDisruption()">Load Data</button>
     <button class="btn" onclick="exportPDF()">Download PDF</button>
   </div>
+  <div id="pdfOptions" style="margin-top:10px;">
+    <span>Include in PDF:</span>
+    <label style="margin-left:5px;"><input type="checkbox" id="includePi" checked> Initially Planned &amp; Completed</label>
+    <label style="margin-left:5px;"><input type="checkbox" id="includeDisruption" checked> Disruption Chart</label>
+    <label style="margin-left:5px;"><input type="checkbox" id="includeRating" checked> Rating Zone Chart</label>
+  </div>
   <div id="sprintRow" style="margin-top:10px; display:none;">
     <span>Sprints:</span>
     <div id="sprintList" style="display:inline-block;"></div>
@@ -547,6 +553,7 @@ function renderBoardCharts(displaySprints, allSprints, container) {
   const piCanvas = document.createElement('canvas');
   piCanvas.width = chartWidth;
   piCanvas.height = 300;
+  piCanvas.dataset.type = 'pi';
   container.appendChild(piCanvas);
 
   const completedTitle = document.createElement('h2');
@@ -555,6 +562,7 @@ function renderBoardCharts(displaySprints, allSprints, container) {
   const completedCanvas = document.createElement('canvas');
   completedCanvas.width = chartWidth;
   completedCanvas.height = 300;
+  completedCanvas.dataset.type = 'rating';
   container.appendChild(completedCanvas);
 
   const disruptionTitle = document.createElement('h2');
@@ -563,6 +571,7 @@ function renderBoardCharts(displaySprints, allSprints, container) {
   const disruptionCanvas = document.createElement('canvas');
   disruptionCanvas.width = chartWidth;
   disruptionCanvas.height = 300;
+  disruptionCanvas.dataset.type = 'disruption';
   container.appendChild(disruptionCanvas);
 
   const zonesBySprintAll = [];
@@ -675,7 +684,7 @@ function renderBoardCharts(displaySprints, allSprints, container) {
           }
         },
         datalabels: {
-          display: false,
+          display: true,
           color: '#000',
           anchor: 'end',
           align: 'top'
@@ -706,7 +715,7 @@ function renderBoardCharts(displaySprints, allSprints, container) {
         legend: { position: 'bottom' },
         ratingZones: { zonesBySprint },
         datalabels: {
-          display: false,
+          display: true,
           color: '#000',
           anchor: 'end',
           align: 'top'
@@ -739,7 +748,7 @@ function renderBoardCharts(displaySprints, allSprints, container) {
       plugins: {
         legend: { position: 'bottom' },
         datalabels: {
-          display: false,
+          display: true,
           color: '#000',
           anchor: 'end',
           align: 'top'
@@ -821,36 +830,43 @@ function renderCharts(displaySprints, allSprints) {
   function exportPDF() {
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
-    const charts = chartInstances;
-    charts.forEach(ch => {
-      if (ch && ch.options.plugins?.datalabels) {
-        ch.options.plugins.datalabels.display = true;
-        ch.update();
-      }
-    });
-    const canvases = document.querySelectorAll('#chartSection canvas');
+    const includePi = document.getElementById('includePi')?.checked;
+    const includeDisruption = document.getElementById('includeDisruption')?.checked;
+    const includeRating = document.getElementById('includeRating')?.checked;
     const pageWidth = pdf.internal.pageSize.getWidth();
     const pageHeight = pdf.internal.pageSize.getHeight();
     const margin = 20;
     let y = margin;
-    canvases.forEach(cv => {
-      const img = cv.toDataURL('image/png');
-      const width = pageWidth - margin * 2;
-      const height = cv.height * width / cv.width;
-      if (y + height > pageHeight - margin) {
-        pdf.addPage();
-        y = margin;
+    const section = document.getElementById('chartSection');
+    const children = section ? Array.from(section.children) : [];
+    for (let i = 0; i < children.length; i += 2) {
+      const boardTitleEl = children[i];
+      const wrapper = children[i + 1];
+      const boardTitle = boardTitleEl?.textContent?.trim() || '';
+      const elems = Array.from(wrapper.children);
+      for (let j = 0; j < elems.length; j += 2) {
+        const chartTitleEl = elems[j];
+        const canvas = elems[j + 1];
+        const type = canvas.dataset.type;
+        if ((type === 'pi' && !includePi) ||
+            (type === 'disruption' && !includeDisruption) ||
+            (type === 'rating' && !includeRating)) {
+          continue;
+        }
+        const width = pageWidth - margin * 2;
+        const height = canvas.height * width / canvas.width;
+        if (y + 14 + height > pageHeight - margin) {
+          pdf.addPage();
+          y = margin;
+        }
+        pdf.setFontSize(12);
+        pdf.text(`${boardTitle} - ${chartTitleEl.textContent.trim()}`, margin, y);
+        y += 14;
+        pdf.addImage(canvas.toDataURL('image/png'), 'PNG', margin, y, width, height);
+        y += height + 10;
       }
-      pdf.addImage(img, 'PNG', margin, y, width, height);
-      y += height + 10;
-    });
-    pdf.save('Disruption_Report.pdf');
-    charts.forEach(ch => {
-      if (ch && ch.options.plugins?.datalabels) {
-        ch.options.plugins.datalabels.display = false;
-        ch.update();
-      }
-    });
+    }
+    pdf.save('KPI_Report.pdf');
   }
 
   document.getElementById('versionSelect').value = 'KPI_Report.html';
