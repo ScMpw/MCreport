@@ -640,21 +640,39 @@ function renderBoardCharts(displaySprints, allSprints, container) {
           datalabels: {
             display: true,
             anchor: 'end',
-            align: 'start',
+            align: 'top',
             offset: -4,
             color: '#000',
             font: { weight: 'bold' },
             formatter: (v, ctx) => {
               const i = ctx.dataIndex;
               const plannedTotal = (plannedPI[i] || 0) + (plannedOther[i] || 0);
-              const completedTotal = (completedPI[i] || 0) + (completedOther[i] || 0);
-              return [`Planned: ${plannedTotal}`, `Completed: ${completedTotal}`];
+              return plannedTotal;
             }
           }
         },
         { label: 'Initial Plan completed', data: initialCompleted, backgroundColor: initialCompletedColor, borderColor: initialCompletedColor, stack: 'initialCompleted', datalabels: { display: false } },
         { label: 'Completed PI contributions', data: completedPI, backgroundColor: completedPIColor, borderColor: completedPIColor, stack: 'completed', datalabels: { display: false } },
-        { label: 'Completed other', data: completedOther, backgroundColor: completedOtherColor, borderColor: completedOtherColor, stack: 'completed', datalabels: { display: false } },
+        {
+          label: 'Completed other',
+          data: completedOther,
+          backgroundColor: completedOtherColor,
+          borderColor: completedOtherColor,
+          stack: 'completed',
+          datalabels: {
+            display: true,
+            anchor: 'end',
+            align: 'top',
+            offset: -4,
+            color: '#000',
+            font: { weight: 'bold' },
+            formatter: (v, ctx) => {
+              const i = ctx.dataIndex;
+              const completedTotal = (completedPI[i] || 0) + (completedOther[i] || 0);
+              return completedTotal;
+            }
+          }
+        },
       ]
     },
     options: {
@@ -703,12 +721,7 @@ function renderBoardCharts(displaySprints, allSprints, container) {
       plugins: {
         legend: { position: 'bottom' },
         ratingZones: { zonesBySprint },
-        datalabels: {
-          display: true,
-          color: '#000',
-          anchor: 'end',
-          align: 'top'
-        }
+        datalabels: { display: false }
       }
     },
     plugins: [ratingZonesPlugin]
