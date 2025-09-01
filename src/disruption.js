@@ -21,15 +21,12 @@
     const metrics = {
       pulledIn: 0,
       blockedDays: 0,
-      typeChanged: 0,
       movedOut: 0,
       pulledInIssues: new Set(),
       blockedIssues: new Set(),
-      typeChangedIssues: new Set(),
       movedOutIssues: new Set(),
       pulledInCount: 0,
       blockedCount: 0,
-      typeChangedCount: 0,
       movedOutCount: 0
     };
 
@@ -42,7 +39,6 @@
       if (!ev || !ev.key) return;
 
       const pts = ev.points || 0;
-      const completedPts = ev.completed ? pts : 0;
       let rec = seen.get(ev.key);
       if (!rec) {
         rec = {};
@@ -63,12 +59,6 @@
         rec.blocked = true;
       }
 
-      if (ev.typeChanged && !rec.typeChanged) {
-        metrics.typeChanged += completedPts;
-        metrics.typeChangedIssues.add(ev.key);
-        rec.typeChanged = true;
-      }
-
       if (ev.movedOut && !rec.movedOut) {
         metrics.movedOut += pts;
         metrics.movedOutIssues.add(ev.key);
@@ -78,13 +68,11 @@
 
     metrics.pulledInCount = metrics.pulledInIssues.size;
     metrics.blockedCount = metrics.blockedIssues.size;
-    metrics.typeChangedCount = metrics.typeChangedIssues.size;
     metrics.movedOutCount = metrics.movedOutIssues.size;
 
     // Convert sets back to arrays for downstream consumers
     metrics.pulledInIssues = Array.from(metrics.pulledInIssues);
     metrics.blockedIssues = Array.from(metrics.blockedIssues);
-    metrics.typeChangedIssues = Array.from(metrics.typeChangedIssues);
     metrics.movedOutIssues = Array.from(metrics.movedOutIssues);
 
     logger.debug('Calculated metrics', metrics);
