@@ -137,7 +137,7 @@
   let sprints = [];
   let allSprints = [];
   let epicCache = new Map();
-  const PI_LABEL_RE = /\b\d{4}_PI\d+_committed\b/i;
+  const PI_LABEL_RE = /\b(?:BF_)?\d{4}_PI\d+_committ?ed\b/i;
 
 
   function filterRecentSprints(allSprints, excludeIds = [], desiredCount = DISPLAY_SPRINT_COUNT) {
