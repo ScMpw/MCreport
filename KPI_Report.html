@@ -630,11 +630,30 @@ function renderBoardCharts(displaySprints, allSprints, container) {
     data: {
       labels: sprintLabels,
       datasets: [
-        { label: 'Initially Planned PI contributions', data: plannedPI, backgroundColor: plannedPIFill, borderColor: plannedPIColor, stack: 'planned' },
-        { label: 'Initially Planned other', data: plannedOther, backgroundColor: plannedOtherFill, borderColor: plannedOtherColor, stack: 'planned' },
-        { label: 'Initial Plan completed', data: initialCompleted, backgroundColor: initialCompletedColor, borderColor: initialCompletedColor, stack: 'initialCompleted' },
-        { label: 'Completed PI contributions', data: completedPI, backgroundColor: completedPIColor, borderColor: completedPIColor, stack: 'completed' },
-        { label: 'Completed other', data: completedOther, backgroundColor: completedOtherColor, borderColor: completedOtherColor, stack: 'completed' },
+        { label: 'Initially Planned PI contributions', data: plannedPI, backgroundColor: plannedPIFill, borderColor: plannedPIColor, stack: 'planned', datalabels: { display: false } },
+        {
+          label: 'Initially Planned other',
+          data: plannedOther,
+          backgroundColor: plannedOtherFill,
+          borderColor: plannedOtherColor,
+          stack: 'planned',
+          datalabels: {
+            anchor: 'end',
+            align: 'start',
+            offset: -4,
+            color: '#000',
+            font: { weight: 'bold' },
+            formatter: (v, ctx) => {
+              const i = ctx.dataIndex;
+              const plannedTotal = (plannedPI[i] || 0) + (plannedOther[i] || 0);
+              const completedTotal = (completedPI[i] || 0) + (completedOther[i] || 0);
+              return [`Planned: ${plannedTotal}`, `Completed: ${completedTotal}`];
+            }
+          }
+        },
+        { label: 'Initial Plan completed', data: initialCompleted, backgroundColor: initialCompletedColor, borderColor: initialCompletedColor, stack: 'initialCompleted', datalabels: { display: false } },
+        { label: 'Completed PI contributions', data: completedPI, backgroundColor: completedPIColor, borderColor: completedPIColor, stack: 'completed', datalabels: { display: false } },
+        { label: 'Completed other', data: completedOther, backgroundColor: completedOtherColor, borderColor: completedOtherColor, stack: 'completed', datalabels: { display: false } },
       ]
     },
     options: {
@@ -657,12 +676,7 @@ function renderBoardCharts(displaySprints, allSprints, container) {
             }
           }
         },
-        datalabels: {
-          display: true,
-          color: '#000',
-          anchor: 'end',
-          align: 'top'
-        }
+        datalabels: { display: false }
       }
     }
   });
