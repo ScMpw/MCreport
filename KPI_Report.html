@@ -68,7 +68,6 @@
           <th>Completed (SP)</th>
           <th>Pulled In (SP / Issues)</th>
           <th>Blocked Days (Days / Issues)</th>
-          <th>Type Changed (SP / Issues)</th>
           <th>Moved Out (SP / Issues)</th>
           <th>Details</th>
         </tr>
@@ -273,31 +272,21 @@
               await Promise.all(events.map(async ev => {
                 try {
                   let cached = issueCache.get(ev.key);
-                  let histories, initialType, currentType, currentStatus, created, resolutionDate, piRelevant, parentKey;
+                  let histories, currentStatus, created, resolutionDate, piRelevant, parentKey;
                   if (cached) {
-                    ({ histories, initialType, currentType, currentStatus, created, resolutionDate, piRelevant, parentKey } = cached);
+                    ({ histories, currentStatus, created, resolutionDate, piRelevant, parentKey } = cached);
                   } else {
-                    const u = `https://${jiraDomain}/rest/api/3/issue/${ev.key}?expand=changelog&fields=issuetype,flagged,status,created,resolutiondate,labels,parent`;
+                    const u = `https://${jiraDomain}/rest/api/3/issue/${ev.key}?expand=changelog&fields=flagged,status,created,resolutiondate,labels,parent`;
                     const ir = await fetch(u, { credentials: 'include' });
                     if (!ir.ok) return;
                     const id = await ir.json();
                     histories = id.changelog?.histories || [];
-                    currentType = id.fields?.issuetype?.name || '';
                     currentStatus = id.fields?.status?.name || '';
                     created = id.fields?.created;
                     resolutionDate = id.fields?.resolutiondate;
                     parentKey = id.fields?.parent?.key;
                     ev.blocked = ev.blocked || !!(id.fields?.flagged && id.fields.flagged.length);
                     ev.blocked = ev.blocked || currentStatus.toLowerCase().includes('block');
-                    const sorted = histories.slice().sort((a, b) => new Date(a.created) - new Date(b.created));
-                    initialType = currentType;
-                    for (const h of sorted) {
-                      const item = (h.items || []).find(i => i.field === 'issuetype');
-                      if (item) {
-                        initialType = item.fromString || item.from || item.toString || item.to || initialType;
-                        break;
-                      }
-                    }
                     piRelevant = false;
                     if (parentKey) {
                       const epic = await getEpicInfo(jiraDomain, parentKey);
@@ -305,7 +294,7 @@
                         piRelevant = true;
                       }
                     }
-                    issueCache.set(ev.key, { histories, initialType, currentType, currentStatus, created, resolutionDate, piRelevant, parentKey });
+                    issueCache.set(ev.key, { histories, currentStatus, created, resolutionDate, piRelevant, parentKey });
                   }
                   ev.piRelevant = piRelevant || false;
 
@@ -368,8 +357,6 @@
                     ev.cycleTime = Kpis.calculateWorkDays(devStart, new Date(resolutionDate));
                   }
 
-                  const allowedTypes = new Set(['task', 'story', 'bug']);
-                  let typeChangedDuringSprint = false;
                   for (const h of histories) {
                     const chDate = new Date(h.created);
                     if (sprintStart && chDate >= sprintStart) {
@@ -384,16 +371,9 @@
                           if (!fromHas && toHas) ev.addedAfterStart = true;
                           if (fromHas && !toHas) ev.movedOut = true;
                         }
-                        if (sprintEnd && chDate <= sprintEnd && item.field === 'issuetype') {
-                          const fromType = item.fromString || item.from;
-                          const toType = item.toString || item.to;
-                          if (fromType && toType && fromType !== toType) {
-                            typeChangedDuringSprint = true;
-                          }
-                        }
                       }
                     }
-                    // Continue scanning in case sprint membership changes occur after a type change
+                    // Continue scanning in case sprint membership changes occur later
                   }
 
                   // Some issues may be created after the sprint starts and assigned
@@ -404,9 +384,6 @@
                     ev.addedAfterStart = true;
                   }
 
-                  if (typeChangedDuringSprint && allowedTypes.has((initialType || '').toLowerCase()) && currentType && currentType !== initialType) {
-                    ev.typeChanged = true;
-                  }
                 } catch (e) {}
               }));
 
@@ -452,17 +429,15 @@
         <td title="${sprint.completedSource}">${sprint.completed || 0}</td>
         <td title="${metrics.pulledInIssues.join(', ')}">${metrics.pulledIn || 0} (${metrics.pulledInCount || 0})</td>
         <td title="${metrics.blockedIssues.join(', ')}">${Number(metrics.blockedDays || 0).toFixed(1)} (${metrics.blockedCount || 0})</td>
-        <td title="${metrics.typeChangedIssues.join(', ')}">${metrics.typeChanged || 0} (${metrics.typeChangedCount || 0})</td>
         <td title="${metrics.movedOutIssues.join(', ')}">${metrics.movedOut || 0} (${metrics.movedOutCount || 0})</td>
         <td><button class="btn details-toggle" onclick="toggleDetails('${detailsId}', this)">Show Details</button></td>
       </tr>`;
-      html += `<tr id="${detailsId}" style="display:none"><td colspan="8">
+      html += `<tr id="${detailsId}" style="display:none"><td colspan="7">
         <table class="story-table">
           <thead><tr><th>Metric</th><th>Stories</th></tr></thead>
           <tbody>
             <tr><td>Pulled In</td><td>${metrics.pulledInIssues.join(', ') || '-'}</td></tr>
             <tr><td>Blocked</td><td>${metrics.blockedIssues.join(', ') || '-'}</td></tr>
-            <tr><td>Type Changed</td><td>${metrics.typeChangedIssues.join(', ') || '-'}</td></tr>
             <tr><td>Moved Out</td><td>${metrics.movedOutIssues.join(', ') || '-'}</td></tr>
           </tbody>
         </table>
@@ -511,7 +486,6 @@ function renderBoardCharts(displaySprints, allSprints, container) {
   const pulledInCount = metricsArr.map(m => m.pulledInCount || 0);
   const blockedDays = metricsArr.map(m => m.blockedDays || 0);
   const blockedCount = metricsArr.map(m => m.blockedCount || 0);
-  const typeChangedCount = metricsArr.map(m => m.typeChangedCount || 0);
   const movedOutCount = metricsArr.map(m => m.movedOutCount || 0);
 
   function sumSP(events, pred) {
@@ -724,7 +698,6 @@ function renderBoardCharts(displaySprints, allSprints, container) {
       datasets: [
         { label: 'Pulled In Issues', data: pulledInCount, backgroundColor: '#3b82f6', borderColor: '#3b82f6' },
         { label: 'Blocked Days', data: blockedDays, backgroundColor: '#ef4444', borderColor: '#ef4444' },
-        { label: 'Type Changed Issues', data: typeChangedCount, backgroundColor: '#f59e0b', borderColor: '#f59e0b' },
         { label: 'Moved Out Issues', data: movedOutCount, backgroundColor: '#10b981', borderColor: '#10b981' },
         { label: 'Throughput per Sprint', data: throughputPerSprint, backgroundColor: '#f97316', borderColor: '#f97316' }
       ]
