@@ -4,7 +4,8 @@
   <meta charset="UTF-8">
   <title>Stakeholder PI Status Report – MCW with Allocation</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html-to-image/1.11.11/html-to-image.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/svg2pdf.js@2.2.3/dist/svg2pdf.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css" />
   <link rel="stylesheet" href="public/tailwind.css">
@@ -1029,25 +1030,26 @@ function addTooltipListeners() {
     }
 
     // --- PDF EXPORT (CLEAN SUMMARY ONLY) ---
-    function exportPDF() {
+    async function exportPDF() {
       const { jsPDF } = window.jspdf;
       const pdf = new jsPDF({ unit:'pt', format:'a4' });
       const blocks = Array.from(document.querySelectorAll('.epic-summary-block'))
         .filter(b => b.querySelector('.epic-select-checkbox')?.checked);
       if (!blocks.length) return alert('Select at least one epic for PDF');
       const margin = 20;
-      (async () => {
-        for (let i=0; i<blocks.length; i++) {
-          const canvas = await html2canvas(blocks[i]);
-          const img = canvas.toDataURL('image/png');
-          const width = pdf.internal.pageSize.getWidth() - margin*2;
-          const height = canvas.height * width / canvas.width;
-          if (i>0) pdf.addPage();
-          pdf.addImage(img, 'PNG', margin, margin, width, height);
-        }
-        const dateStr = new Date().toISOString().split('T')[0];
-        pdf.save(`Stakeholder_StatusReport_WeeklyThroughput_${dateStr}.pdf`);
-      })();
+      for (let i=0; i<blocks.length; i++) {
+        const svgText = await htmlToImage.toSvg(blocks[i]);
+        const svgEl = new DOMParser().parseFromString(svgText, 'image/svg+xml').documentElement;
+        const width = pdf.internal.pageSize.getWidth() - margin*2;
+        const vb = svgEl.viewBox.baseVal;
+        const origW = vb && vb.width ? vb.width : parseFloat(svgEl.getAttribute('width'));
+        const origH = vb && vb.height ? vb.height : parseFloat(svgEl.getAttribute('height'));
+        const height = origH * width / origW;
+        if (i>0) pdf.addPage();
+        svg2pdf(svgEl, pdf, { x: margin, y: margin, width, height });
+      }
+      const dateStr = new Date().toISOString().split('T')[0];
+      pdf.save(`Stakeholder_StatusReport_WeeklyThroughput_${dateStr}.pdf`);
     }
   </script>
 </body>
