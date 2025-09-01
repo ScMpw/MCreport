@@ -867,7 +867,8 @@ function renderCharts(displaySprints, allSprints) {
         y += height + 10;
       }
     }
-    pdf.save('KPI_Report.pdf');
+    const dateStr = new Date().toISOString().split('T')[0];
+    pdf.save(`KPI_Report_${dateStr}.pdf`);
   }
 
   document.getElementById('versionSelect').value = 'KPI_Report.html';

@@ -981,7 +981,8 @@ function addTooltipListeners() {
           if (i>0) pdf.addPage();
           pdf.addImage(img, 'PNG', margin, margin, width, height);
         }
-        pdf.save('Stakeholder_StatusReport.pdf');
+        const dateStr = new Date().toISOString().split('T')[0];
+        pdf.save(`Stakeholder_StatusReport_Velocity_${dateStr}.pdf`);
       })();
     }
   </script>

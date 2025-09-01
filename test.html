@@ -796,7 +796,8 @@ function renderCharts(displaySprints, allSprints) {
       pdf.addImage(img, 'PNG', margin, y, width, height);
       y += height + 10;
     });
-    pdf.save('Disruption_Report.pdf');
+    const dateStr = new Date().toISOString().split('T')[0];
+    pdf.save(`Disruption_Report_${dateStr}.pdf`);
     charts.forEach(ch => {
       if (ch && ch.options.plugins?.datalabels) {
         ch.options.plugins.datalabels.display = false;
