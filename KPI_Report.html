@@ -76,24 +76,17 @@
       <tbody id="metricsBody"></tbody>
     </table>
     <div id="velocityStats"></div>
-    <div id="chartSection" class="chart-section">
-      <h2>Initially planned &amp; completed</h2>
-      <canvas id="piMixChart"></canvas>
-      <h2>Rating Zone Chart</h2>
-      <canvas id="completedChart"></canvas>
-      <div class="rating-zone-description">
-        <div id="ratingZoneToggle" style="cursor:pointer;"><strong>Rating zones (show)</strong></div>
-        <div id="ratingZoneDetails" style="display:none;">
-          <div><span style="background:rgba(254,249,195,0.5);"></span><strong>Bloated: AV+2SD…∞.</strong> A significant share of this exceedingly high output probably comes from other effects than team performance alone. Analysis is advised because possibly there's something to be learned.</div>
-          <div><span style="background:rgba(34,197,94,0.5);"></span><strong>Lively: AV+1SD…AV+2SD.</strong> The team's performance was outstanding, pushing the envelope on the brink of an unsustainable pace.</div>
-          <div><span style="background:rgba(21,128,61,0.5);"></span><strong>Spot-on: AV…AV+1SD.</strong> The team performed very well while also managing to increase the stability of their long-term output.</div>
-          <div><span style="background:rgba(34,197,94,0.5);"></span><strong>Healthy: AV-1SD…AV.</strong> Things cannot always go up, so going down within the team's usual range of performance is perfectly normal.</div>
-          <div><span style="background:rgba(254,249,195,0.5);"></span><strong>Concerning: AV-2SD…AV-1SD.</strong> Something went considerably wrong, but we're still seeing a robust core performance. Analysis is needed and also some learning that may result in adjustments.</div>
-          <div><span style="background:rgba(254,202,202,0.5);"></span><strong>Alarming: 0…AV-2SD.</strong> The major share of this plummeting output was probably caused by factors beyond the team‘s influence. Thorough analysis is needed which will lead to profound learning and change.</div>
-        </div>
+    <div id="chartSection" class="chart-section"></div>
+    <div class="rating-zone-description">
+      <div id="ratingZoneToggle" style="cursor:pointer;"><strong>Rating zones (show)</strong></div>
+      <div id="ratingZoneDetails" style="display:none;">
+        <div><span style="background:rgba(254,249,195,0.5);"></span><strong>Bloated: AV+2SD…∞.</strong> A significant share of this exceedingly high output probably comes from other effects than team performance alone. Analysis is advised because possibly there's something to be learned.</div>
+        <div><span style="background:rgba(34,197,94,0.5);"></span><strong>Lively: AV+1SD…AV+2SD.</strong> The team's performance was outstanding, pushing the envelope on the brink of an unsustainable pace.</div>
+        <div><span style="background:rgba(21,128,61,0.5);"></span><strong>Spot-on: AV…AV+1SD.</strong> The team performed very well while also managing to increase the stability of their long-term output.</div>
+        <div><span style="background:rgba(34,197,94,0.5);"></span><strong>Healthy: AV-1SD…AV.</strong> Things cannot always go up, so going down within the team's usual range of performance is perfectly normal.</div>
+        <div><span style="background:rgba(254,249,195,0.5);"></span><strong>Concerning: AV-2SD…AV-1SD.</strong> Something went considerably wrong, but we're still seeing a robust core performance. Analysis is needed and also some learning that may result in adjustments.</div>
+        <div><span style="background:rgba(254,202,202,0.5);"></span><strong>Alarming: 0…AV-2SD.</strong> The major share of this plummeting output was probably caused by factors beyond the team‘s influence. Thorough analysis is needed which will lead to profound learning and change.</div>
       </div>
-      <h2>Disruption Metrics</h2>
-      <canvas id="disruptionChart"></canvas>
     </div>
   </div>
 </div>
@@ -131,9 +124,8 @@
   // Keep references to existing Chart.js instances so they can be destroyed
   // when rendering charts multiple times. Without this, Chart.js will throw
   // an error about reusing a canvas that is already in use.
-  let completedChartInstance;
-  let disruptionChartInstance;
-  let piMixChartInstance;
+  let chartInstances = [];
+  let boardLabels = {};
   const DISPLAY_SPRINT_COUNT = 6;
   const RATING_WINDOW = 4;
   let sprints = [];
@@ -509,7 +501,7 @@ function renderVelocityStats(allSprints) {
     wrap.innerHTML = html;
   }
 
-function renderCharts(displaySprints, allSprints) {
+function renderBoardCharts(displaySprints, allSprints, container) {
   const sprintLabels = displaySprints.map(s => s.name);
   const completedSPAll = (allSprints || displaySprints).map(s => s.completed || 0);
   const completedSP = completedSPAll.slice(-displaySprints.length);
@@ -549,11 +541,29 @@ function renderCharts(displaySprints, allSprints) {
   );
 
   const chartWidth = Math.max(sprintLabels.length * 120, 600);
-  ['piMixChart','completedChart','disruptionChart'].forEach(id => {
-    const canvas = document.getElementById(id);
-    canvas.width = chartWidth;
-    canvas.height = 300;
-  });
+  const piTitle = document.createElement('h2');
+  piTitle.textContent = 'Initially planned & completed';
+  container.appendChild(piTitle);
+  const piCanvas = document.createElement('canvas');
+  piCanvas.width = chartWidth;
+  piCanvas.height = 300;
+  container.appendChild(piCanvas);
+
+  const completedTitle = document.createElement('h2');
+  completedTitle.textContent = 'Rating Zone Chart';
+  container.appendChild(completedTitle);
+  const completedCanvas = document.createElement('canvas');
+  completedCanvas.width = chartWidth;
+  completedCanvas.height = 300;
+  container.appendChild(completedCanvas);
+
+  const disruptionTitle = document.createElement('h2');
+  disruptionTitle.textContent = 'Disruption Metrics';
+  container.appendChild(disruptionTitle);
+  const disruptionCanvas = document.createElement('canvas');
+  disruptionCanvas.width = chartWidth;
+  disruptionCanvas.height = 300;
+  container.appendChild(disruptionCanvas);
 
   const zonesBySprintAll = [];
   const avgBySprintAll = [];
@@ -606,18 +616,7 @@ function renderCharts(displaySprints, allSprints) {
     }
   };
 
-  // Destroy existing charts if they exist to allow re-rendering without errors
-  if (piMixChartInstance) {
-    piMixChartInstance.destroy();
-  }
-  if (completedChartInstance) {
-    completedChartInstance.destroy();
-  }
-  if (disruptionChartInstance) {
-    disruptionChartInstance.destroy();
-  }
-
-  const pctx = document.getElementById('piMixChart').getContext('2d');
+  const pctx = piCanvas.getContext('2d');
 
   function makeDiagonalPattern(ctx, color) {
     const size = 8;
@@ -643,7 +642,7 @@ function renderCharts(displaySprints, allSprints) {
   const plannedPIFill = makeDiagonalPattern(pctx, plannedPIColor);
   const plannedOtherFill = makeDiagonalPattern(pctx, plannedOtherColor);
 
-  piMixChartInstance = new Chart(pctx, {
+  const piMixChart = new Chart(pctx, {
     type: 'bar',
     data: {
       labels: sprintLabels,
@@ -685,8 +684,8 @@ function renderCharts(displaySprints, allSprints) {
     }
   });
 
-  const vctx = document.getElementById('completedChart').getContext('2d');
-  completedChartInstance = new Chart(vctx, {
+  const vctx = completedCanvas.getContext('2d');
+  const completedChart = new Chart(vctx, {
     type: 'line',
     data: {
       labels: sprintLabels,
@@ -717,8 +716,8 @@ function renderCharts(displaySprints, allSprints) {
     plugins: [ratingZonesPlugin]
   });
 
-  const dctx = document.getElementById('disruptionChart').getContext('2d');
-  disruptionChartInstance = new Chart(dctx, {
+  const dctx = disruptionCanvas.getContext('2d');
+  const disruptionChart = new Chart(dctx, {
     type: 'bar',
     data: {
       labels: sprintLabels,
@@ -749,6 +748,37 @@ function renderCharts(displaySprints, allSprints) {
     }
   });
 
+  return [piMixChart, completedChart, disruptionChart];
+}
+
+function renderCharts(displaySprints, allSprints) {
+  const section = document.getElementById('chartSection');
+  if (!section) return;
+  section.innerHTML = '';
+  chartInstances.forEach(ch => ch.destroy());
+  chartInstances = [];
+  const byBoardDisplay = {};
+  (displaySprints || []).forEach(s => {
+    const board = s.board;
+    if (!byBoardDisplay[board]) byBoardDisplay[board] = [];
+    byBoardDisplay[board].push(s);
+  });
+  const byBoardAll = {};
+  (allSprints || []).forEach(s => {
+    const board = s.board;
+    if (!byBoardAll[board]) byBoardAll[board] = [];
+    byBoardAll[board].push(s);
+  });
+  Object.keys(byBoardDisplay).forEach(boardId => {
+    const title = document.createElement('h2');
+    title.textContent = boardLabels[boardId] || `Board ${boardId}`;
+    section.appendChild(title);
+    const wrap = document.createElement('div');
+    wrap.className = 'board-chart-wrapper';
+    section.appendChild(wrap);
+    const charts = renderBoardCharts(byBoardDisplay[boardId], byBoardAll[boardId] || [], wrap);
+    chartInstances.push(...charts);
+  });
 }
 
   function toggleDetails(id, btn) {
@@ -764,6 +794,8 @@ function renderCharts(displaySprints, allSprints) {
     const jiraDomain = document.getElementById('jiraDomain').value.trim();
     const selected = boardChoices ? boardChoices.getValue() : [];
     const boards = selected.map(b => b.value);
+    boardLabels = {};
+    selected.forEach(b => { boardLabels[b.value] = b.label; });
     if (!jiraDomain || !boards.length) {
       alert('Enter Jira domain and select boards.');
       return;
@@ -789,7 +821,7 @@ function renderCharts(displaySprints, allSprints) {
   function exportPDF() {
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
-    const charts = [piMixChartInstance, completedChartInstance, disruptionChartInstance];
+    const charts = chartInstances;
     charts.forEach(ch => {
       if (ch && ch.options.plugins?.datalabels) {
         ch.options.plugins.datalabels.display = true;
