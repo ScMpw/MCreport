@@ -170,7 +170,9 @@
       boardChoices.setChoices(boards.map(b => ({ value: b.id, label: b.name })), 'value', 'label', true);
       boardChoices.removeActiveItems();
       boards.forEach(b => boardChoices.setChoiceByValue(String(b.id)));
-      loadDisruption();
+      const show = boards.length ? '' : 'none';
+      document.getElementById('boardLabel').style.display = show;
+      document.getElementById('loadBtn').style.display = show;
     } catch (e) {
       Logger.error('Failed to load boards', e);
     }
