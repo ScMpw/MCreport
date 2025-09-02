@@ -868,6 +868,18 @@ function renderCharts(displaySprints, allSprints) {
   function exportPDF() {
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
+    const charts = [piMixChart, completedChart, disruptionChart];
+    charts.forEach(ch => {
+      if (!ch) return;
+      const legend = ch.options.plugins?.legend || (ch.options.plugins.legend = {});
+      const labels = legend.labels || (legend.labels = {});
+      ch._origLegendFilter = labels.filter;
+      labels.filter = item => item.text && !item.hidden;
+      if (ch.options.plugins?.datalabels) {
+        ch.options.plugins.datalabels.display = true;
+      }
+      ch.update();
+    });
     const includePi = document.getElementById('includePi')?.checked;
     const includeDisruption = document.getElementById('includeDisruption')?.checked;
     const includeRating = document.getElementById('includeRating')?.checked;
@@ -906,6 +918,18 @@ function renderCharts(displaySprints, allSprints) {
     }
     const dateStr = new Date().toISOString().split('T')[0];
     pdf.save(`KPI_Report_${dateStr}.pdf`);
+    charts.forEach(ch => {
+      if (!ch) return;
+      const legendLabels = ch.options.plugins?.legend?.labels;
+      if (legendLabels) {
+        legendLabels.filter = ch._origLegendFilter;
+        delete ch._origLegendFilter;
+      }
+      if (ch.options.plugins?.datalabels) {
+        ch.options.plugins.datalabels.display = false;
+      }
+      ch.update();
+    });
   }
 
   document.getElementById('versionSelect').value = 'KPI_Report.html';
