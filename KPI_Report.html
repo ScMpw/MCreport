@@ -874,7 +874,7 @@ function renderCharts(displaySprints, allSprints) {
       const legend = ch.options.plugins?.legend || (ch.options.plugins.legend = {});
       const labels = legend.labels || (legend.labels = {});
       ch._origLegendFilter = labels.filter;
-      labels.filter = item => item.text && !item.hidden;
+      labels.filter = item => item.text && ch.isDatasetVisible(item.datasetIndex);
       if (ch.options.plugins?.datalabels) {
         ch.options.plugins.datalabels.display = true;
       }
