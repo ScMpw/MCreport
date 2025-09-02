@@ -669,7 +669,7 @@ function renderBoardCharts(displaySprints, allSprints, container) {
             }
           }
         },
-        { label: 'Initial Plan completed', data: initialCompleted, backgroundColor: initialCompletedColor, borderColor: initialCompletedColor, stack: 'initialCompleted', datalabels: {
+        { label: 'Initial Plan completed', data: initialCompleted, backgroundColor: initialCompletedColor, borderColor: initialCompletedColor, stack: 'initialCompleted', hidden: true, datalabels: {
             display: true,
             anchor: 'end',
             align: 'top',
@@ -866,12 +866,8 @@ function renderCharts(displaySprints, allSprints) {
   }
 
   function stripHiddenDatasets(chart) {
-    const legend = chart.options.plugins?.legend || (chart.options.plugins.legend = {});
-    const labels = legend.labels || (legend.labels = {});
-    chart._origLegendFilter = labels.filter;
-    labels.filter = item => chart.isDatasetVisible(item.datasetIndex);
     chart._origDatasets = chart.data.datasets;
-    chart.data.datasets = chart.data.datasets.filter((_, i) => chart.isDatasetVisible(i));
+    chart.data.datasets = chart.data.datasets.filter((ds, i) => chart.isDatasetVisible(i));
     const dl = chart.options.plugins?.datalabels;
     if (dl) {
       chart._origDataLabelDisplay = dl.display;
@@ -881,11 +877,6 @@ function renderCharts(displaySprints, allSprints) {
   }
 
   function restoreHiddenDatasets(chart) {
-    const legendLabels = chart.options.plugins?.legend?.labels;
-    if (legendLabels && chart._origLegendFilter !== undefined) {
-      legendLabels.filter = chart._origLegendFilter;
-      delete chart._origLegendFilter;
-    }
     if (chart._origDatasets) {
       chart.data.datasets = chart._origDatasets;
       delete chart._origDatasets;
