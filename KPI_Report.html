@@ -647,11 +647,19 @@ function renderBoardCharts(displaySprints, allSprints, container) {
             formatter: (v, ctx) => {
               const i = ctx.dataIndex;
               const plannedTotal = (plannedPI[i] || 0) + (plannedOther[i] || 0);
-              return plannedTotal;
+              const initCompleted = initialCompleted[i] || 0;
+              return `${initCompleted} of ${plannedTotal}`;
             }
           }
         },
-        { label: 'Initial Plan completed', data: initialCompleted, backgroundColor: initialCompletedColor, borderColor: initialCompletedColor, stack: 'initialCompleted', datalabels: { display: false } },
+        { label: 'Initial Plan completed', data: initialCompleted, backgroundColor: initialCompletedColor, borderColor: initialCompletedColor, stack: 'initialCompleted', datalabels: {
+            display: true,
+            anchor: 'end',
+            align: 'top',
+            offset: -4,
+            color: '#000',
+            font: { weight: 'bold' }
+        } },
         { label: 'Completed PI contributions', data: completedPI, backgroundColor: completedPIColor, borderColor: completedPIColor, stack: 'completed', datalabels: { display: false } },
         {
           label: 'Completed other',
@@ -660,17 +668,7 @@ function renderBoardCharts(displaySprints, allSprints, container) {
           borderColor: completedOtherColor,
           stack: 'completed',
           datalabels: {
-            display: true,
-            anchor: 'end',
-            align: 'top',
-            offset: -4,
-            color: '#000',
-            font: { weight: 'bold' },
-            formatter: (v, ctx) => {
-              const i = ctx.dataIndex;
-              const completedTotal = (completedPI[i] || 0) + (completedOther[i] || 0);
-              return completedTotal;
-            }
+            display: false
           }
         },
       ]
