@@ -647,8 +647,7 @@ function renderBoardCharts(displaySprints, allSprints, container) {
             formatter: (v, ctx) => {
               const i = ctx.dataIndex;
               const plannedTotal = (plannedPI[i] || 0) + (plannedOther[i] || 0);
-              const initCompleted = initialCompleted[i] || 0;
-              return `${initCompleted} of ${plannedTotal}`;
+              return plannedTotal;
             }
           }
         },
@@ -668,7 +667,17 @@ function renderBoardCharts(displaySprints, allSprints, container) {
           borderColor: completedOtherColor,
           stack: 'completed',
           datalabels: {
-            display: false
+            display: true,
+            anchor: 'end',
+            align: 'top',
+            offset: -4,
+            color: '#000',
+            font: { weight: 'bold' },
+            formatter: (v, ctx) => {
+              const i = ctx.dataIndex;
+              const completedTotal = (completedPI[i] || 0) + (completedOther[i] || 0);
+              return completedTotal;
+            }
           }
         },
       ]
