@@ -772,7 +772,7 @@ function renderCharts(displaySprints, allSprints) {
     return tmp.toDataURL('image/png');
   }
 
-  function chartToPdfImage(chart) {
+  async function chartToPdfImage(chart) {
     const config = JSON.parse(JSON.stringify(chart.config));
     const hidden = new Set();
     if (config.data && Array.isArray(config.data.datasets)) {
@@ -797,13 +797,18 @@ function renderCharts(displaySprints, allSprints) {
     tmpCanvas.width = chart.canvas.width;
     tmpCanvas.height = chart.canvas.height;
     const tmpChart = new Chart(tmpCanvas.getContext('2d'), config);
+    if (typeof tmpChart.render === 'function') {
+      await tmpChart.render();
+    } else {
+      await new Promise(r => requestAnimationFrame(r));
+    }
     const img = canvasToHighResDataURL(tmpCanvas);
     tmpChart.destroy();
     tmpCanvas.remove();
     return img;
   }
 
-  function exportPDF() {
+  async function exportPDF() {
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
     const charts = [piMixChartInstance, completedChartInstance, disruptionChartInstance].filter(Boolean);
@@ -811,9 +816,9 @@ function renderCharts(displaySprints, allSprints) {
     const pageHeight = pdf.internal.pageSize.getHeight();
     const margin = 20;
     let y = margin;
-    charts.forEach(ch => {
+    for (const ch of charts) {
       const cv = ch.canvas;
-      const img = chartToPdfImage(ch);
+      const img = await chartToPdfImage(ch);
       const width = pageWidth - margin * 2;
       const height = cv.height * width / cv.width;
       if (y + height > pageHeight - margin) {
@@ -822,7 +827,7 @@ function renderCharts(displaySprints, allSprints) {
       }
       pdf.addImage(img, 'PNG', margin, y, width, height);
       y += height + 10;
-    });
+    }
     const dateStr = new Date().toISOString().split('T')[0];
     pdf.save(`Disruption_Report_${dateStr}.pdf`);
   }

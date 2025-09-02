@@ -868,7 +868,7 @@ function renderCharts(displaySprints, allSprints) {
     return tmp.toDataURL('image/png');
   }
 
-  function chartToPdfImage(chart) {
+  async function chartToPdfImage(chart) {
     if (!chart?.canvas?.width || !chart?.canvas?.height) {
       return null;
     }
@@ -899,13 +899,18 @@ function renderCharts(displaySprints, allSprints) {
       return null;
     }
     const tmpChart = new Chart(tmpCanvas.getContext('2d'), config);
+    if (typeof tmpChart.render === 'function') {
+      await tmpChart.render();
+    } else {
+      await new Promise(r => requestAnimationFrame(r));
+    }
     const img = canvasToHighResDataURL(tmpCanvas);
     tmpChart.destroy();
     tmpCanvas.remove();
     return img;
   }
 
-  function exportPDF() {
+  async function exportPDF() {
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
     const charts = chartInstances;
@@ -945,7 +950,7 @@ function renderCharts(displaySprints, allSprints) {
         pdf.text(`${boardTitle} - ${chartTitleEl.textContent.trim()}`, margin, y);
         y += 14;
         const chart = Chart.getChart(canvas);
-        const img = chart ? chartToPdfImage(chart) : canvasToHighResDataURL(canvas);
+        const img = chart ? await chartToPdfImage(chart) : canvasToHighResDataURL(canvas);
         if (img) {
           pdf.addImage(img, 'PNG', margin, y, width, height);
           y += height + 10;

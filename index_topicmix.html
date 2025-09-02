@@ -250,7 +250,7 @@ function canvasToHighResDataURL(canvas, scale = 4) {
   return tmp.toDataURL('image/png');
 }
 
-function chartToPdfImage(chart) {
+async function chartToPdfImage(chart) {
   const config = JSON.parse(JSON.stringify(chart.config));
   const hidden = new Set();
   if (config.data && Array.isArray(config.data.datasets)) {
@@ -275,13 +275,18 @@ function chartToPdfImage(chart) {
   tmpCanvas.width = chart.canvas.width;
   tmpCanvas.height = chart.canvas.height;
   const tmpChart = new Chart(tmpCanvas.getContext('2d'), config);
+  if (typeof tmpChart.render === 'function') {
+    await tmpChart.render();
+  } else {
+    await new Promise(r => requestAnimationFrame(r));
+  }
   const img = canvasToHighResDataURL(tmpCanvas);
   tmpChart.destroy();
   tmpCanvas.remove();
   return img;
 }
 
-function exportPDF() {
+async function exportPDF() {
   const { jsPDF } = window.jspdf;
   const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
   const chart = topicMixChartInstance;
@@ -290,7 +295,7 @@ function exportPDF() {
   const margin = 20;
   const width = pageWidth - margin * 2;
   const height = chart.canvas.height * width / chart.canvas.width;
-  const img = chartToPdfImage(chart);
+  const img = await chartToPdfImage(chart);
   pdf.addImage(img, 'PNG', margin, margin, width, height);
   const dateStr = new Date().toISOString().split('T')[0];
   pdf.save(`TopicMix_Report_${dateStr}.pdf`);
