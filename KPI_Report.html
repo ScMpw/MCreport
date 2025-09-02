@@ -868,7 +868,7 @@ function renderCharts(displaySprints, allSprints) {
   function exportPDF() {
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
-    const charts = [piMixChart, completedChart, disruptionChart];
+    const charts = chartInstances;
     charts.forEach(ch => {
       if (!ch) return;
       const legend = ch.options.plugins?.legend || (ch.options.plugins.legend = {});
