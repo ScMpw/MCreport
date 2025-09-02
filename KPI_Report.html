@@ -854,6 +854,9 @@ function renderCharts(displaySprints, allSprints) {
   }
 
   function canvasToHighResDataURL(canvas, scale = 4) {
+    if (!canvas.width || !canvas.height) {
+      return null;
+    }
     const tmp = document.createElement('canvas');
     tmp.width = canvas.width * scale;
     tmp.height = canvas.height * scale;
@@ -866,6 +869,9 @@ function renderCharts(displaySprints, allSprints) {
   }
 
   function chartToPdfImage(chart) {
+    if (!chart?.canvas?.width || !chart?.canvas?.height) {
+      return null;
+    }
     const config = JSON.parse(JSON.stringify(chart.config));
     const hidden = new Set();
     if (config.data && Array.isArray(config.data.datasets)) {
@@ -889,6 +895,9 @@ function renderCharts(displaySprints, allSprints) {
     const tmpCanvas = document.createElement('canvas');
     tmpCanvas.width = chart.canvas.width;
     tmpCanvas.height = chart.canvas.height;
+    if (!tmpCanvas.width || !tmpCanvas.height) {
+      return null;
+    }
     const tmpChart = new Chart(tmpCanvas.getContext('2d'), config);
     const img = canvasToHighResDataURL(tmpCanvas);
     tmpChart.destroy();
@@ -923,6 +932,9 @@ function renderCharts(displaySprints, allSprints) {
             (type === 'rating' && !includeRating)) {
           continue;
         }
+        if (!canvas.width || !canvas.height) {
+          continue;
+        }
         const width = pageWidth - margin * 2;
         const height = canvas.height * width / canvas.width;
         if (y + 14 + height > pageHeight - margin) {
@@ -934,8 +946,10 @@ function renderCharts(displaySprints, allSprints) {
         y += 14;
         const chart = Chart.getChart(canvas);
         const img = chart ? chartToPdfImage(chart) : canvasToHighResDataURL(canvas);
-        pdf.addImage(img, 'PNG', margin, y, width, height);
-        y += height + 10;
+        if (img) {
+          pdf.addImage(img, 'PNG', margin, y, width, height);
+          y += height + 10;
+        }
       }
     }
     const dateStr = new Date().toISOString().split('T')[0];
