@@ -772,53 +772,28 @@ function renderCharts(displaySprints, allSprints) {
     return tmp.toDataURL('image/png');
   }
 
-  async function chartToPdfImage(chart) {
-    const config = JSON.parse(JSON.stringify(chart.config));
-    const hidden = new Set();
-    if (config.data && Array.isArray(config.data.datasets)) {
-      config.data.datasets = config.data.datasets.filter(ds => {
-        if (ds.hiddenForPdf) {
-          hidden.add(ds.label);
-          return false;
-        }
-        return true;
-      });
-    }
-    const legend = config.options?.plugins?.legend;
-    if (legend) {
-      const labels = legend.labels || (legend.labels = {});
-      const origFilter = labels.filter;
-      labels.filter = (item, data) => {
-        if (hidden.has(item.text)) return false;
-        return origFilter ? origFilter(item, data) : true;
-      };
-    }
-    const tmpCanvas = document.createElement('canvas');
-    tmpCanvas.width = chart.canvas.width;
-    tmpCanvas.height = chart.canvas.height;
-    const tmpChart = new Chart(tmpCanvas.getContext('2d'), config);
-    if (typeof tmpChart.render === 'function') {
-      await tmpChart.render();
-    } else {
-      await new Promise(r => requestAnimationFrame(r));
-    }
-    const img = canvasToHighResDataURL(tmpCanvas);
-    tmpChart.destroy();
-    tmpCanvas.remove();
-    return img;
-  }
-
-  async function exportPDF() {
+  function exportPDF() {
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
-    const charts = [piMixChartInstance, completedChartInstance, disruptionChartInstance].filter(Boolean);
+    const charts = [piMixChartInstance, completedChartInstance, disruptionChartInstance];
+    charts.forEach(ch => {
+      if (!ch) return;
+      const legend = ch.options.plugins?.legend || (ch.options.plugins.legend = {});
+      const labels = legend.labels || (legend.labels = {});
+      ch._origLegendFilter = labels.filter;
+      labels.filter = item => item.text && !item.hidden;
+      if (ch.options.plugins?.datalabels) {
+        ch.options.plugins.datalabels.display = true;
+      }
+      ch.update();
+    });
+    const canvases = document.querySelectorAll('#chartSection canvas');
     const pageWidth = pdf.internal.pageSize.getWidth();
     const pageHeight = pdf.internal.pageSize.getHeight();
     const margin = 20;
     let y = margin;
-    for (const ch of charts) {
-      const cv = ch.canvas;
-      const img = await chartToPdfImage(ch);
+    canvases.forEach(cv => {
+      const img = canvasToHighResDataURL(cv);
       const width = pageWidth - margin * 2;
       const height = cv.height * width / cv.width;
       if (y + height > pageHeight - margin) {
@@ -827,9 +802,21 @@ function renderCharts(displaySprints, allSprints) {
       }
       pdf.addImage(img, 'PNG', margin, y, width, height);
       y += height + 10;
-    }
+    });
     const dateStr = new Date().toISOString().split('T')[0];
     pdf.save(`Disruption_Report_${dateStr}.pdf`);
+    charts.forEach(ch => {
+      if (!ch) return;
+      const legendLabels = ch.options.plugins?.legend?.labels;
+      if (legendLabels) {
+        legendLabels.filter = ch._origLegendFilter;
+        delete ch._origLegendFilter;
+      }
+      if (ch.options.plugins?.datalabels) {
+        ch.options.plugins.datalabels.display = false;
+      }
+      ch.update();
+    });
   }
 
   document.getElementById('versionSelect').value = 'index_disruption.html';
