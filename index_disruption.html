@@ -195,6 +195,7 @@
       try {
         await Promise.all(boardNums.map(async boardNum => {
           const url = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/velocity?rapidViewId=${boardNum}`;
+          const isBfBoard = ['6347', '6390'].includes(String(boardNum));
           const resp = await fetch(url, { credentials: 'include' });
           let data = {};
           if (resp.ok) {
@@ -239,7 +240,7 @@
               const r = await fetch(surl, { credentials: 'include' });
               if (!r.ok) return;
               const d = await r.json();
-              const events = [];
+              let events = [];
               const collect = (arr, completed = false) => {
                 (arr || []).forEach(it => {
                   events.push({
@@ -255,6 +256,9 @@
               collect(d.contents.completedIssues, true);
               collect(d.contents.issuesNotCompletedInCurrentSprint, false);
               collect(d.contents.puntedIssues, false);
+              if (isBfBoard) {
+                events = events.filter(ev => ev.key && ev.key.startsWith('BF-'));
+              }
 
               const entry = data.velocityStatEntries?.[s.id] || {};
               let completed = entry.completed?.value || 0;
@@ -386,7 +390,14 @@
                 } catch (e) {}
               }));
 
-              if (!initiallyPlanned) {
+              if (isBfBoard) {
+                completed = events.filter(ev => ev.completed)
+                                   .reduce((sum, ev) => sum + ev.points, 0);
+                initiallyPlanned = events.filter(ev => !ev.addedAfterStart)
+                                         .reduce((sum, ev) => sum + ev.points, 0);
+                completedSource = 'filtered events';
+                initiallyPlannedSource = 'filtered events';
+              } else if (!initiallyPlanned) {
                 initiallyPlanned = events.filter(ev => !ev.addedAfterStart)
                                          .reduce((sum, ev) => sum + ev.points, 0);
                 initiallyPlannedSource = 'sum of events not added after start';

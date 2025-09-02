@@ -36,6 +36,7 @@
       const sprintResp = await fetch(sprintUrl, { credentials: 'include' });
       const sprintData = sprintResp.ok ? await sprintResp.json() : { values: [] };
       const rows = [];
+      const isBfBoard = ['6347', '6390'].includes(String(boardNum));
       for (const sprint of (sprintData.values || [])) {
         const reportUrl = `https://${domain}/rest/greenhopper/1.0/rapid/charts/sprintreport?rapidViewId=${boardNum}&sprintId=${sprint.id}`;
         const reportResp = await fetch(reportUrl, { credentials: 'include' });
@@ -48,6 +49,7 @@
         ];
         for (const issue of issues) {
           const issueKey = issue.key;
+          if (isBfBoard && !issueKey.startsWith('BF-')) continue;
           const issueResp = await fetch(`https://${domain}/rest/api/3/issue/${issueKey}?fields=parent`, { credentials: 'include' });
           if (!issueResp.ok) continue;
           const issueData = await issueResp.json();
