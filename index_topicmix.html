@@ -6,6 +6,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="public/tailwind.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <style>
     body { background:#f7f8fa; font-family:'Inter',Arial,sans-serif; margin:0;padding:0; }
     .main { max-width:950px; margin:30px auto; background:#fff; border-radius:18px; padding:36px 32px; box-shadow:0 2px 12px #d1d5db70; }
@@ -34,6 +35,9 @@
     <label>Select Sprint:
       <select id="sprintSelect"></select>
     </label>
+  </div>
+  <div style="margin-top:10px;">
+    <button class="btn" onclick="exportPDF()">Download PDF</button>
   </div>
   <div id="loadingMessage" style="display:none; font-weight:bold; margin:10px 0;"></div>
   <div id="chartSection" class="chart-section" style="display:none;">
@@ -232,6 +236,64 @@ function renderChart() {
     }
   });
   document.getElementById('chartSection').style.display = '';
+}
+
+function canvasToHighResDataURL(canvas, scale = 4) {
+  const tmp = document.createElement('canvas');
+  tmp.width = canvas.width * scale;
+  tmp.height = canvas.height * scale;
+  const ctx = tmp.getContext('2d');
+  ctx.scale(scale, scale);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(canvas, 0, 0);
+  return tmp.toDataURL('image/png');
+}
+
+function chartToPdfImage(chart) {
+  const config = JSON.parse(JSON.stringify(chart.config));
+  const hidden = new Set();
+  if (config.data && Array.isArray(config.data.datasets)) {
+    config.data.datasets = config.data.datasets.filter(ds => {
+      if (ds.hiddenForPdf) {
+        hidden.add(ds.label);
+        return false;
+      }
+      return true;
+    });
+  }
+  const legend = config.options?.plugins?.legend;
+  if (legend) {
+    const labels = legend.labels || (legend.labels = {});
+    const origFilter = labels.filter;
+    labels.filter = (item, data) => {
+      if (hidden.has(item.text)) return false;
+      return origFilter ? origFilter(item, data) : true;
+    };
+  }
+  const tmpCanvas = document.createElement('canvas');
+  tmpCanvas.width = chart.canvas.width;
+  tmpCanvas.height = chart.canvas.height;
+  const tmpChart = new Chart(tmpCanvas.getContext('2d'), config);
+  const img = canvasToHighResDataURL(tmpCanvas);
+  tmpChart.destroy();
+  tmpCanvas.remove();
+  return img;
+}
+
+function exportPDF() {
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
+  const chart = topicMixChartInstance;
+  if (!chart) { alert('No chart to export'); return; }
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const margin = 20;
+  const width = pageWidth - margin * 2;
+  const height = chart.canvas.height * width / chart.canvas.width;
+  const img = chartToPdfImage(chart);
+  pdf.addImage(img, 'PNG', margin, margin, width, height);
+  const dateStr = new Date().toISOString().split('T')[0];
+  pdf.save(`TopicMix_Report_${dateStr}.pdf`);
 }
 
 async function loadTopicMix() {
