@@ -846,12 +846,14 @@ function renderCharts(displaySprints, allSprints) {
     Logger.info('Disruption report rendered');
   }
 
-  function canvasToHighResDataURL(canvas, scale = 2) {
+  function canvasToHighResDataURL(canvas, scale = 4) {
     const tmp = document.createElement('canvas');
     tmp.width = canvas.width * scale;
     tmp.height = canvas.height * scale;
     const ctx = tmp.getContext('2d');
     ctx.scale(scale, scale);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(canvas, 0, 0);
     return tmp.toDataURL('image/png');
   }
