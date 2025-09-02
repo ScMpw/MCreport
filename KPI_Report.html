@@ -854,9 +854,6 @@ function renderCharts(displaySprints, allSprints) {
   }
 
   function canvasToHighResDataURL(canvas, scale = 4) {
-    if (!canvas.width || !canvas.height) {
-      return null;
-    }
     const tmp = document.createElement('canvas');
     tmp.width = canvas.width * scale;
     tmp.height = canvas.height * scale;
@@ -868,52 +865,21 @@ function renderCharts(displaySprints, allSprints) {
     return tmp.toDataURL('image/png');
   }
 
-  async function chartToPdfImage(chart) {
-    if (!chart?.canvas?.width || !chart?.canvas?.height) {
-      return null;
-    }
-    const config = JSON.parse(JSON.stringify(chart.config));
-    const hidden = new Set();
-    if (config.data && Array.isArray(config.data.datasets)) {
-      config.data.datasets = config.data.datasets.filter(ds => {
-        if (ds.hiddenForPdf) {
-          hidden.add(ds.label);
-          return false;
-        }
-        return true;
-      });
-    }
-    const legend = config.options?.plugins?.legend;
-    if (legend) {
-      const labels = legend.labels || (legend.labels = {});
-      const origFilter = labels.filter;
-      labels.filter = (item, data) => {
-        if (hidden.has(item.text)) return false;
-        return origFilter ? origFilter(item, data) : true;
-      };
-    }
-    const tmpCanvas = document.createElement('canvas');
-    tmpCanvas.width = chart.canvas.width;
-    tmpCanvas.height = chart.canvas.height;
-    if (!tmpCanvas.width || !tmpCanvas.height) {
-      return null;
-    }
-    const tmpChart = new Chart(tmpCanvas.getContext('2d'), config);
-    if (typeof tmpChart.render === 'function') {
-      await tmpChart.render();
-    } else {
-      await new Promise(r => requestAnimationFrame(r));
-    }
-    const img = canvasToHighResDataURL(tmpCanvas);
-    tmpChart.destroy();
-    tmpCanvas.remove();
-    return img;
-  }
-
-  async function exportPDF() {
+  function exportPDF() {
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
-    const charts = chartInstances;
+    const charts = [piMixChart, completedChart, disruptionChart];
+    charts.forEach(ch => {
+      if (!ch) return;
+      const legend = ch.options.plugins?.legend || (ch.options.plugins.legend = {});
+      const labels = legend.labels || (legend.labels = {});
+      ch._origLegendFilter = labels.filter;
+      labels.filter = item => item.text && !item.hidden;
+      if (ch.options.plugins?.datalabels) {
+        ch.options.plugins.datalabels.display = true;
+      }
+      ch.update();
+    });
     const includePi = document.getElementById('includePi')?.checked;
     const includeDisruption = document.getElementById('includeDisruption')?.checked;
     const includeRating = document.getElementById('includeRating')?.checked;
@@ -937,9 +903,6 @@ function renderCharts(displaySprints, allSprints) {
             (type === 'rating' && !includeRating)) {
           continue;
         }
-        if (!canvas.width || !canvas.height) {
-          continue;
-        }
         const width = pageWidth - margin * 2;
         const height = canvas.height * width / canvas.width;
         if (y + 14 + height > pageHeight - margin) {
@@ -949,16 +912,24 @@ function renderCharts(displaySprints, allSprints) {
         pdf.setFontSize(12);
         pdf.text(`${boardTitle} - ${chartTitleEl.textContent.trim()}`, margin, y);
         y += 14;
-        const chart = Chart.getChart(canvas);
-        const img = chart ? await chartToPdfImage(chart) : canvasToHighResDataURL(canvas);
-        if (img) {
-          pdf.addImage(img, 'PNG', margin, y, width, height);
-          y += height + 10;
-        }
+        pdf.addImage(canvasToHighResDataURL(canvas), 'PNG', margin, y, width, height);
+        y += height + 10;
       }
     }
     const dateStr = new Date().toISOString().split('T')[0];
     pdf.save(`KPI_Report_${dateStr}.pdf`);
+    charts.forEach(ch => {
+      if (!ch) return;
+      const legendLabels = ch.options.plugins?.legend?.labels;
+      if (legendLabels) {
+        legendLabels.filter = ch._origLegendFilter;
+        delete ch._origLegendFilter;
+      }
+      if (ch.options.plugins?.datalabels) {
+        ch.options.plugins.datalabels.display = false;
+      }
+      ch.update();
+    });
   }
 
   document.getElementById('versionSelect').value = 'KPI_Report.html';
