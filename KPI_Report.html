@@ -865,21 +865,44 @@ function renderCharts(displaySprints, allSprints) {
     return tmp.toDataURL('image/png');
   }
 
+  function stripHiddenDatasets(chart) {
+    const legend = chart.options.plugins?.legend || (chart.options.plugins.legend = {});
+    const labels = legend.labels || (legend.labels = {});
+    chart._origLegendFilter = labels.filter;
+    labels.filter = item => chart.isDatasetVisible(item.datasetIndex);
+    chart._origDatasets = chart.data.datasets;
+    chart.data.datasets = chart.data.datasets.filter((_, i) => chart.isDatasetVisible(i));
+    const dl = chart.options.plugins?.datalabels;
+    if (dl) {
+      chart._origDataLabelDisplay = dl.display;
+      dl.display = true;
+    }
+    chart.update();
+  }
+
+  function restoreHiddenDatasets(chart) {
+    const legendLabels = chart.options.plugins?.legend?.labels;
+    if (legendLabels && chart._origLegendFilter !== undefined) {
+      legendLabels.filter = chart._origLegendFilter;
+      delete chart._origLegendFilter;
+    }
+    if (chart._origDatasets) {
+      chart.data.datasets = chart._origDatasets;
+      delete chart._origDatasets;
+    }
+    const dl = chart.options.plugins?.datalabels;
+    if (dl && chart._origDataLabelDisplay !== undefined) {
+      dl.display = chart._origDataLabelDisplay;
+      delete chart._origDataLabelDisplay;
+    }
+    chart.update();
+  }
+
   function exportPDF() {
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
     const charts = chartInstances;
-    charts.forEach(ch => {
-      if (!ch) return;
-      const legend = ch.options.plugins?.legend || (ch.options.plugins.legend = {});
-      const labels = legend.labels || (legend.labels = {});
-      ch._origLegendFilter = labels.filter;
-      labels.filter = item => item.text && ch.isDatasetVisible(item.datasetIndex);
-      if (ch.options.plugins?.datalabels) {
-        ch.options.plugins.datalabels.display = true;
-      }
-      ch.update();
-    });
+    charts.forEach(ch => ch && stripHiddenDatasets(ch));
     const includePi = document.getElementById('includePi')?.checked;
     const includeDisruption = document.getElementById('includeDisruption')?.checked;
     const includeRating = document.getElementById('includeRating')?.checked;
@@ -918,18 +941,7 @@ function renderCharts(displaySprints, allSprints) {
     }
     const dateStr = new Date().toISOString().split('T')[0];
     pdf.save(`KPI_Report_${dateStr}.pdf`);
-    charts.forEach(ch => {
-      if (!ch) return;
-      const legendLabels = ch.options.plugins?.legend?.labels;
-      if (legendLabels) {
-        legendLabels.filter = ch._origLegendFilter;
-        delete ch._origLegendFilter;
-      }
-      if (ch.options.plugins?.datalabels) {
-        ch.options.plugins.datalabels.display = false;
-      }
-      ch.update();
-    });
+    charts.forEach(ch => ch && restoreHiddenDatasets(ch));
   }
 
   document.getElementById('versionSelect').value = 'KPI_Report.html';
