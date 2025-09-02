@@ -251,6 +251,12 @@
               collect(d.contents.completedIssues, true);
               collect(d.contents.issuesNotCompletedInCurrentSprint, false);
               collect(d.contents.puntedIssues, false);
+              const removedSet = new Set(events.map(e => e.key));
+              (d.contents.issueKeysRemovedFromSprint || []).forEach(k => {
+                if (k && !removedSet.has(k)) {
+                  events.push({ key: k, points: 0, addedAfterStart: false, blocked: false, movedOut: true, completed: false });
+                }
+              });
 
               const entry = data.velocityStatEntries?.[s.id] || {};
               let completed = entry.completed?.value || 0;
@@ -271,7 +277,7 @@
                   if (cached) {
                     ({ histories, initialType, currentType, currentStatus, created, resolutionDate, piRelevant, parentKey } = cached);
                   } else {
-                    const u = `https://${jiraDomain}/rest/api/3/issue/${ev.key}?expand=changelog&fields=issuetype,flagged,status,created,resolutiondate,labels,parent`;
+                    const u = `https://${jiraDomain}/rest/api/3/issue/${ev.key}?expand=changelog&fields=issuetype,flagged,status,created,resolutiondate,labels,parent,customfield_10002`;
                     const ir = await fetch(u, { credentials: 'include' });
                     if (!ir.ok) return;
                     const id = await ir.json();
@@ -281,6 +287,7 @@
                     created = id.fields?.created;
                     resolutionDate = id.fields?.resolutiondate;
                     parentKey = id.fields?.parent?.key;
+                    ev.points = ev.points || Number(id.fields?.customfield_10002) || 0;
                     ev.blocked = ev.blocked || !!(id.fields?.flagged && id.fields.flagged.length);
                     ev.blocked = ev.blocked || currentStatus.toLowerCase().includes('block');
                     const sorted = histories.slice().sort((a, b) => new Date(a.created) - new Date(b.created));
