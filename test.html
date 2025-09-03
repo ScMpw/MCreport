@@ -356,13 +356,13 @@
                   if (!blockedPeriods.length && ev.blocked) {
                     blockedPeriods.push([sprintStart, sprintEnd || new Date()]);
                   }
-                  ev.blockedDays = blockedPeriods.reduce((sum, [start, end]) => {
+                  ev.blockedDays = Number(blockedPeriods.reduce((sum, [start, end]) => {
                     const sClamped = sprintStart && start < sprintStart ? sprintStart : start;
                     const eClamped = sprintEnd && end > sprintEnd ? sprintEnd : end;
                     return eClamped > sClamped
                       ? sum + Kpis.calculateWorkDays(sClamped, eClamped)
                       : sum;
-                  }, 0);
+                  }, 0).toFixed(1));
                   ev.blocked = ev.blocked || blockedPeriods.length > 0;
                   ev.completedDate = resolutionDate;
                   if (devStart && resolutionDate && new Date(resolutionDate) >= CYCLE_TIME_START) {
@@ -492,7 +492,7 @@ function renderCharts(displaySprints, allSprints) {
   const plannedSP = plannedSPAll.slice(-displaySprints.length);
   const metricsArr = displaySprints.map(s => Disruption.calculateDisruptionMetrics(s.events));
   const pulledInCount = metricsArr.map(m => m.pulledInCount || 0);
-  const blockedDays = metricsArr.map(m => m.blockedDays || 0);
+  const blockedDays = metricsArr.map(m => Number((m.blockedDays || 0).toFixed(1)));
   const blockedCount = metricsArr.map(m => m.blockedCount || 0);
   const movedOutCount = metricsArr.map(m => m.movedOutCount || 0);
 
