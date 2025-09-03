@@ -51,6 +51,14 @@
     <button class="btn" onclick="loadDisruption()">Load Data</button>
     <button class="btn" onclick="exportPDF()">Download PDF</button>
   </div>
+  <div id="pdfOptions" style="margin-top:10px;">
+    <span>Include in PDF:</span>
+    <label style="margin-left:5px;"><input type="checkbox" id="includePi" checked> PI Mix Chart</label>
+    <label style="margin-left:5px;"><input type="checkbox" id="includeRating" checked> Rating Zone Chart</label>
+    <label style="margin-left:5px;"><input type="checkbox" id="includeThroughput" checked> Throughput Chart</label>
+    <label style="margin-left:5px;"><input type="checkbox" id="includeCycle" checked> Cycle Time Chart</label>
+    <label style="margin-left:5px;"><input type="checkbox" id="includeDisruption" checked> Disruption Chart</label>
+  </div>
   <div id="sprintRow" style="margin-top:10px; display:none;">
     <span>Sprints:</span>
     <div id="sprintList" style="display:inline-block;"></div>
@@ -548,10 +556,18 @@ function renderCharts(displaySprints, allSprints) {
       return Number(median.toFixed(1));
     });
   const chartWidth = Math.max(sprintLabels.length * 120, 600);
-  ['piMixChart','completedChart','throughputChart','cycleTimeChart','disruptionChart'].forEach(id => {
+  const canvasTypes = {
+    piMixChart: 'pi',
+    completedChart: 'rating',
+    throughputChart: 'throughput',
+    cycleTimeChart: 'cycle',
+    disruptionChart: 'disruption'
+  };
+  Object.entries(canvasTypes).forEach(([id, type]) => {
     const canvas = document.getElementById(id);
     canvas.width = chartWidth;
     canvas.height = 300;
+    canvas.dataset.type = type;
   });
 
   const zonesBySprintAll = [];
@@ -901,12 +917,25 @@ function renderCharts(displaySprints, allSprints) {
         ch.update();
       }
     });
+    const includePi = document.getElementById('includePi')?.checked;
+    const includeRating = document.getElementById('includeRating')?.checked;
+    const includeThroughput = document.getElementById('includeThroughput')?.checked;
+    const includeCycle = document.getElementById('includeCycle')?.checked;
+    const includeDisruption = document.getElementById('includeDisruption')?.checked;
     const canvases = document.querySelectorAll('#chartSection canvas');
     const pageWidth = pdf.internal.pageSize.getWidth();
     const pageHeight = pdf.internal.pageSize.getHeight();
     const margin = 20;
     let y = margin;
     canvases.forEach(cv => {
+      const type = cv.dataset.type;
+      if ((type === 'pi' && !includePi) ||
+          (type === 'rating' && !includeRating) ||
+          (type === 'throughput' && !includeThroughput) ||
+          (type === 'cycle' && !includeCycle) ||
+          (type === 'disruption' && !includeDisruption)) {
+        return;
+      }
       const img = canvasToHighResDataURL(cv);
       const width = pageWidth - margin * 2;
       const height = cv.height * width / cv.width;
