@@ -81,7 +81,7 @@
       <canvas id="completedChart"></canvas>
       <div class="rating-zone-description">
         <div id="ratingZoneToggle" style="cursor:pointer;"><strong>Rating zones (show)</strong></div>
-        <div id="ratingZoneDetails" style="display:none;">
+      <div id="ratingZoneDetails" style="display:none;">
           <div><span style="background:rgba(254,249,195,0.5);"></span><strong>Bloated: AV+2SD…∞.</strong> A significant share of this exceedingly high output probably comes from other effects than team performance alone. Analysis is advised because possibly there's something to be learned.</div>
           <div><span style="background:rgba(34,197,94,0.5);"></span><strong>Lively: AV+1SD…AV+2SD.</strong> The team's performance was outstanding, pushing the envelope on the brink of an unsustainable pace.</div>
           <div><span style="background:rgba(21,128,61,0.5);"></span><strong>Spot-on: AV…AV+1SD.</strong> The team performed very well while also managing to increase the stability of their long-term output.</div>
@@ -90,6 +90,10 @@
           <div><span style="background:rgba(254,202,202,0.5);"></span><strong>Alarming: 0…AV-2SD.</strong> The major share of this plummeting output was probably caused by factors beyond the team‘s influence. Thorough analysis is needed which will lead to profound learning and change.</div>
         </div>
       </div>
+      <h2>Throughput per Sprint</h2>
+      <canvas id="throughputChart"></canvas>
+      <h2>Cycle Time (5 Sprint Median)</h2>
+      <canvas id="cycleTimeChart"></canvas>
       <h2>Disruption Metrics</h2>
       <canvas id="disruptionChart"></canvas>
     </div>
@@ -132,6 +136,8 @@
   let completedChartInstance;
   let disruptionChartInstance;
   let piMixChartInstance;
+  let throughputChartInstance;
+  let cycleTimeChartInstance;
   const DISPLAY_SPRINT_COUNT = 6;
   const RATING_WINDOW = 4;
   let sprints = [];
@@ -529,8 +535,23 @@ function renderCharts(displaySprints, allSprints) {
     (s.events || []).filter(ev => ev.completedDate).length
   );
 
+  const cycleTimePerSprint = displaySprints.map((s, idx) => {
+    const windowSprints = displaySprints.slice(Math.max(0, idx - 4), idx + 1);
+    const times = [];
+    windowSprints.forEach(ws => {
+      (ws.events || []).forEach(ev => {
+        if (typeof ev.cycleTime === 'number') times.push(ev.cycleTime);
+      });
+    });
+    if (!times.length) return 0;
+    times.sort((a, b) => a - b);
+    const mid = Math.floor(times.length / 2);
+    const median = times.length % 2 ? times[mid] : (times[mid - 1] + times[mid]) / 2;
+    return Number(median.toFixed(1));
+  });
+
   const chartWidth = Math.max(sprintLabels.length * 120, 600);
-  ['piMixChart','completedChart','disruptionChart'].forEach(id => {
+  ['piMixChart','completedChart','throughputChart','cycleTimeChart','disruptionChart'].forEach(id => {
     const canvas = document.getElementById(id);
     canvas.width = chartWidth;
     canvas.height = 300;
@@ -596,6 +617,12 @@ function renderCharts(displaySprints, allSprints) {
   }
   if (disruptionChartInstance) {
     disruptionChartInstance.destroy();
+  }
+  if (throughputChartInstance) {
+    throughputChartInstance.destroy();
+  }
+  if (cycleTimeChartInstance) {
+    cycleTimeChartInstance.destroy();
   }
 
   const pctx = document.getElementById('piMixChart').getContext('2d');
@@ -698,6 +725,62 @@ function renderCharts(displaySprints, allSprints) {
     plugins: [ratingZonesPlugin]
   });
 
+  const tctx = document.getElementById('throughputChart').getContext('2d');
+  throughputChartInstance = new Chart(tctx, {
+    type: 'bar',
+    data: {
+      labels: sprintLabels,
+      datasets: [
+        { label: 'Throughput per Sprint', data: throughputPerSprint, backgroundColor: '#f97316', borderColor: '#f97316' }
+      ]
+    },
+    options: {
+      responsive: false,
+      maintainAspectRatio: false,
+      scales: {
+        x: { offset: true },
+        y: { beginAtZero: true, title: { display: true, text: 'Issues' } }
+      },
+      plugins: {
+        legend: { position: 'bottom' },
+        datalabels: {
+          display: false,
+          color: '#000',
+          anchor: 'end',
+          align: 'top'
+        }
+      }
+    }
+  });
+
+  const cctx = document.getElementById('cycleTimeChart').getContext('2d');
+  cycleTimeChartInstance = new Chart(cctx, {
+    type: 'bar',
+    data: {
+      labels: sprintLabels,
+      datasets: [
+        { label: 'Cycle Time (5 Sprint Median)', data: cycleTimePerSprint, backgroundColor: '#8b5cf6', borderColor: '#8b5cf6' }
+      ]
+    },
+    options: {
+      responsive: false,
+      maintainAspectRatio: false,
+      scales: {
+        x: { offset: true },
+        y: { beginAtZero: true, title: { display: true, text: 'Days' } }
+      },
+      plugins: {
+        legend: { position: 'bottom' },
+        datalabels: {
+          display: false,
+          color: '#000',
+          anchor: 'end',
+          align: 'top'
+        }
+      }
+    }
+  });
+
   const dctx = document.getElementById('disruptionChart').getContext('2d');
   disruptionChartInstance = new Chart(dctx, {
     type: 'bar',
@@ -706,8 +789,7 @@ function renderCharts(displaySprints, allSprints) {
       datasets: [
         { label: 'Pulled In Issues', data: pulledInCount, backgroundColor: '#3b82f6', borderColor: '#3b82f6' },
         { label: 'Blocked Days', data: blockedDays, backgroundColor: '#ef4444', borderColor: '#ef4444' },
-        { label: 'Moved Out Issues', data: movedOutCount, backgroundColor: '#10b981', borderColor: '#10b981' },
-        { label: 'Throughput per Sprint', data: throughputPerSprint, backgroundColor: '#f97316', borderColor: '#f97316' }
+        { label: 'Moved Out Issues', data: movedOutCount, backgroundColor: '#10b981', borderColor: '#10b981' }
       ]
     },
     options: {
@@ -775,7 +857,7 @@ function renderCharts(displaySprints, allSprints) {
   function exportPDF() {
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
-    const charts = [piMixChartInstance, completedChartInstance, disruptionChartInstance];
+    const charts = [piMixChartInstance, completedChartInstance, throughputChartInstance, cycleTimeChartInstance, disruptionChartInstance];
     charts.forEach(ch => {
       if (!ch) return;
       const legend = ch.options.plugins?.legend || (ch.options.plugins.legend = {});
