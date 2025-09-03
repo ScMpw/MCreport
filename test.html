@@ -538,11 +538,18 @@ function renderCharts(displaySprints, allSprints) {
     const throughputPerSprint = displaySprints.map(s =>
       (s.events || []).filter(ev => ev.completedDate).length
     );
-    const cycleTimePerSprint = displaySprints.map(s => {
-      const events = (s.events || []).filter(ev => typeof ev.cycleTime === 'number');
-      if (!events.length) return 0;
-      const total = events.reduce((sum, ev) => sum + ev.cycleTime, 0);
-      return total / events.length;
+    const cycleTimePerSprint = displaySprints.map((s, idx) => {
+      const windowSprints = displaySprints.slice(Math.max(0, idx - 4), idx + 1);
+      const times = [];
+      windowSprints.forEach(ws => {
+        (ws.events || []).forEach(ev => {
+          if (typeof ev.cycleTime === 'number') times.push(ev.cycleTime);
+        });
+      });
+      if (!times.length) return 0;
+      times.sort((a, b) => a - b);
+      const mid = Math.floor(times.length / 2);
+      return times.length % 2 ? times[mid] : (times[mid - 1] + times[mid]) / 2;
     });
   const chartWidth = Math.max(sprintLabels.length * 120, 600);
   ['piMixChart','completedChart','disruptionChart'].forEach(id => {
@@ -724,7 +731,7 @@ function renderCharts(displaySprints, allSprints) {
           { label: 'Type Changed Issues', data: typeChangedCount, backgroundColor: '#f59e0b', borderColor: '#f59e0b' },
           { label: 'Moved Out Issues', data: movedOutCount, backgroundColor: '#10b981', borderColor: '#10b981' },
           { label: 'Throughput per Sprint', data: throughputPerSprint, backgroundColor: '#f97316', borderColor: '#f97316' },
-          { label: 'Cycle Time per Sprint', data: cycleTimePerSprint, type: 'bar', backgroundColor: '#8b5cf6', borderColor: '#8b5cf6' }
+          { label: 'Cycle Time (5 Sprint Median)', data: cycleTimePerSprint, type: 'bar', backgroundColor: '#8b5cf6', borderColor: '#8b5cf6' }
         ]
       },
       options: {
