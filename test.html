@@ -474,7 +474,8 @@ function renderVelocityStats(allSprints) {
       (s.events || []).forEach(ev => {
         if (ev.completedDate) {
           totalCompleted++;
-          if (typeof ev.cycleTime === 'number') {
+          const sprintStart = s.startDate ? new Date(s.startDate) : null;
+          if (sprintStart && sprintStart > CYCLE_TIME_START && typeof ev.cycleTime === 'number') {
             totalCycle += ev.cycleTime;
             cycleCount++;
           }
@@ -529,14 +530,18 @@ function renderCharts(displaySprints, allSprints) {
       (s.events || []).filter(ev => ev.completedDate).length
     );
     const cycleTimePerSprint = displaySprints.map((s, idx) => {
-      const windowSprints = displaySprints.slice(Math.max(0, idx - 4), idx + 1);
+      const sprintStart = s.startDate ? new Date(s.startDate) : null;
+      if (!sprintStart || sprintStart <= CYCLE_TIME_START) return null;
+      const windowSprints = displaySprints
+        .slice(Math.max(0, idx - 4), idx + 1)
+        .filter(ws => ws.startDate && new Date(ws.startDate) > CYCLE_TIME_START);
       const times = [];
       windowSprints.forEach(ws => {
         (ws.events || []).forEach(ev => {
           if (typeof ev.cycleTime === 'number') times.push(ev.cycleTime);
         });
       });
-      if (!times.length) return 0;
+      if (!times.length) return null;
       times.sort((a, b) => a - b);
       const mid = Math.floor(times.length / 2);
       const median = times.length % 2 ? times[mid] : (times[mid - 1] + times[mid]) / 2;
