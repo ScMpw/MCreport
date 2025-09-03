@@ -22,15 +22,12 @@
       pulledIn: 0,
       blockedDays: 0,
       movedOut: 0,
-      typeChanged: 0,
       pulledInIssues: new Set(),
       blockedIssues: new Set(),
       movedOutIssues: new Set(),
-      typeChangedIssues: new Set(),
       pulledInCount: 0,
       blockedCount: 0,
-      movedOutCount: 0,
-      typeChangedCount: 0
+      movedOutCount: 0
     };
 
     // Track which categories each issue has already contributed to so the same
@@ -67,24 +64,16 @@
         metrics.movedOutIssues.add(ev.key);
         rec.movedOut = true;
       }
-
-      if (ev.typeChanged && !rec.typeChanged) {
-        metrics.typeChanged += pts;
-        metrics.typeChangedIssues.add(ev.key);
-        rec.typeChanged = true;
-      }
     });
 
     metrics.pulledInCount = metrics.pulledInIssues.size;
     metrics.blockedCount = metrics.blockedIssues.size;
     metrics.movedOutCount = metrics.movedOutIssues.size;
-    metrics.typeChangedCount = metrics.typeChangedIssues.size;
 
     // Convert sets back to arrays for downstream consumers
     metrics.pulledInIssues = Array.from(metrics.pulledInIssues);
     metrics.blockedIssues = Array.from(metrics.blockedIssues);
     metrics.movedOutIssues = Array.from(metrics.movedOutIssues);
-    metrics.typeChangedIssues = Array.from(metrics.typeChangedIssues);
 
     logger.debug('Calculated metrics', metrics);
     return metrics;

@@ -65,7 +65,6 @@
           <th>Completed (SP)</th>
           <th>Pulled In (SP / Issues)</th>
           <th>Blocked Days (Days / Issues)</th>
-          <th>Type Changed (SP / Issues)</th>
           <th>Moved Out (SP / Issues)</th>
           <th>Details</th>
         </tr>
@@ -130,6 +129,7 @@
   let piMixChartInstance;
   const DISPLAY_SPRINT_COUNT = 6;
   const RATING_WINDOW = 4;
+  const CYCLE_TIME_START = new Date('2024-06-10');
   let sprints = [];
   let allSprints = [];
   let epicCache = new Map();
@@ -365,12 +365,10 @@
                   }, 0);
                   ev.blocked = ev.blocked || blockedPeriods.length > 0;
                   ev.completedDate = resolutionDate;
-                  if (devStart && resolutionDate) {
+                  if (devStart && resolutionDate && new Date(resolutionDate) >= CYCLE_TIME_START) {
                     ev.cycleTime = Kpis.calculateWorkDays(devStart, new Date(resolutionDate));
                   }
 
-                  const allowedTypes = new Set(['task', 'story', 'bug']);
-                  let typeChangedDuringSprint = false;
                   for (const h of histories) {
                     const chDate = new Date(h.created);
                     if (sprintStart && chDate >= sprintStart) {
@@ -385,16 +383,8 @@
                           if (!fromHas && toHas) ev.addedAfterStart = true;
                           if (fromHas && !toHas) ev.movedOut = true;
                         }
-                        if (sprintEnd && chDate <= sprintEnd && item.field === 'issuetype') {
-                          const fromType = item.fromString || item.from;
-                          const toType = item.toString || item.to;
-                          if (fromType && toType && fromType !== toType) {
-                            typeChangedDuringSprint = true;
-                          }
-                        }
                       }
                     }
-                    // Continue scanning in case sprint membership changes occur after a type change
                   }
 
                   // Some issues may be created after the sprint starts and assigned
@@ -403,10 +393,6 @@
                   // the issue's creation date.
                   if (!ev.addedAfterStart && sprintStart && created && new Date(created) > sprintStart) {
                     ev.addedAfterStart = true;
-                  }
-
-                  if (typeChangedDuringSprint && allowedTypes.has((initialType || '').toLowerCase()) && currentType && currentType !== initialType) {
-                    ev.typeChanged = true;
                   }
                 } catch (e) {}
               }));
@@ -451,17 +437,15 @@
         <td title="${sprint.completedSource}">${sprint.completed || 0}</td>
         <td title="${metrics.pulledInIssues.join(', ')}">${metrics.pulledIn || 0} (${metrics.pulledInCount || 0})</td>
         <td title="${metrics.blockedIssues.join(', ')}">${Number(metrics.blockedDays || 0).toFixed(1)} (${metrics.blockedCount || 0})</td>
-        <td title="${metrics.typeChangedIssues.join(', ')}">${metrics.typeChanged || 0} (${metrics.typeChangedCount || 0})</td>
         <td title="${metrics.movedOutIssues.join(', ')}">${metrics.movedOut || 0} (${metrics.movedOutCount || 0})</td>
         <td><button class="btn details-toggle" onclick="toggleDetails('${detailsId}', this)">Show Details</button></td>
       </tr>`;
-      html += `<tr id="${detailsId}" style="display:none"><td colspan="8">
+      html += `<tr id="${detailsId}" style="display:none"><td colspan="7">
         <table class="story-table">
           <thead><tr><th>Metric</th><th>Stories</th></tr></thead>
           <tbody>
             <tr><td>Pulled In</td><td>${metrics.pulledInIssues.join(', ') || '-'}</td></tr>
             <tr><td>Blocked</td><td>${metrics.blockedIssues.join(', ') || '-'}</td></tr>
-            <tr><td>Type Changed</td><td>${metrics.typeChangedIssues.join(', ') || '-'}</td></tr>
             <tr><td>Moved Out</td><td>${metrics.movedOutIssues.join(', ') || '-'}</td></tr>
           </tbody>
         </table>
@@ -496,7 +480,7 @@ function renderVelocityStats(allSprints) {
 
     const html = '<h2>Throughput & Cycle Time</h2>' +
       '<table><thead><tr><th>Sprint Throughput</th><th>Mean Cycle Time (days)</th></tr></thead><tbody>' +
-      `<tr><td>${sprintThroughput.toFixed(2)}</td><td>${meanCycleTime.toFixed(2)}</td></tr></tbody></table>`;
+      `<tr><td>${sprintThroughput.toFixed(2)}</td><td>${meanCycleTime.toFixed(1)}</td></tr></tbody></table>`;
     wrap.innerHTML = html;
   }
 
@@ -510,7 +494,6 @@ function renderCharts(displaySprints, allSprints) {
   const pulledInCount = metricsArr.map(m => m.pulledInCount || 0);
   const blockedDays = metricsArr.map(m => m.blockedDays || 0);
   const blockedCount = metricsArr.map(m => m.blockedCount || 0);
-  const typeChangedCount = metricsArr.map(m => m.typeChangedCount || 0);
   const movedOutCount = metricsArr.map(m => m.movedOutCount || 0);
 
   function sumSP(events, pred) {
@@ -549,7 +532,8 @@ function renderCharts(displaySprints, allSprints) {
       if (!times.length) return 0;
       times.sort((a, b) => a - b);
       const mid = Math.floor(times.length / 2);
-      return times.length % 2 ? times[mid] : (times[mid - 1] + times[mid]) / 2;
+      const median = times.length % 2 ? times[mid] : (times[mid - 1] + times[mid]) / 2;
+      return Number(median.toFixed(1));
     });
   const chartWidth = Math.max(sprintLabels.length * 120, 600);
   ['piMixChart','completedChart','disruptionChart'].forEach(id => {
@@ -651,11 +635,49 @@ function renderCharts(displaySprints, allSprints) {
     data: {
       labels: sprintLabels,
       datasets: [
-        { label: 'Initially Planned PI contributions', data: plannedPI, backgroundColor: plannedPIFill, borderColor: plannedPIColor, stack: 'planned' },
-        { label: 'Initially Planned other', data: plannedOther, backgroundColor: plannedOtherFill, borderColor: plannedOtherColor, stack: 'planned' },
-        { label: 'Initial Plan completed', data: initialCompleted, backgroundColor: initialCompletedColor, borderColor: initialCompletedColor, stack: 'initialCompleted' },
-        { label: 'Completed PI contributions', data: completedPI, backgroundColor: completedPIColor, borderColor: completedPIColor, stack: 'completed' },
-        { label: 'Completed other', data: completedOther, backgroundColor: completedOtherColor, borderColor: completedOtherColor, stack: 'completed' },
+        { label: 'Initially Planned PI contributions', data: plannedPI, backgroundColor: plannedPIFill, borderColor: plannedPIColor, stack: 'planned', datalabels: { display: false } },
+        {
+          label: 'Initially Planned other',
+          data: plannedOther,
+          backgroundColor: plannedOtherFill,
+          borderColor: plannedOtherColor,
+          stack: 'planned',
+          datalabels: {
+            display: true,
+            anchor: 'end',
+            align: 'top',
+            offset: -4,
+            color: '#000',
+            font: { weight: 'bold' },
+            formatter: (v, ctx) => {
+              const i = ctx.dataIndex;
+              const plannedTotal = (plannedPI[i] || 0) + (plannedOther[i] || 0);
+              return plannedTotal;
+            }
+          }
+        },
+        { label: 'Initial Plan completed', data: initialCompleted, backgroundColor: initialCompletedColor, borderColor: initialCompletedColor, stack: 'initialCompleted', datalabels: { display: true, anchor: 'end', align: 'top', offset: -4, color: '#000', font: { weight: 'bold' } } },
+        { label: 'Completed PI contributions', data: completedPI, backgroundColor: completedPIColor, borderColor: completedPIColor, stack: 'completed', datalabels: { display: false } },
+        {
+          label: 'Completed other',
+          data: completedOther,
+          backgroundColor: completedOtherColor,
+          borderColor: completedOtherColor,
+          stack: 'completed',
+          datalabels: {
+            display: true,
+            anchor: 'end',
+            align: 'top',
+            offset: -4,
+            color: '#000',
+            font: { weight: 'bold' },
+            formatter: (v, ctx) => {
+              const i = ctx.dataIndex;
+              const completedTotal = (completedPI[i] || 0) + (completedOther[i] || 0);
+              return completedTotal;
+            }
+          }
+        },
       ]
     },
     options: {
@@ -728,7 +750,6 @@ function renderCharts(displaySprints, allSprints) {
         datasets: [
           { label: 'Pulled In Issues', data: pulledInCount, backgroundColor: '#3b82f6', borderColor: '#3b82f6' },
           { label: 'Blocked Days', data: blockedDays, backgroundColor: '#ef4444', borderColor: '#ef4444' },
-          { label: 'Type Changed Issues', data: typeChangedCount, backgroundColor: '#f59e0b', borderColor: '#f59e0b' },
           { label: 'Moved Out Issues', data: movedOutCount, backgroundColor: '#10b981', borderColor: '#10b981' },
           { label: 'Throughput per Sprint', data: throughputPerSprint, backgroundColor: '#f97316', borderColor: '#f97316' },
           { label: 'Cycle Time (5 Sprint Median)', data: cycleTimePerSprint, type: 'bar', backgroundColor: '#8b5cf6', borderColor: '#8b5cf6' }
@@ -744,7 +765,7 @@ function renderCharts(displaySprints, allSprints) {
         plugins: {
           legend: { position: 'bottom' },
           datalabels: {
-            display: false,
+            display: true,
             color: '#000',
             anchor: 'end',
             align: 'top'
@@ -802,7 +823,9 @@ function renderCharts(displaySprints, allSprints) {
     const charts = [piMixChartInstance, completedChartInstance, disruptionChartInstance];
     charts.forEach(ch => {
       if (ch && ch.options.plugins?.datalabels) {
-        ch.options.plugins.datalabels.display = true;
+        const plugin = ch.options.plugins.datalabels;
+        plugin._origDisplay = plugin.display;
+        plugin.display = true;
         ch.update();
       }
     });
@@ -826,7 +849,8 @@ function renderCharts(displaySprints, allSprints) {
     pdf.save(`Disruption_Report_${dateStr}.pdf`);
     charts.forEach(ch => {
       if (ch && ch.options.plugins?.datalabels) {
-        ch.options.plugins.datalabels.display = false;
+        const plugin = ch.options.plugins.datalabels;
+        plugin.display = plugin._origDisplay;
         ch.update();
       }
     });
