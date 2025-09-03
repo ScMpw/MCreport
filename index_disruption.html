@@ -92,7 +92,9 @@
       </div>
       <h2>Throughput per Sprint</h2>
       <canvas id="throughputChart"></canvas>
+
       <h2>Cycle Time (5-sprint median)</h2>
+
       <canvas id="cycleTimeChart"></canvas>
       <h2>Disruption Metrics</h2>
       <canvas id="disruptionChart"></canvas>
@@ -759,7 +761,9 @@ function renderCharts(displaySprints, allSprints) {
     data: {
       labels: sprintLabels,
       datasets: [
+
         { label: 'Cycle Time (5-sprint median)', data: cycleTimePerSprint, backgroundColor: '#8b5cf6', borderColor: '#8b5cf6' }
+
       ]
     },
     options: {
