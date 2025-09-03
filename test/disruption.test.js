@@ -28,4 +28,17 @@ const { calculateDisruptionMetrics } = require('../src/disruption');
   assert.deepStrictEqual(metrics.movedOutIssues, ['ST-3']);
 })();
 
+// Test typeChanged issues contribute correctly and are de-duplicated
+(() => {
+  const events = [
+    { key: 'ST-4', points: 3, typeChanged: true },
+    { key: 'ST-4', points: 3, typeChanged: true },
+    { key: 'ST-5', points: 8, typeChanged: true }
+  ];
+  const metrics = calculateDisruptionMetrics(events);
+  assert.strictEqual(metrics.typeChanged, 11);
+  assert.strictEqual(metrics.typeChangedCount, 2);
+  assert.deepStrictEqual(metrics.typeChangedIssues.sort(), ['ST-4', 'ST-5']);
+})();
+
 console.log('disruption tests passed');
