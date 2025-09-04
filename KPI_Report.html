@@ -481,7 +481,7 @@
               }
               const plannedFromIssues = events
                 .filter(ev => !ev.addedAfterStart && !ev.removedBeforeStart)
-                .reduce((sum, ev) => sum + (ev.initialPoints ?? ev.points || 0), 0);
+                  .reduce((sum, ev) => sum + ((ev.initialPoints ?? ev.points) || 0), 0);
               if (!initiallyPlanned || plannedFromIssues > initiallyPlanned) {
                 initiallyPlanned = plannedFromIssues;
                 initiallyPlannedSource = 'sum of events not added after start';
@@ -639,7 +639,7 @@ function renderBoardCharts(displaySprints, allSprints, container) {
   const initialCompleted = displaySprints.map(s =>
     (s.events || [])
       .filter(ev => !ev.addedAfterStart && !ev.removedBeforeStart && !ev.movedOut && ev.completed)
-      .reduce((sum, ev) => sum + (ev.completedPoints ?? ev.points || 0), 0)
+      .reduce((sum, ev) => sum + ((ev.completedPoints ?? ev.points) || 0), 0)
   );
 
   const throughputPerSprint = displaySprints.map(s =>
