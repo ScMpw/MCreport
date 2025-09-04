@@ -284,8 +284,11 @@
                 events = events.filter(ev => ev.key && ev.key.startsWith('BF-'));
               }
 
-              const sprintStart = s.startDate ? new Date(s.startDate) : null;
+              let sprintStart = s.startDate ? new Date(s.startDate) : null;
               const sprintEnd = s.completeDate ? new Date(s.completeDate) : (s.endDate ? new Date(s.endDate) : null);
+              if (sprintStart && sprintEnd && sprintStart > sprintEnd) {
+                sprintStart = null;
+              }
 
               await Promise.all(events.map(async ev => {
                 try {
@@ -410,17 +413,17 @@
 
                   for (const h of histories) {
                     const chDate = new Date(h.created);
-                    if (sprintStart && chDate >= sprintStart) {
-                      for (const item of h.items || []) {
-                        if (item.field === 'Sprint') {
-                          const from = (item.fromString || item.from || '').toString();
-                          const to = (item.toString || item.to || '').toString();
-                          const sprintIdStr = String(s.id);
-                          const sprintName = s.name || '';
-                          const fromHas = from.includes(sprintIdStr) || from.includes(sprintName);
-                          const toHas = to.includes(sprintIdStr) || to.includes(sprintName);
-                          if (!fromHas && toHas) ev.addedAfterStart = true;
-                          if (fromHas && !toHas) ev.movedOut = true;
+                    for (const item of h.items || []) {
+                      if (item.field === 'Sprint') {
+                        const from = (item.fromString || item.from || '').toString();
+                        const to = (item.toString || item.to || '').toString();
+                        const sprintIdStr = String(s.id);
+                        const sprintName = s.name || '';
+                        const fromHas = from.includes(sprintIdStr) || from.includes(sprintName);
+                        const toHas = to.includes(sprintIdStr) || to.includes(sprintName);
+                        if (fromHas && !toHas) ev.movedOut = true;
+                        if (sprintStart && chDate >= sprintStart && !fromHas && toHas) {
+                          ev.addedAfterStart = true;
                         }
                       }
                     }
