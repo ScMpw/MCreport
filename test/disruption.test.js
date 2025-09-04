@@ -28,4 +28,15 @@ const { calculateDisruptionMetrics } = require('../src/disruption');
   assert.deepStrictEqual(metrics.movedOutIssues, ['ST-3']);
 })();
 
+// Test moved out before sprint start is ignored
+(() => {
+  const events = [
+    { key: 'ST-4', points: 4, movedOut: true, removedBeforeStart: true }
+  ];
+  const metrics = calculateDisruptionMetrics(events);
+  assert.strictEqual(metrics.movedOut, 0);
+  assert.strictEqual(metrics.movedOutCount, 0);
+  assert.deepStrictEqual(metrics.movedOutIssues, []);
+})();
+
 console.log('disruption tests passed');

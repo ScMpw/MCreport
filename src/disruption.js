@@ -59,7 +59,7 @@
         rec.blocked = true;
       }
 
-      if (ev.movedOut && !rec.movedOut) {
+      if (ev.movedOut && !ev.removedBeforeStart && !rec.movedOut) {
         metrics.movedOut += pts;
         metrics.movedOutIssues.add(ev.key);
         rec.movedOut = true;
