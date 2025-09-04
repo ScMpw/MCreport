@@ -298,6 +298,25 @@
                     ev.points = ev.points || Number(id.fields?.customfield_10002) || 0;
                     ev.blocked = ev.blocked || !!(id.fields?.flagged && id.fields.flagged.length);
                     ev.blocked = ev.blocked || currentStatus.toLowerCase().includes('block');
+                    // Determine story points at sprint start
+                    let initialPoints = 0;
+                    if (histories && sprintStart) {
+                      const sortedHist = histories.slice().sort((a, b) => new Date(a.created) - new Date(b.created));
+                      for (const h of sortedHist) {
+                        const chDate = new Date(h.created);
+                        if (chDate > sprintStart) break;
+                        for (const item of h.items || []) {
+                          const fieldName = (item.field || '').toLowerCase();
+                          if (fieldName === 'story points' || fieldName === 'customfield_10002') {
+                            const val = Number(item.toString || item.to);
+                            if (!isNaN(val)) initialPoints = val;
+                          }
+                        }
+                      }
+                    } else {
+                      initialPoints = ev.points || 0;
+                    }
+                    ev.initialPoints = initialPoints;
                     piRelevant = false;
                     if (parentKey) {
                       const epic = await getEpicInfo(jiraDomain, parentKey);
@@ -401,9 +420,9 @@
               const completed = events.filter(ev => ev.completed && !ev.movedOut)
                                       .reduce((sum, ev) => sum + ev.points, 0);
               const initiallyPlanned = events.filter(ev => !ev.addedAfterStart)
-                                            .reduce((sum, ev) => sum + ev.points, 0);
+                                            .reduce((sum, ev) => sum + (ev.initialPoints || 0), 0);
               const completedSource = 'sum of completed events (excluding moved out)';
-              const initiallyPlannedSource = 'sum of events not added after start';
+              const initiallyPlannedSource = 'sum of story points at sprint start for events not added after start';
               const key = `${boardNum}-${s.id}`;
               const existing = combined[key] || { board: boardNum, id: s.id, name: s.name, startDate: s.startDate, events: [], initiallyPlanned: 0, completed: 0, initiallyPlannedSource, completedSource };
               existing.id = existing.id || s.id;
@@ -500,11 +519,11 @@ function renderBoardCharts(displaySprints, allSprints, container) {
   const blockedCount = metricsArr.map(m => m.blockedCount || 0);
   const movedOutCount = metricsArr.map(m => m.movedOutCount || 0);
 
-  function sumSP(events, pred) {
-    return (events || []).reduce((sum, ev) => sum + (pred(ev) ? (ev.points || 0) : 0), 0);
+  function sumSP(events, pred, field = 'points') {
+    return (events || []).reduce((sum, ev) => sum + (pred(ev) ? (ev[field] || 0) : 0), 0);
   }
   const plannedPI = displaySprints.map(s =>
-    sumSP(s.events, ev => !ev.addedAfterStart && !ev.movedOut && ev.piRelevant)
+    sumSP(s.events, ev => !ev.addedAfterStart && !ev.movedOut && ev.piRelevant, 'initialPoints')
   );
   const plannedOther = displaySprints.map((s, i) =>
     Math.max(0, (s.initiallyPlanned || 0) - plannedPI[i])
