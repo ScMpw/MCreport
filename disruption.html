@@ -47,6 +47,12 @@
           ...(reportData.contents?.issuesNotCompletedInCurrentSprint || []),
           ...(reportData.contents?.puntedIssues || [])
         ];
+        // Include issues that were removed from the sprint. These appear only as
+        // keys in the sprint report, so convert them to issue objects to reuse
+        // the same processing logic below.
+        (reportData.contents?.issueKeysRemovedFromSprint || []).forEach(key => {
+          if (key) issues.push({ key });
+        });
         for (const issue of issues) {
           const issueKey = issue.key;
           if (isBfBoard && !issueKey.startsWith('BF-')) continue;
