@@ -325,6 +325,7 @@
                     let initialPoints = 0;
                     if (histories && sprintStart) {
                       const sortedHist = histories.slice().sort((a, b) => new Date(a.created) - new Date(b.created));
+                      let found = false;
                       for (const h of sortedHist) {
                         const chDate = new Date(h.created);
                         if (chDate > sprintStart) break;
@@ -332,9 +333,15 @@
                           const fieldName = (item.field || '').toLowerCase();
                           if (fieldName === 'story points' || fieldName === 'customfield_10002') {
                             const val = Number(item.toString || item.to);
-                            if (!isNaN(val)) initialPoints = val;
+                            if (!isNaN(val)) {
+                              initialPoints = val;
+                              found = true;
+                            }
                           }
                         }
+                      }
+                      if (!found) {
+                        initialPoints = ev.points || 0;
                       }
                     } else {
                       initialPoints = ev.points || 0;
