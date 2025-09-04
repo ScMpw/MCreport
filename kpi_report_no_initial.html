@@ -546,7 +546,7 @@ function renderBoardCharts(displaySprints, allSprints, container) {
     return (events || []).reduce((sum, ev) => {
       if (!pred(ev)) return sum;
       let val = ev[field];
-      if (field === 'initialPoints' && (val === undefined || val === null)) {
+      if ((field === 'initialPoints' || field === 'completedPoints') && (val === undefined || val === null)) {
         val = ev.points;
       }
       return sum + (val || 0);
@@ -560,7 +560,7 @@ function renderBoardCharts(displaySprints, allSprints, container) {
     sumSP(s.events, ev => !ev.addedAfterStart && !ev.piRelevant, 'initialPoints')
   );
   const completedPI = displaySprints.map(s =>
-    sumSP(s.events, ev => ev.completed && ev.piRelevant, true)
+    sumSP(s.events, ev => ev.completed && ev.piRelevant, 'completedPoints')
   );
   const completedOther = displaySprints.map((s, i) =>
     Math.max(0, (s.completed || 0) - completedPI[i])
