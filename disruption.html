@@ -495,8 +495,6 @@ function renderCharts(displaySprints, allSprints) {
   const sprintLabels = displaySprints.map(s => s.name);
   const completedSPAll = (allSprints || displaySprints).map(s => s.completed || 0);
   const completedSP = completedSPAll.slice(-displaySprints.length);
-  const plannedSPAll = (allSprints || displaySprints).map(s => s.initiallyPlanned || 0);
-  const plannedSP = plannedSPAll.slice(-displaySprints.length);
   const metricsArr = displaySprints.map(s => Disruption.calculateDisruptionMetrics(s.events));
   const pulledInCount = metricsArr.map(m => m.pulledInCount || 0);
   const blockedDays = metricsArr.map(m => Math.ceil((m.blockedDays || 0) * 10) / 10);
@@ -562,7 +560,7 @@ function renderCharts(displaySprints, allSprints) {
   const zonesBySprint = zonesBySprintAll.slice(-displaySprints.length);
   const avgBySprint = avgBySprintAll.slice(-displaySprints.length);
   const zoneMaxes = zonesBySprint.map(zs => zs ? zs[zs.length - 1].yMax : 0);
-  const maxY = Math.max(...completedSP, ...plannedSP, ...zoneMaxes, ...avgBySprint);
+  const maxY = Math.max(...completedSP, ...zoneMaxes, ...avgBySprint);
   zonesBySprint.forEach(zs => { if (zs) { zs[zs.length - 1].yMax = maxY; } });
 
   const ratingZonesPlugin = {
@@ -672,7 +670,6 @@ function renderCharts(displaySprints, allSprints) {
     data: {
       labels: sprintLabels,
       datasets: [
-        { label: 'Initially Planned SP', data: plannedSP, borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,0.3)', fill: false, tension: 0.1 },
         { label: 'Completed SP', data: completedSP, borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.3)', fill: false, tension: 0.1 },
         { label: 'Average Velocity', data: avgBySprint, borderColor: '#000000', borderDash: [5,5], fill: false, tension: 0 }
       ]
