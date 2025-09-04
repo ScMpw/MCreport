@@ -51,6 +51,16 @@ const assert = require('assert');
         { field: 'Sprint', from: '', to: '2', at: '2023-12-30' },
         { field: 'Status', from: 'To Do', to: 'In Progress', at: '2024-01-10' }
       ]
+    },
+    {
+      team: 'ALL',
+      product: 'ALL',
+      storyPoints: 13,
+      epicLabels: ['2024_PI1_committed'],
+      changelog: [
+        { field: 'Sprint', from: '', to: '1', at: '2023-12-15' },
+        { field: 'Sprint', from: '1', to: '', at: '2023-12-25' }
+      ]
     }
   ];
 
