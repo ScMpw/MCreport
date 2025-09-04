@@ -480,9 +480,13 @@
       const detailsId = `details-${idx}`;
       const events = sprint.events || [];
       const piCompleted = events.filter(ev => ev.piRelevant && ev.completed).map(ev => ev.key);
-      const piNotCompleted = events.filter(ev => ev.piRelevant && !ev.completed).map(ev => ev.key);
+      const piNotCompleted = events
+        .filter(ev => ev.piRelevant && !ev.completed && !ev.movedOut)
+        .map(ev => ev.key);
       const otherCompleted = events.filter(ev => !ev.piRelevant && ev.completed).map(ev => ev.key);
-      const otherNotCompleted = events.filter(ev => !ev.piRelevant && !ev.completed).map(ev => ev.key);
+      const otherNotCompleted = events
+        .filter(ev => !ev.piRelevant && !ev.completed && !ev.movedOut)
+        .map(ev => ev.key);
       html += `<tr>
         <td>[${sprint.board}] ${sprint.name}</td>
         <td title="${sprint.initiallyPlannedSource}">${sprint.initiallyPlanned || 0}</td>
