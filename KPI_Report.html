@@ -556,8 +556,8 @@ function renderBoardCharts(displaySprints, allSprints, container) {
   const plannedPI = displaySprints.map(s =>
     sumSP(s.events, ev => !ev.addedAfterStart && ev.piRelevant, 'initialPoints')
   );
-  const plannedOther = displaySprints.map((s, i) =>
-    Math.max(0, (s.initiallyPlanned || 0) - plannedPI[i])
+  const plannedOther = displaySprints.map(s =>
+    sumSP(s.events, ev => !ev.addedAfterStart && !ev.piRelevant, 'initialPoints')
   );
   const completedPI = displaySprints.map(s =>
     sumSP(s.events, ev => ev.completed && ev.piRelevant, true)
