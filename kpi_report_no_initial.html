@@ -487,6 +487,8 @@
       const otherNotCompleted = events
         .filter(ev => !ev.piRelevant && !ev.completed && !ev.movedOut)
         .map(ev => ev.key);
+      const initiallyPlannedIssues = events.filter(ev => !ev.addedAfterStart).map(ev => ev.key);
+      const completedIssues = events.filter(ev => ev.completed && !ev.movedOut).map(ev => ev.key);
       html += `<tr>
         <td>[${sprint.board}] ${sprint.name}</td>
         <td title="${sprint.initiallyPlannedSource}">${sprint.initiallyPlanned || 0}</td>
@@ -504,6 +506,8 @@
         <table class="story-table">
           <thead><tr><th>Metric</th><th>Stories</th></tr></thead>
           <tbody>
+            <tr><td>Initially Planned</td><td>${initiallyPlannedIssues.join(', ') || '-'}</td></tr>
+            <tr><td>Completed</td><td>${completedIssues.join(', ') || '-'}</td></tr>
             <tr><td>Pulled In</td><td>${metrics.pulledInIssues.join(', ') || '-'}</td></tr>
             <tr><td>Blocked</td><td>${metrics.blockedIssues.join(', ') || '-'}</td></tr>
             <tr><td>Moved Out</td><td>${metrics.movedOutIssues.join(', ') || '-'}</td></tr>
