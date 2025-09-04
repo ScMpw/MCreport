@@ -252,12 +252,16 @@
               if (!r.ok) return;
               const d = await r.json();
               let events = [];
+              const addedKeySet = new Set(
+                d.contents?.issueKeysAddedAfterSprintStart || d.contents?.issueKeysAddedAfterStart || []
+              );
               const collect = (arr, completed = false) => {
                 (arr || []).forEach(it => {
+                  const added = addedKeySet.has(it.key) || it.addedAfterSprintStart || it.addedDuringSprint;
                   events.push({
                     key: it.key,
                     points: it.estimateStatistic?.statFieldValue?.value || 0,
-                    addedAfterStart: false,
+                    addedAfterStart: !!added,
                     blocked: !!it.flagged,
                     movedOut: false,
                     completed
@@ -276,8 +280,16 @@
                 if (existing) {
                   existing.movedOut = true;
                   existing.completed = false;
+                  existing.addedAfterStart = existing.addedAfterStart || addedKeySet.has(k);
                 } else {
-                  events.push({ key: k, points: 0, addedAfterStart: false, blocked: false, movedOut: true, completed: false });
+                  events.push({
+                    key: k,
+                    points: 0,
+                    addedAfterStart: addedKeySet.has(k),
+                    blocked: false,
+                    movedOut: true,
+                    completed: false
+                  });
                 }
               });
               if (isBfBoard) {
