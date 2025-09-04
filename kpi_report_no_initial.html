@@ -474,7 +474,7 @@
               }
               const plannedFromIssues = events
                 .filter(ev => !ev.addedAfterStart && !ev.removedBeforeStart)
-                .reduce((sum, ev) => sum + (ev.initialPoints ?? ev.points || 0), 0);
+                .reduce((sum, ev) => sum + (ev.initialPoints ?? ev.points ?? 0), 0);
               if (!initiallyPlanned || plannedFromIssues > initiallyPlanned) {
                 initiallyPlanned = plannedFromIssues;
                 initiallyPlannedSource = 'sum of events not added after start';
