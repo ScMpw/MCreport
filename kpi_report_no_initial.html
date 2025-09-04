@@ -434,9 +434,13 @@
                         const sprintName = s.name || '';
                         const fromHas = from.includes(sprintIdStr) || from.includes(sprintName);
                         const toHas = to.includes(sprintIdStr) || to.includes(sprintName);
-                        if (fromHas && !toHas) ev.movedOut = true;
-                        if (sprintStart && chDate >= sprintStart && !fromHas && toHas) {
-                          ev.addedAfterStart = true;
+                        if (fromHas && !toHas) {
+                          ev.movedOut = true;
+                          if (sprintStart && chDate < sprintStart) ev.removedBeforeStart = true;
+                        }
+                        if (!fromHas && toHas) {
+                          if (sprintStart && chDate < sprintStart) ev.removedBeforeStart = false;
+                          if (sprintStart && chDate >= sprintStart) ev.addedAfterStart = true;
                         }
                       }
                     }
@@ -467,10 +471,11 @@
                 initiallyPlanned = d.contents?.allIssuesEstimateSum?.value;
                 initiallyPlannedSource = 'allIssuesEstimateSum';
               }
-              if (!initiallyPlanned) {
-                initiallyPlanned = events
-                  .filter(ev => !ev.addedAfterStart)
-                  .reduce((sum, ev) => sum + (ev.points || 0), 0);
+              const plannedFromIssues = events
+                .filter(ev => !ev.addedAfterStart && !ev.removedBeforeStart)
+                .reduce((sum, ev) => sum + (ev.initialPoints ?? ev.points || 0), 0);
+              if (!initiallyPlanned || plannedFromIssues > initiallyPlanned) {
+                initiallyPlanned = plannedFromIssues;
                 initiallyPlannedSource = 'sum of events not added after start';
               }
 
@@ -515,7 +520,7 @@
         .filter(ev => !ev.piRelevant && !ev.completed && !ev.movedOut)
         .map(ev => ev.key);
       const initiallyPlannedIssues = Array.from(new Set(
-        events.filter(ev => !ev.addedAfterStart).map(ev => ev.key)
+        events.filter(ev => !ev.addedAfterStart && !ev.removedBeforeStart).map(ev => ev.key)
       ));
       const completedIssues = Array.from(new Set(
         events.filter(ev => ev.completed && !ev.movedOut).map(ev => ev.key)
@@ -588,7 +593,7 @@ function renderBoardCharts(displaySprints, allSprints, container) {
   const completedSPAll = (allSprints || displaySprints).map(s => s.completed || 0);
   const completedSP = completedSPAll.slice(-displaySprints.length);
   const plannedSPAll = (allSprints || displaySprints).map(s =>
-    sumSP(s.events, ev => !ev.addedAfterStart, 'initialPoints')
+    sumSP(s.events, ev => !ev.addedAfterStart && !ev.removedBeforeStart, 'initialPoints')
   );
   const plannedSP = plannedSPAll.slice(-displaySprints.length);
   const metricsArr = displaySprints.map(s => Disruption.calculateDisruptionMetrics(s.events));
@@ -610,10 +615,10 @@ function renderBoardCharts(displaySprints, allSprints, container) {
 
   }
   const plannedPI = displaySprints.map(s =>
-    sumSP(s.events, ev => !ev.addedAfterStart && ev.piRelevant, 'initialPoints')
+    sumSP(s.events, ev => !ev.addedAfterStart && !ev.removedBeforeStart && ev.piRelevant, 'initialPoints')
   );
   const plannedOther = displaySprints.map(s =>
-    sumSP(s.events, ev => !ev.addedAfterStart && !ev.piRelevant, 'initialPoints')
+    sumSP(s.events, ev => !ev.addedAfterStart && !ev.removedBeforeStart && !ev.piRelevant, 'initialPoints')
   );
   const completedPI = displaySprints.map(s =>
     sumSP(s.events, ev => ev.completed && ev.piRelevant, 'completedPoints')
