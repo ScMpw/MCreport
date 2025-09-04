@@ -420,7 +420,10 @@
               const completed = events.filter(ev => ev.completed && !ev.movedOut)
                                       .reduce((sum, ev) => sum + ev.points, 0);
               const initiallyPlanned = events.filter(ev => !ev.addedAfterStart)
-                                            .reduce((sum, ev) => sum + (ev.initialPoints || 0), 0);
+                                            .reduce((sum, ev) => {
+                                              const init = ev.initialPoints;
+                                              return sum + (init != null ? init : (ev.points || 0));
+                                            }, 0);
               const completedSource = 'sum of completed events (excluding moved out)';
               const initiallyPlannedSource = 'sum of story points at sprint start for events not added after start';
               const key = `${boardNum}-${s.id}`;
@@ -520,7 +523,14 @@ function renderBoardCharts(displaySprints, allSprints, container) {
   const movedOutCount = metricsArr.map(m => m.movedOutCount || 0);
 
   function sumSP(events, pred, field = 'points') {
-    return (events || []).reduce((sum, ev) => sum + (pred(ev) ? (ev[field] || 0) : 0), 0);
+    return (events || []).reduce((sum, ev) => {
+      if (!pred(ev)) return sum;
+      let val = ev[field];
+      if (field === 'initialPoints' && (val === undefined || val === null)) {
+        val = ev.points;
+      }
+      return sum + (val || 0);
+    }, 0);
   }
   const plannedPI = displaySprints.map(s =>
     sumSP(s.events, ev => !ev.addedAfterStart && !ev.movedOut && ev.piRelevant, 'initialPoints')
