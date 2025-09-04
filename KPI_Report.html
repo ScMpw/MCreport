@@ -466,6 +466,7 @@
                 completed = d.contents?.completedIssuesEstimateSum?.value || 0;
                 completedSource = 'completedIssuesEstimateSum';
               }
+
               let initiallyPlanned = entry.estimated?.value || 0;
               let initiallyPlannedSource = 'velocityStatEntries.estimated';
               if (!initiallyPlanned) {
@@ -479,6 +480,7 @@
                 initiallyPlanned = plannedFromIssues;
                 initiallyPlannedSource = 'sum of events not added after start';
               }
+
 
               const key = `${boardNum}-${s.id}`;
               const existing = combined[key] || { board: boardNum, id: s.id, name: s.name, startDate: s.startDate, events: [], initiallyPlanned: 0, completed: 0, initiallyPlannedSource, completedSource };
