@@ -432,25 +432,24 @@
                 } catch (e) {}
               }));
 
-              const completed = events.filter(ev => ev.completed && !ev.movedOut)
-                                      .reduce((sum, ev) => sum + (ev.completedPoints ?? ev.points), 0);
-              const initiallyPlanned = events.filter(ev => !ev.addedAfterStart)
-
-                                            .reduce((sum, ev) => {
-                                              const init = ev.initialPoints;
-                                              return sum + (init != null ? init : (ev.points || 0));
-                                            }, 0);
               const completedSource = 'sum of completed events (excluding moved out)';
               const initiallyPlannedSource = 'sum of story points at sprint start for events not added after start';
 
               const key = `${boardNum}-${s.id}`;
-              const existing = combined[key] || { board: boardNum, id: s.id, name: s.name, startDate: s.startDate, events: [], initiallyPlanned: 0, completed: 0, initiallyPlannedSource, completedSource };
+              const existing = combined[key] || { board: boardNum, id: s.id, name: s.name, startDate: s.startDate, events: [], initiallyPlannedSource, completedSource };
               existing.id = existing.id || s.id;
               existing.board = boardNum;
               existing.startDate = existing.startDate || s.startDate;
               existing.events = existing.events.concat(events);
-              existing.initiallyPlanned += initiallyPlanned || 0;
-              existing.completed += completed || 0;
+              existing.initiallyPlanned = existing.events
+                .filter(ev => !ev.addedAfterStart)
+                .reduce((sum, ev) => {
+                  const init = ev.initialPoints;
+                  return sum + (init != null ? init : (ev.points || 0));
+                }, 0);
+              existing.completed = existing.events
+                .filter(ev => ev.completed && !ev.movedOut)
+                .reduce((sum, ev) => sum + (ev.completedPoints ?? ev.points), 0);
               combined[key] = existing;
             } catch (e) {
               Logger.error('sprint fetch failed', e);
@@ -531,7 +530,9 @@ function renderBoardCharts(displaySprints, allSprints, container) {
   const sprintLabels = displaySprints.map(s => s.name);
   const completedSPAll = (allSprints || displaySprints).map(s => s.completed || 0);
   const completedSP = completedSPAll.slice(-displaySprints.length);
-  const plannedSPAll = (allSprints || displaySprints).map(s => s.initiallyPlanned || 0);
+  const plannedSPAll = (allSprints || displaySprints).map(s =>
+    sumSP(s.events, ev => !ev.addedAfterStart, 'initialPoints')
+  );
   const plannedSP = plannedSPAll.slice(-displaySprints.length);
   const metricsArr = displaySprints.map(s => Disruption.calculateDisruptionMetrics(s.events));
   const pulledInCount = metricsArr.map(m => m.pulledInCount || 0);
