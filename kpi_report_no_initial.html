@@ -387,6 +387,21 @@
                     ev.cycleTime = Kpis.calculateWorkDays(devStart, new Date(resolutionDate));
                   }
 
+                  let pointsAtClose = ev.points || 0;
+                  if (sprintEnd) {
+                    for (const h of sortedHist) {
+                      const date = new Date(h.created);
+                      if (date > sprintEnd) break;
+                      for (const item of h.items || []) {
+                        if (item.field === 'Story Points' || item.field === 'Story point estimate') {
+                          const val = Number(item.toString || item.to);
+                          if (!isNaN(val)) pointsAtClose = val;
+                        }
+                      }
+                    }
+                  }
+                  ev.completedPoints = pointsAtClose;
+
                   for (const h of histories) {
                     const chDate = new Date(h.created);
                     if (sprintStart && chDate >= sprintStart) {
@@ -418,14 +433,16 @@
               }));
 
               const completed = events.filter(ev => ev.completed && !ev.movedOut)
-                                      .reduce((sum, ev) => sum + ev.points, 0);
+                                      .reduce((sum, ev) => sum + (ev.completedPoints ?? ev.points), 0);
               const initiallyPlanned = events.filter(ev => !ev.addedAfterStart)
+
                                             .reduce((sum, ev) => {
                                               const init = ev.initialPoints;
                                               return sum + (init != null ? init : (ev.points || 0));
                                             }, 0);
               const completedSource = 'sum of completed events (excluding moved out)';
               const initiallyPlannedSource = 'sum of story points at sprint start for events not added after start';
+
               const key = `${boardNum}-${s.id}`;
               const existing = combined[key] || { board: boardNum, id: s.id, name: s.name, startDate: s.startDate, events: [], initiallyPlanned: 0, completed: 0, initiallyPlannedSource, completedSource };
               existing.id = existing.id || s.id;
@@ -522,6 +539,7 @@ function renderBoardCharts(displaySprints, allSprints, container) {
   const blockedCount = metricsArr.map(m => m.blockedCount || 0);
   const movedOutCount = metricsArr.map(m => m.movedOutCount || 0);
 
+
   function sumSP(events, pred, field = 'points') {
     return (events || []).reduce((sum, ev) => {
       if (!pred(ev)) return sum;
@@ -531,6 +549,7 @@ function renderBoardCharts(displaySprints, allSprints, container) {
       }
       return sum + (val || 0);
     }, 0);
+
   }
   const plannedPI = displaySprints.map(s =>
     sumSP(s.events, ev => !ev.addedAfterStart && !ev.movedOut && ev.piRelevant, 'initialPoints')
@@ -539,7 +558,7 @@ function renderBoardCharts(displaySprints, allSprints, container) {
     Math.max(0, (s.initiallyPlanned || 0) - plannedPI[i])
   );
   const completedPI = displaySprints.map(s =>
-    sumSP(s.events, ev => ev.completed && ev.piRelevant)
+    sumSP(s.events, ev => ev.completed && ev.piRelevant, true)
   );
   const completedOther = displaySprints.map((s, i) =>
     Math.max(0, (s.completed || 0) - completedPI[i])
