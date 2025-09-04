@@ -424,6 +424,7 @@
 
                   let addedDate = null;
                   let inSprint = false;
+                  let wasInSprintAtStart = false;
                   const sprintHist = histories.slice().sort((a, b) => new Date(a.created) - new Date(b.created));
                   for (const h of sprintHist) {
                     const chDate = new Date(h.created);
@@ -451,6 +452,9 @@
                         }
                       }
                     }
+                    if (sprintStart && chDate <= sprintStart) {
+                      wasInSprintAtStart = inSprint;
+                    }
                   }
 
                   if (!addedDate && sprintStart && created) {
@@ -460,7 +464,7 @@
                     }
                   }
 
-                  if (addedDate && sprintStart && addedDate >= sprintStart) {
+                  if (addedDate && sprintStart && addedDate >= sprintStart && !wasInSprintAtStart) {
                     ev.addedAfterStart = true;
                   }
 
