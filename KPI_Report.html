@@ -447,6 +447,23 @@
               existing.board = boardNum;
               existing.startDate = existing.startDate || s.startDate;
               existing.events = existing.events.concat(events);
+              const merged = {};
+              existing.events.forEach(ev => {
+                if (!ev || !ev.key) return;
+                const cur = merged[ev.key] || {};
+                cur.key = ev.key;
+                cur.points = cur.points || ev.points;
+                cur.initialPoints = ev.initialPoints ?? cur.initialPoints;
+                cur.completedPoints = ev.completedPoints ?? cur.completedPoints;
+                cur.addedAfterStart = cur.addedAfterStart || ev.addedAfterStart;
+                cur.blocked = cur.blocked || ev.blocked;
+                cur.blockedDays = Math.max(cur.blockedDays || 0, ev.blockedDays || 0);
+                cur.movedOut = cur.movedOut || ev.movedOut;
+                cur.completed = cur.completed || ev.completed;
+                cur.piRelevant = cur.piRelevant || ev.piRelevant;
+                merged[ev.key] = cur;
+              });
+              existing.events = Object.values(merged);
               existing.initiallyPlanned = existing.events
                 .filter(ev => !ev.addedAfterStart)
                 .reduce((sum, ev) => {
@@ -488,8 +505,12 @@
       const otherNotCompleted = events
         .filter(ev => !ev.piRelevant && !ev.completed && !ev.movedOut)
         .map(ev => ev.key);
-      const initiallyPlannedIssues = events.filter(ev => !ev.addedAfterStart).map(ev => ev.key);
-      const completedIssues = events.filter(ev => ev.completed && !ev.movedOut).map(ev => ev.key);
+      const initiallyPlannedIssues = Array.from(new Set(
+        events.filter(ev => !ev.addedAfterStart).map(ev => ev.key)
+      ));
+      const completedIssues = Array.from(new Set(
+        events.filter(ev => ev.completed && !ev.movedOut).map(ev => ev.key)
+      ));
       html += `<tr>
         <td>[${sprint.board}] ${sprint.name}</td>
         <td title="${sprint.initiallyPlannedSource}">${sprint.initiallyPlanned || 0}</td>
