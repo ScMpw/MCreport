@@ -475,6 +475,8 @@
                 cur.blockedDays = Math.max(cur.blockedDays || 0, ev.blockedDays || 0);
                 cur.movedOut = cur.movedOut || ev.movedOut;
                 cur.completed = cur.completed || ev.completed;
+                cur.completedDate = cur.completedDate || ev.completedDate;
+                cur.cycleTime = cur.cycleTime || ev.cycleTime;
                 cur.piRelevant = cur.piRelevant || ev.piRelevant;
                 merged[ev.key] = cur;
               });
