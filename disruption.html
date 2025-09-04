@@ -2,99 +2,824 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Disruption Parent Labels</title>
+  <title>Stakeholder PI Status Report – Disruption KPI</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css" />
   <link rel="stylesheet" href="public/tailwind.css">
+  <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
   <style>
-    body { font-family: 'Inter', Arial, sans-serif; margin:20px; }
-    table { border-collapse: collapse; width:100%; margin-top:20px; }
-    th, td { border:1px solid #e5e7eb; padding:6px 10px; text-align:left; }
+    body { background: #f7f8fa; font-family: 'Inter', Arial, sans-serif; margin:0; padding:0; }
+    .main { max-width: 950px; margin: 30px auto; background:#fff; border-radius:18px; padding:36px 32px; box-shadow:0 2px 12px #d1d5db70; }
+    table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+    th, td { border: 1px solid #e5e7eb; padding: 6px 10px; text-align:left; font-size:0.95em; }
     th { background:#e0e7ef; }
+    .btn { background:#6366f1; color:#fff; border:none; border-radius:6px; padding:7px 18px; cursor:pointer; font-size:1em; }
+    .details-toggle { margin:10px 0 6px 0; }
+    .story-table { border-collapse: collapse; width: 100%; margin: 6px 0 18px 0; }
+    .story-table th, .story-table td { border: 1px solid #e5e7eb; padding: 4px 7px; font-size: 0.95em; text-align:left; }
+    .story-table th { background:#e0e7ef; }
+    .chart-section { margin-top: 30px; overflow-x: auto; }
+    .chart-section canvas { margin-top: 20px; }
+    .chart-section h2 { margin-top: 20px; }
+    .rating-zone-description { margin-top: 10px; font-size: 0.9em; }
+    .rating-zone-description div { margin-top: 4px; }
+    .rating-zone-description span { display:inline-block; width:12px; height:12px; margin-right:6px; vertical-align:middle; }
+    .sprint-item { background:#e5e7eb; border-radius:4px; padding:2px 6px; margin-right:6px; display:inline-block; }
+    .table-description { margin-top:6px; font-size:0.9em; }
   </style>
 </head>
 <body>
-  <h1>Parent Labels by Sprint</h1>
+<div class="main">
+  <h1>Disruption KPI Report</h1>
   <div>
-    <label>Jira Domain: <input id="jiraDomain" value="aldi-sued.atlassian.net" size="30"></label>
-    <label style="margin-left:10px;">Board: <input id="boardNum" size="6" placeholder="id"></label>
-    <button id="loadBtn">Load Data</button>
+    <label>Version:
+      <select id="versionSelect" onchange="switchVersion(this.value)">
+        <option value="index.html">Velocity</option>
+        <option value="index_throughput.html">Throughput</option>
+        <option value="index_throughput_week.html">Weekly Throughput</option>
+        <option value="index_disruption.html">Disruption</option>
+        <option value="index_topicmix.html">Topic Mix</option>
+      </select>
+    </label>
   </div>
-  <table>
-    <thead>
-      <tr>
-        <th>Sprint</th>
-        <th>Issue</th>
-        <th>Parent</th>
-        <th>Parent Labels</th>
-      </tr>
-    </thead>
-    <tbody id="tableBody"></tbody>
-  </table>
-  <script>
-    async function fetchSprintIssues(domain, boardNum) {
-      const sprintUrl = `https://${domain}/rest/agile/1.0/board/${boardNum}/sprint?state=closed`;
-      const sprintResp = await fetch(sprintUrl, { credentials: 'include' });
-      const sprintData = sprintResp.ok ? await sprintResp.json() : { values: [] };
-      const rows = [];
-      const isBfBoard = ['6347', '6390'].includes(String(boardNum));
-      for (const sprint of (sprintData.values || [])) {
-        const reportUrl = `https://${domain}/rest/greenhopper/1.0/rapid/charts/sprintreport?rapidViewId=${boardNum}&sprintId=${sprint.id}`;
-        const reportResp = await fetch(reportUrl, { credentials: 'include' });
-        if (!reportResp.ok) continue;
-        const reportData = await reportResp.json();
-        const issues = [
-          ...(reportData.contents?.completedIssues || []),
-          ...(reportData.contents?.issuesNotCompletedInCurrentSprint || []),
-          ...(reportData.contents?.puntedIssues || [])
-        ];
-        // Include issues that were removed from the sprint. These appear only as
-        // keys in the sprint report, so convert them to issue objects to reuse
-        // the same processing logic below.
-        (reportData.contents?.issueKeysRemovedFromSprint || []).forEach(key => {
-          if (key) issues.push({ key });
-        });
-        for (const issue of issues) {
-          const issueKey = issue.key;
-          if (isBfBoard && !issueKey.startsWith('BF-')) continue;
-          const issueResp = await fetch(`https://${domain}/rest/api/3/issue/${issueKey}?fields=parent`, { credentials: 'include' });
-          if (!issueResp.ok) continue;
-          const issueData = await issueResp.json();
-          const parentKey = issueData.fields?.parent?.key;
-          let labels = [];
-          if (parentKey) {
-            const parentResp = await fetch(`https://${domain}/rest/api/3/issue/${parentKey}?fields=labels`, { credentials: 'include' });
-            if (parentResp.ok) {
-              const parentData = await parentResp.json();
-              labels = parentData.fields?.labels || [];
-            }
+  <div style="margin-top:20px;">
+    <label>Jira Domain: <input id="jiraDomain" value="aldi-sued.atlassian.net" size="28"></label>
+    <label style="margin-left:10px;">Please select a Board:
+      <select id="boardNum" multiple></select>
+    </label>
+    <button class="btn" onclick="loadDisruption()">Load Data</button>
+    <button class="btn" onclick="exportPDF()">Download PDF</button>
+  </div>
+  <div id="sprintRow" style="margin-top:10px; display:none;">
+    <span>Sprints:</span>
+    <div id="sprintList" style="display:inline-block;"></div>
+  </div>
+  <div id="logPanel" style="display:none; white-space:pre-wrap; font-size:0.85em; background:#f3f4f6; border:1px solid #e5e7eb; padding:6px; margin:10px 0; max-height:150px; overflow:auto;"></div>
+  <div id="pdfContent">
+    <table>
+      <thead>
+        <tr>
+          <th>Sprint</th>
+          <th>Initially Planned (SP)</th>
+          <th>Completed (SP)</th>
+          <th>Pulled In (SP / Issues)</th>
+          <th>Blocked Days (Days / Issues)</th>
+          <th>Moved Out (SP / Issues)</th>
+          <th>Details</th>
+        </tr>
+      </thead>
+      <tbody id="metricsBody"></tbody>
+    </table>
+    <div id="velocityStats"></div>
+    <div id="chartSection" class="chart-section">
+      <h2>Initially planned &amp; completed</h2>
+      <canvas id="piMixChart"></canvas>
+      <h2>Rating Zone Chart</h2>
+      <canvas id="completedChart"></canvas>
+      <div class="rating-zone-description">
+        <div id="ratingZoneToggle" style="cursor:pointer;"><strong>Rating zones (show)</strong></div>
+        <div id="ratingZoneDetails" style="display:none;">
+          <div><span style="background:rgba(254,249,195,0.5);"></span><strong>Bloated: AV+2SD…∞.</strong> A significant share of this exceedingly high output probably comes from other effects than team performance alone. Analysis is advised because possibly there's something to be learned.</div>
+          <div><span style="background:rgba(34,197,94,0.5);"></span><strong>Lively: AV+1SD…AV+2SD.</strong> The team's performance was outstanding, pushing the envelope on the brink of an unsustainable pace.</div>
+          <div><span style="background:rgba(21,128,61,0.5);"></span><strong>Spot-on: AV…AV+1SD.</strong> The team performed very well while also managing to increase the stability of their long-term output.</div>
+          <div><span style="background:rgba(34,197,94,0.5);"></span><strong>Healthy: AV-1SD…AV.</strong> Things cannot always go up, so going down within the team's usual range of performance is perfectly normal.</div>
+          <div><span style="background:rgba(254,249,195,0.5);"></span><strong>Concerning: AV-2SD…AV-1SD.</strong> Something went considerably wrong, but we're still seeing a robust core performance. Analysis is needed and also some learning that may result in adjustments.</div>
+          <div><span style="background:rgba(254,202,202,0.5);"></span><strong>Alarming: 0…AV-2SD.</strong> The major share of this plummeting output was probably caused by factors beyond the team‘s influence. Thorough analysis is needed which will lead to profound learning and change.</div>
+        </div>
+      </div>
+      <h2>Disruption Metrics</h2>
+      <canvas id="disruptionChart"></canvas>
+    </div>
+  </div>
+</div>
+<script src="src/logger.js"></script>
+<script src="src/jira.js"></script>
+<script>
+  function appendLog(level, args) {
+    const el = document.getElementById('logPanel');
+    if (!el) return;
+    const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+    el.textContent += `[${level}] ${msg}\n`;
+    el.scrollTop = el.scrollHeight;
+    el.style.display = '';
+  }
+  Logger.setLevel('debug');
+  Logger.setListener((level, args) => appendLog(level, args));
+</script>
+<script src="src/disruption.js"></script>
+<script src="src/kpis.js"></script>
+<script>
+  Chart.register(ChartDataLabels);
+  function switchVersion(v){ window.location.href = v; }
+  const ratingToggle = document.getElementById('ratingZoneToggle');
+  const ratingDetails = document.getElementById('ratingZoneDetails');
+  if (ratingToggle && ratingDetails) {
+    ratingToggle.addEventListener('click', () => {
+      const hidden = ratingDetails.style.display === 'none';
+      ratingDetails.style.display = hidden ? '' : 'none';
+      ratingToggle.innerHTML = `<strong>Rating zones (${hidden ? 'hide' : 'show'})</strong>`;
+    });
+  }
+
+  const boardSelect = document.getElementById('boardNum');
+  let boardChoices = new Choices(boardSelect, { removeItemButton: true });
+  // Keep references to existing Chart.js instances so they can be destroyed
+  // when rendering charts multiple times. Without this, Chart.js will throw
+  // an error about reusing a canvas that is already in use.
+  let completedChartInstance;
+  let disruptionChartInstance;
+  let piMixChartInstance;
+  const DISPLAY_SPRINT_COUNT = 6;
+  const RATING_WINDOW = 4;
+  let sprints = [];
+  let allSprints = [];
+  let epicCache = new Map();
+  const PI_LABEL_RE = /\b(?:BF_)?\d{4}_PI\d+_committ?ed\b/i;
+
+
+  function filterRecentSprints(allSprints, excludeIds = [], desiredCount = DISPLAY_SPRINT_COUNT) {
+    const excluded = new Set((excludeIds || []).map(String));
+
+    const sorted = allSprints.slice().sort((a, b) => {
+      const ad = a.endDate || a.completeDate || a.startDate || '';
+      const bd = b.endDate || b.completeDate || b.startDate || '';
+      return ad && bd ? new Date(bd) - new Date(ad) : 0;
+    });
+    return sorted.slice(0, desiredCount);
+  }
+
+  function renderSprintList() {
+    const wrap = document.getElementById('sprintList');
+    if (!wrap) return;
+    wrap.innerHTML = sprints.map(s =>
+      `<span class="sprint-item">${s.name}</span>`
+    ).join('');
+  }
+
+  async function populateBoards() {
+    const domain = document.getElementById('jiraDomain').value.trim();
+    if (!domain) return;
+    try {
+      const boards = await Jira.fetchBoardsByJql(domain);
+      boardChoices.clearChoices();
+      boardChoices.setChoices(boards.map(b => ({ value: b.id, label: b.name })), 'value', 'label', true);
+    } catch (e) {
+      Logger.error('Failed to load boards', e);
+    }
+  }
+
+  document.getElementById('jiraDomain').addEventListener('change', populateBoards);
+  populateBoards();
+
+  async function getEpicInfo(domain, epicKey) {
+    let cached = epicCache.get(epicKey);
+    if (cached) return cached;
+    const url = `https://${domain}/rest/api/3/issue/${epicKey}?fields=issuetype,labels`;
+    const r = await fetch(url, { credentials: 'include' });
+    if (!r.ok) return null;
+    const j = await r.json();
+    const isEpic = (j.fields?.issuetype?.name || '').toLowerCase() === 'epic';
+    const labels = j.fields?.labels || [];
+    const info = { isEpic, labels };
+    epicCache.set(epicKey, info);
+    return info;
+  }
+
+    async function fetchDisruptionData(jiraDomain, boardNums = []) {
+      Logger.info('Fetching disruption data for boards', boardNums.join(','));
+      const combined = {};
+      const issueCache = new Map();
+      try {
+        await Promise.all(boardNums.map(async boardNum => {
+          const url = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/velocity?rapidViewId=${boardNum}`;
+          const isBfBoard = ['6347', '6390'].includes(String(boardNum));
+          const resp = await fetch(url, { credentials: 'include' });
+          let data = {};
+          if (resp.ok) {
+            data = await resp.json();
+          } else {
+            Logger.warn('Velocity report unavailable, falling back to sprint list', resp.status);
           }
-          rows.push({ sprint: sprint.name, issue: issueKey, parent: parentKey || '', labels });
-        }
+
+          let closed = (data.sprints || []).filter(
+            s => s.state === 'CLOSED' && s.startDate && String(s.originBoardId) === String(boardNum)
+          );
+
+          if (!closed.length) {
+            let allSprints = [];
+            let startAt = 0;
+            const maxResults = 50;
+            let loops = 0;
+            while (true) {
+              const sUrl = `https://${jiraDomain}/rest/agile/1.0/board/${boardNum}/sprint?state=closed&maxResults=${maxResults}&startAt=${startAt}`;
+              const sResp = await fetch(sUrl, { credentials: 'include' });
+              if (!sResp.ok) {
+                Logger.error('Failed to fetch sprint list', sResp.status);
+                break;
+              }
+              const sData = await sResp.json();
+              const values = sData.values || [];
+              allSprints = allSprints.concat(values);
+              startAt += values.length;
+              loops++;
+              if (sData.isLast || values.length < maxResults || loops > 100) break;
+            }
+            closed = allSprints.filter(
+              s => (s.state || '').toUpperCase() === 'CLOSED' && s.startDate && String(s.originBoardId) === String(boardNum)
+            );
+          }
+
+          closed = filterRecentSprints(closed, [], DISPLAY_SPRINT_COUNT + RATING_WINDOW);
+
+          await Promise.all(closed.map(async (s, idx) => {
+            const surl = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/sprintreport?rapidViewId=${boardNum}&sprintId=${s.id}`;
+            try {
+              const r = await fetch(surl, { credentials: 'include' });
+              if (!r.ok) return;
+              const d = await r.json();
+              let events = [];
+              const collect = (arr, completed = false) => {
+                (arr || []).forEach(it => {
+                  events.push({
+                    key: it.key,
+                    points: it.estimateStatistic?.statFieldValue?.value || 0,
+                    addedAfterStart: false,
+                    blocked: !!it.flagged,
+                    movedOut: false,
+                    completed
+                  });
+                });
+              };
+              collect(d.contents.completedIssues, true);
+              collect(d.contents.issuesNotCompletedInCurrentSprint, false);
+              collect(d.contents.puntedIssues, false);
+              const removedSet = new Set(events.map(e => e.key));
+              (d.contents.issueKeysRemovedFromSprint || []).forEach(k => {
+                if (k && !removedSet.has(k)) {
+                  events.push({ key: k, points: 0, addedAfterStart: false, blocked: false, movedOut: true, completed: false });
+                }
+              });
+              if (isBfBoard) {
+                events = events.filter(ev => ev.key && ev.key.startsWith('BF-'));
+              }
+
+              const entry = data.velocityStatEntries?.[s.id] || {};
+              let completed = entry.completed?.value || 0;
+              let completedSource = 'velocityStatEntries.completed';
+              if (!completed) {
+                completed = d.contents?.completedIssuesEstimateSum?.value || 0;
+                completedSource = 'completedIssuesEstimateSum';
+              }
+              let initiallyPlanned = entry.estimated?.value || 0;
+              let initiallyPlannedSource = 'velocityStatEntries.estimated';
+              const sprintStart = s.startDate ? new Date(s.startDate) : null;
+              const sprintEnd = s.completeDate ? new Date(s.completeDate) : (s.endDate ? new Date(s.endDate) : null);
+
+              await Promise.all(events.map(async ev => {
+                try {
+                  let cached = issueCache.get(ev.key);
+                  let histories, currentStatus, created, resolutionDate, piRelevant, parentKey;
+                  if (cached) {
+                    ({ histories, currentStatus, created, resolutionDate, piRelevant, parentKey } = cached);
+                  } else {
+                    const u = `https://${jiraDomain}/rest/api/3/issue/${ev.key}?expand=changelog&fields=flagged,status,created,resolutiondate,labels,parent,customfield_10002`;
+                    const ir = await fetch(u, { credentials: 'include' });
+                    if (!ir.ok) return;
+                    const id = await ir.json();
+                    histories = id.changelog?.histories || [];
+                    currentStatus = id.fields?.status?.name || '';
+                    created = id.fields?.created;
+                    resolutionDate = id.fields?.resolutiondate;
+                    parentKey = id.fields?.parent?.key;
+                    ev.points = ev.points || Number(id.fields?.customfield_10002) || 0;
+                    ev.blocked = ev.blocked || !!(id.fields?.flagged && id.fields.flagged.length);
+                    ev.blocked = ev.blocked || currentStatus.toLowerCase().includes('block');
+                    piRelevant = false;
+                    if (parentKey) {
+                      const epic = await getEpicInfo(jiraDomain, parentKey);
+                      if (epic?.isEpic && (epic.labels || []).some(l => PI_LABEL_RE.test(l))) {
+                        piRelevant = true;
+                      }
+                    }
+                    issueCache.set(ev.key, { histories, currentStatus, created, resolutionDate, piRelevant, parentKey });
+                  }
+                  ev.piRelevant = piRelevant || false;
+
+                  const isBlockedStatus = name => (name || '').toLowerCase().includes('block');
+
+                  // determine status at sprint start by walking histories backwards
+                  const statusAt = (date) => {
+                    let status = currentStatus;
+                    const desc = histories.slice().sort((a, b) => new Date(b.created) - new Date(a.created));
+                    for (const h of desc) {
+                      const changeDate = new Date(h.created);
+                      if (changeDate > date) {
+                        const stItem = (h.items || []).find(i => i.field === 'status');
+                        if (stItem) status = stItem.fromString || stItem.from || status;
+                      } else {
+                        break;
+                      }
+                    }
+                    return status;
+                  };
+
+                  const startStatus = sprintStart ? statusAt(sprintStart) : currentStatus;
+                  let curBlocked = isBlockedStatus(startStatus);
+                  let blockStart = curBlocked ? sprintStart : null;
+                  const blockedPeriods = [];
+                  const sortedHist = histories.slice().sort((a, b) => new Date(a.created) - new Date(b.created));
+                  let devStart = null;
+                  for (const h of sortedHist) {
+                    const date = new Date(h.created);
+                    if (sprintStart && date < sprintStart) continue;
+                    if (sprintEnd && date > sprintEnd) break;
+                    const stItem = (h.items || []).find(i => i.field === 'status');
+                    if (!stItem) continue;
+                    const toStatus = stItem.toString || stItem.to || '';
+                    if (!devStart && toStatus.toLowerCase() === 'in development') devStart = date;
+                    const toBlocked = isBlockedStatus(toStatus);
+                    if (curBlocked && !toBlocked) {
+                      blockedPeriods.push([blockStart, date]);
+                      curBlocked = false;
+                      blockStart = null;
+                    } else if (!curBlocked && toBlocked) {
+                      curBlocked = true;
+                      blockStart = date;
+                    }
+                  }
+                  if (curBlocked) blockedPeriods.push([blockStart, sprintEnd || new Date()]);
+                  if (!blockedPeriods.length && ev.blocked) {
+                    blockedPeriods.push([sprintStart, sprintEnd || new Date()]);
+                  }
+                  ev.blockedDays = blockedPeriods.reduce((sum, [start, end]) => {
+                    const sClamped = sprintStart && start < sprintStart ? sprintStart : start;
+                    const eClamped = sprintEnd && end > sprintEnd ? sprintEnd : end;
+                    return eClamped > sClamped
+                      ? sum + Kpis.calculateWorkDays(sClamped, eClamped)
+                      : sum;
+                  }, 0);
+                  ev.blocked = ev.blocked || blockedPeriods.length > 0;
+                  ev.completedDate = resolutionDate;
+                  if (devStart && resolutionDate) {
+                    ev.cycleTime = Kpis.calculateWorkDays(devStart, new Date(resolutionDate));
+                  }
+
+                  for (const h of histories) {
+                    const chDate = new Date(h.created);
+                    if (sprintStart && chDate >= sprintStart) {
+                      for (const item of h.items || []) {
+                        if (item.field === 'Sprint') {
+                          const from = (item.fromString || item.from || '').toString();
+                          const to = (item.toString || item.to || '').toString();
+                          const sprintIdStr = String(s.id);
+                          const sprintName = s.name || '';
+                          const fromHas = from.includes(sprintIdStr) || from.includes(sprintName);
+                          const toHas = to.includes(sprintIdStr) || to.includes(sprintName);
+                          if (!fromHas && toHas) ev.addedAfterStart = true;
+                          if (fromHas && !toHas) ev.movedOut = true;
+                        }
+                      }
+                    }
+                    // Continue scanning in case sprint membership changes occur later
+                  }
+
+                  // Some issues may be created after the sprint starts and assigned
+                  // to the sprint during creation. These won't have an explicit
+                  // sprint change entry in the history, so detect this case using
+                  // the issue's creation date.
+                  if (!ev.addedAfterStart && sprintStart && created && new Date(created) > sprintStart) {
+                    ev.addedAfterStart = true;
+                  }
+
+                } catch (e) {}
+              }));
+
+              if (isBfBoard) {
+                completed = events.filter(ev => ev.completed)
+                                   .reduce((sum, ev) => sum + ev.points, 0);
+                initiallyPlanned = events.filter(ev => !ev.addedAfterStart)
+                                         .reduce((sum, ev) => sum + ev.points, 0);
+                completedSource = 'filtered events';
+                initiallyPlannedSource = 'filtered events';
+              } else if (!initiallyPlanned) {
+                initiallyPlanned = events.filter(ev => !ev.addedAfterStart)
+                                         .reduce((sum, ev) => sum + ev.points, 0);
+                initiallyPlannedSource = 'sum of events not added after start';
+              }
+              const existing = combined[s.name] || { id: s.id, name: s.name, startDate: s.startDate, events: [], initiallyPlanned: 0, completed: 0, initiallyPlannedSource, completedSource };
+              existing.id = existing.id || s.id;
+              existing.startDate = existing.startDate || s.startDate;
+              existing.events = existing.events.concat(events);
+              existing.initiallyPlanned += initiallyPlanned || 0;
+              existing.completed += completed || 0;
+              combined[s.name] = existing;
+            } catch (e) {
+              Logger.error('sprint fetch failed', e);
+            }
+          }));
+        }));
+        Logger.info('Disruption data fetched for', Object.keys(combined).length, 'sprints');
+        const sprintsArr = Object.values(combined).sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
+        return { sprints: sprintsArr };
+      } catch (e) {
+        Logger.error('Failed to fetch disruption data', e);
+        alert('Failed to fetch disruption data.');
+        return { sprints: [] };
       }
-      return rows;
     }
 
-    document.getElementById('loadBtn').addEventListener('click', async () => {
-      const domain = document.getElementById('jiraDomain').value.trim();
-      const board = document.getElementById('boardNum').value.trim();
-      if (!domain || !board) {
-        alert('Enter Jira domain and board id');
-        return;
-      }
-      const body = document.getElementById('tableBody');
-      body.innerHTML = '';
-      try {
-        const rows = await fetchSprintIssues(domain, board);
-        rows.forEach(r => {
-          const tr = document.createElement('tr');
-          tr.innerHTML = `<td>${r.sprint}</td><td>${r.issue}</td><td>${r.parent}</td><td>${r.labels.join(', ')}</td>`;
-          body.appendChild(tr);
-        });
-      } catch (e) {
-        console.error(e);
-        alert('Failed to load data');
-      }
+  function renderTable(data) {
+    const tbody = document.getElementById('metricsBody');
+    let html = '';
+    const sorted = data.slice().sort((a, b) => new Date(b.startDate || 0) - new Date(a.startDate || 0));
+    sorted.forEach((sprint, idx) => {
+      const metrics = Disruption.calculateDisruptionMetrics(sprint.events);
+      const detailsId = `details-${idx}`;
+      html += `<tr>
+        <td>${sprint.name}</td>
+        <td title="${sprint.initiallyPlannedSource}">${sprint.initiallyPlanned || 0}</td>
+        <td title="${sprint.completedSource}">${sprint.completed || 0}</td>
+        <td title="${metrics.pulledInIssues.join(', ')}">${metrics.pulledIn || 0} (${metrics.pulledInCount || 0})</td>
+        <td title="${metrics.blockedIssues.join(', ')}">${(Math.ceil((metrics.blockedDays || 0) * 10) / 10).toFixed(1)} (${metrics.blockedCount || 0})</td>
+        <td title="${metrics.movedOutIssues.join(', ')}">${metrics.movedOut || 0} (${metrics.movedOutCount || 0})</td>
+        <td><button class="btn details-toggle" onclick="toggleDetails('${detailsId}', this)">Show Details</button></td>
+      </tr>`;
+      html += `<tr id="${detailsId}" style="display:none"><td colspan="7">
+        <table class="story-table">
+          <thead><tr><th>Metric</th><th>Stories</th></tr></thead>
+          <tbody>
+            <tr><td>Pulled In</td><td>${metrics.pulledInIssues.join(', ') || '-'}</td></tr>
+            <tr><td>Blocked</td><td>${metrics.blockedIssues.join(', ') || '-'}</td></tr>
+            <tr><td>Moved Out</td><td>${metrics.movedOutIssues.join(', ') || '-'}</td></tr>
+          </tbody>
+        </table>
+      </td></tr>`;
     });
-  </script>
+    tbody.innerHTML = html;
+  }
+
+function renderVelocityStats(allSprints) {
+    const wrap = document.getElementById('velocityStats');
+    if (!wrap) return;
+
+    let totalCompleted = 0;
+    let totalCycle = 0;
+    let cycleCount = 0;
+    const sprintCount = (allSprints || []).length;
+
+    (allSprints || []).forEach(s => {
+      (s.events || []).forEach(ev => {
+        if (ev.completedDate) {
+          totalCompleted++;
+          if (typeof ev.cycleTime === 'number') {
+            totalCycle += ev.cycleTime;
+            cycleCount++;
+          }
+        }
+      });
+    });
+
+    const sprintThroughput = sprintCount ? totalCompleted / sprintCount : 0;
+    const meanCycleTime = cycleCount ? totalCycle / cycleCount : 0;
+
+    const html = '<h2>Throughput & Cycle Time</h2>' +
+      '<table><thead><tr><th>Sprint Throughput</th><th>Mean Cycle Time (days)</th></tr></thead><tbody>' +
+      `<tr><td>${sprintThroughput.toFixed(2)}</td><td>${(Math.ceil(meanCycleTime * 10) / 10).toFixed(1)}</td></tr></tbody></table>`;
+    wrap.innerHTML = html;
+  }
+
+function renderCharts(displaySprints, allSprints) {
+  const sprintLabels = displaySprints.map(s => s.name);
+  const completedSPAll = (allSprints || displaySprints).map(s => s.completed || 0);
+  const completedSP = completedSPAll.slice(-displaySprints.length);
+  const plannedSPAll = (allSprints || displaySprints).map(s => s.initiallyPlanned || 0);
+  const plannedSP = plannedSPAll.slice(-displaySprints.length);
+  const metricsArr = displaySprints.map(s => Disruption.calculateDisruptionMetrics(s.events));
+  const pulledInCount = metricsArr.map(m => m.pulledInCount || 0);
+  const blockedDays = metricsArr.map(m => Math.ceil((m.blockedDays || 0) * 10) / 10);
+  const blockedCount = metricsArr.map(m => m.blockedCount || 0);
+  const movedOutCount = metricsArr.map(m => m.movedOutCount || 0);
+
+  function sumSP(events, pred) {
+    return (events || []).reduce((sum, ev) => sum + (pred(ev) ? (ev.points || 0) : 0), 0);
+  }
+  const plannedPI = displaySprints.map(s =>
+    sumSP(s.events, ev => !ev.addedAfterStart && !ev.movedOut && ev.piRelevant)
+  );
+  const plannedOther = displaySprints.map((s, i) =>
+    Math.max(0, (s.initiallyPlanned || 0) - plannedPI[i])
+  );
+  const completedPI = displaySprints.map(s =>
+    sumSP(s.events, ev => ev.completed && ev.piRelevant)
+  );
+  const completedOther = displaySprints.map((s, i) =>
+    Math.max(0, (s.completed || 0) - completedPI[i])
+  );
+
+  const initialCompleted = displaySprints.map(s =>
+    (s.events || [])
+      .filter(ev => !ev.addedAfterStart && !ev.movedOut && ev.completed)
+      .reduce((sum, ev) => sum + (ev.points || 0), 0)
+  );
+
+  const throughputPerSprint = displaySprints.map(s =>
+    (s.events || []).filter(ev => ev.completedDate).length
+  );
+
+  const chartWidth = Math.max(sprintLabels.length * 120, 600);
+  ['piMixChart','completedChart','disruptionChart'].forEach(id => {
+    const canvas = document.getElementById(id);
+    canvas.width = chartWidth;
+    canvas.height = 300;
+  });
+
+  const zonesBySprintAll = [];
+  const avgBySprintAll = [];
+  completedSPAll.forEach((_, i) => {
+    const start = Math.max(0, i - RATING_WINDOW);
+    const window = completedSPAll.slice(start, i);
+    if (!window.length) {
+      avgBySprintAll.push(0);
+      zonesBySprintAll.push(null);
+      return;
+    }
+    const avg = Kpis.calculateVelocity(window);
+    const sd = Kpis.calculateStdDev(window, avg);
+    const max = Math.max(...window, avg + 3 * sd);
+    avgBySprintAll.push(avg);
+    zonesBySprintAll.push([
+      { yMin: 0, yMax: Math.max(avg - 2 * sd, 0), color: 'rgba(254,202,202,0.5)' },
+      { yMin: Math.max(avg - 2 * sd, 0), yMax: avg - sd, color: 'rgba(254,249,195,0.5)' },
+      { yMin: avg - sd, yMax: avg, color: 'rgba(34,197,94,0.5)' },
+      { yMin: avg, yMax: avg + sd, color: 'rgba(21,128,61,0.5)' },
+      { yMin: avg + sd, yMax: avg + 2 * sd, color: 'rgba(34,197,94,0.5)' },
+      { yMin: avg + 2 * sd, yMax: max, color: 'rgba(254,249,195,0.5)' }
+    ]);
+  });
+  const zonesBySprint = zonesBySprintAll.slice(-displaySprints.length);
+  const avgBySprint = avgBySprintAll.slice(-displaySprints.length);
+  const zoneMaxes = zonesBySprint.map(zs => zs ? zs[zs.length - 1].yMax : 0);
+  const maxY = Math.max(...completedSP, ...plannedSP, ...zoneMaxes, ...avgBySprint);
+  zonesBySprint.forEach(zs => { if (zs) { zs[zs.length - 1].yMax = maxY; } });
+
+  const ratingZonesPlugin = {
+    id: 'ratingZones',
+    beforeDraw(chart, args, opts) {
+      const { ctx, chartArea: { top, bottom, left, right }, scales: { x, y } } = chart;
+      ctx.save();
+      opts.zonesBySprint.forEach((zs, i) => {
+        if (!zs) return;
+        const isFirst = i === 0;
+        const isLast = i === opts.zonesBySprint.length - 1;
+        const xStart = isFirst ? left : x.getPixelForValue(i - 0.5);
+        const xEnd = isLast ? right : x.getPixelForValue(i + 0.5);
+        zs.forEach(z => {
+          const yStart = y.getPixelForValue(z.yMax);
+          const yEnd = y.getPixelForValue(z.yMin);
+          ctx.fillStyle = z.color;
+          ctx.fillRect(xStart, yStart, xEnd - xStart, yEnd - yStart);
+        });
+      });
+      ctx.restore();
+    }
+  };
+
+  // Destroy existing charts if they exist to allow re-rendering without errors
+  if (piMixChartInstance) {
+    piMixChartInstance.destroy();
+  }
+  if (completedChartInstance) {
+    completedChartInstance.destroy();
+  }
+  if (disruptionChartInstance) {
+    disruptionChartInstance.destroy();
+  }
+
+  const pctx = document.getElementById('piMixChart').getContext('2d');
+
+  function makeDiagonalPattern(ctx, color) {
+    const size = 8;
+    const c = document.createElement('canvas');
+    c.width = c.height = size;
+    const g = c.getContext('2d');
+    g.fillStyle = color;
+    g.fillRect(0,0,size,size);
+    g.strokeStyle = 'rgba(255,255,255,0.7)';
+    g.lineWidth = 2;
+    g.beginPath();
+    g.moveTo(-2, 6); g.lineTo(6, -2);
+    g.moveTo(2, 10); g.lineTo(10, 2);
+    g.stroke();
+    return ctx.createPattern(c, 'repeat');
+  }
+  const plannedPIColor = '#1d4ed8';
+  const plannedOtherColor = '#60a5fa';
+  const completedPIColor = '#16a34a';
+  const completedOtherColor = '#86efac';
+  const initialCompletedColor = '#f59e0b';
+
+  const plannedPIFill = makeDiagonalPattern(pctx, plannedPIColor);
+  const plannedOtherFill = makeDiagonalPattern(pctx, plannedOtherColor);
+
+  piMixChartInstance = new Chart(pctx, {
+    type: 'bar',
+    data: {
+      labels: sprintLabels,
+      datasets: [
+        { label: 'Initially Planned PI contributions', data: plannedPI, backgroundColor: plannedPIFill, borderColor: plannedPIColor, stack: 'planned' },
+        { label: 'Initially Planned other', data: plannedOther, backgroundColor: plannedOtherFill, borderColor: plannedOtherColor, stack: 'planned' },
+        { label: 'Initial Plan completed', data: initialCompleted, backgroundColor: initialCompletedColor, borderColor: initialCompletedColor, stack: 'initialCompleted' },
+        { label: 'Completed PI contributions', data: completedPI, backgroundColor: completedPIColor, borderColor: completedPIColor, stack: 'completed' },
+        { label: 'Completed other', data: completedOther, backgroundColor: completedOtherColor, borderColor: completedOtherColor, stack: 'completed' },
+      ]
+    },
+    options: {
+      responsive: false,
+      maintainAspectRatio: false,
+      scales: {
+        x: { stacked: true, offset: true },
+        y: { stacked: true, beginAtZero: true, title: { display: true, text: 'Story Points' } }
+      },
+      plugins: {
+        legend: { position: 'bottom' },
+        tooltip: {
+          callbacks: {
+            footer(items) {
+              const i = items[0].dataIndex;
+              const plannedTotal = (plannedPI[i] || 0) + (plannedOther[i] || 0);
+              const initCompleted = initialCompleted[i] || 0;
+              const completedTotal = (completedPI[i] || 0) + (completedOther[i] || 0);
+              return `Initially Planned total: ${plannedTotal}\nInitial Plan completed: ${initCompleted}\nCompleted total: ${completedTotal}`;
+            }
+          }
+        },
+        datalabels: {
+          display: false,
+          color: '#000',
+          anchor: 'end',
+          align: 'top'
+        }
+      }
+    }
+  });
+
+  const vctx = document.getElementById('completedChart').getContext('2d');
+  completedChartInstance = new Chart(vctx, {
+    type: 'line',
+    data: {
+      labels: sprintLabels,
+      datasets: [
+        { label: 'Initially Planned SP', data: plannedSP, borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,0.3)', fill: false, tension: 0.1 },
+        { label: 'Completed SP', data: completedSP, borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.3)', fill: false, tension: 0.1 },
+        { label: 'Average Velocity', data: avgBySprint, borderColor: '#000000', borderDash: [5,5], fill: false, tension: 0 }
+      ]
+    },
+    options: {
+      responsive: false,
+      maintainAspectRatio: false,
+      scales: {
+        x: { offset: true },
+        y: { beginAtZero: true, suggestedMax: maxY, title: { display: true, text: 'Completed Story Points' } }
+      },
+      plugins: {
+        legend: { position: 'bottom' },
+        ratingZones: { zonesBySprint },
+        datalabels: {
+          display: false,
+          color: '#000',
+          anchor: 'end',
+          align: 'top'
+        }
+      }
+    },
+    plugins: [ratingZonesPlugin]
+  });
+
+  const dctx = document.getElementById('disruptionChart').getContext('2d');
+  disruptionChartInstance = new Chart(dctx, {
+    type: 'bar',
+    data: {
+      labels: sprintLabels,
+      datasets: [
+        { label: 'Pulled In Issues', data: pulledInCount, backgroundColor: '#3b82f6', borderColor: '#3b82f6' },
+        { label: 'Blocked Days', data: blockedDays, backgroundColor: '#ef4444', borderColor: '#ef4444' },
+        { label: 'Moved Out Issues', data: movedOutCount, backgroundColor: '#10b981', borderColor: '#10b981' },
+        { label: 'Throughput per Sprint', data: throughputPerSprint, backgroundColor: '#f97316', borderColor: '#f97316' }
+      ]
+    },
+    options: {
+      responsive: false,
+      maintainAspectRatio: false,
+      scales: {
+        x: { offset: true },
+        y: { beginAtZero: true, title: { display: true, text: 'Issue Count / Blocked Days' } }
+      },
+      plugins: {
+        legend: { position: 'bottom' },
+        datalabels: {
+          display: false,
+          color: '#000',
+          anchor: 'end',
+          align: 'top'
+        }
+      }
+    }
+  });
+
+}
+
+  function toggleDetails(id, btn) {
+    const row = document.getElementById(id);
+    if (row) {
+      const hidden = row.style.display === 'none';
+      row.style.display = hidden ? '' : 'none';
+      if (btn) btn.textContent = hidden ? 'Hide Details' : 'Show Details';
+    }
+  }
+
+  async function loadDisruption() {
+    const jiraDomain = document.getElementById('jiraDomain').value.trim();
+    const selected = boardChoices ? boardChoices.getValue() : [];
+    const boards = selected.map(b => b.value);
+    if (!jiraDomain || !boards.length) {
+      alert('Enter Jira domain and select boards.');
+      return;
+    }
+    Logger.info('Loading disruption report for boards', boards.join(','));
+    const { sprints: fetchedSprints } = await fetchDisruptionData(jiraDomain, boards);
+    allSprints = fetchedSprints;
+    sprints = fetchedSprints.slice(-DISPLAY_SPRINT_COUNT);
+    renderTable(sprints);
+    renderSprintList();
+    document.getElementById('sprintRow').style.display = sprints.length ? '' : 'none';
+    renderVelocityStats(allSprints);
+    renderCharts(sprints, allSprints);
+    Logger.info('Disruption report rendered');
+  }
+
+  function canvasToHighResDataURL(canvas, scale = 4) {
+    const tmp = document.createElement('canvas');
+    tmp.width = canvas.width * scale;
+    tmp.height = canvas.height * scale;
+    const ctx = tmp.getContext('2d');
+    ctx.scale(scale, scale);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(canvas, 0, 0);
+    return tmp.toDataURL('image/png');
+  }
+
+  function exportPDF() {
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
+    const charts = [piMixChartInstance, completedChartInstance, disruptionChartInstance];
+    charts.forEach(ch => {
+      if (!ch) return;
+      const legend = ch.options.plugins?.legend || (ch.options.plugins.legend = {});
+      const labels = legend.labels || (legend.labels = {});
+      ch._origLegendFilter = labels.filter;
+      labels.filter = item => item.text && !item.hidden;
+      if (ch.options.plugins?.datalabels) {
+        ch.options.plugins.datalabels.display = true;
+      }
+      ch.update();
+    });
+    const canvases = document.querySelectorAll('#chartSection canvas');
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const margin = 20;
+    let y = margin;
+    canvases.forEach(cv => {
+      const img = canvasToHighResDataURL(cv);
+      const width = pageWidth - margin * 2;
+      const height = cv.height * width / cv.width;
+      if (y + height > pageHeight - margin) {
+        pdf.addPage();
+        y = margin;
+      }
+      pdf.addImage(img, 'PNG', margin, y, width, height);
+      y += height + 10;
+    });
+    const dateStr = new Date().toISOString().split('T')[0];
+    pdf.save(`Disruption_Report_${dateStr}.pdf`);
+    charts.forEach(ch => {
+      if (!ch) return;
+      const legendLabels = ch.options.plugins?.legend?.labels;
+      if (legendLabels) {
+        legendLabels.filter = ch._origLegendFilter;
+        delete ch._origLegendFilter;
+      }
+      if (ch.options.plugins?.datalabels) {
+        ch.options.plugins.datalabels.display = false;
+      }
+      ch.update();
+    });
+  }
+
+  document.getElementById('versionSelect').value = 'index_disruption.html';
+</script>
 </body>
 </html>
