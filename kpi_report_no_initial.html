@@ -461,18 +461,10 @@
                 completed = d.contents?.completedIssuesEstimateSum?.value || 0;
                 completedSource = 'completedIssuesEstimateSum';
               }
-              let initiallyPlanned = entry.estimated?.value || 0;
-              let initiallyPlannedSource = 'velocityStatEntries.estimated';
-              if (!initiallyPlanned) {
-                initiallyPlanned = d.contents?.allIssuesEstimateSum?.value;
-                initiallyPlannedSource = 'allIssuesEstimateSum';
-              }
-              if (!initiallyPlanned) {
-                initiallyPlanned = events
+                const initiallyPlanned = events
                   .filter(ev => !ev.addedAfterStart)
                   .reduce((sum, ev) => sum + (ev.points || 0), 0);
-                initiallyPlannedSource = 'sum of events not added after start';
-              }
+                const initiallyPlannedSource = 'sum of events not added after start';
 
               const key = `${boardNum}-${s.id}`;
               const existing = combined[key] || { board: boardNum, id: s.id, name: s.name, startDate: s.startDate, events: [], initiallyPlanned: 0, completed: 0, initiallyPlannedSource, completedSource };
