@@ -61,6 +61,15 @@ const assert = require('assert');
         { field: 'Sprint', from: '', to: '1', at: '2023-12-15' },
         { field: 'Sprint', from: '1', to: '', at: '2023-12-25' }
       ]
+    },
+    {
+      team: 'ALL',
+      product: 'ALL',
+      storyPoints: 7,
+      epicLabels: ['2024_PI1_committed'],
+      changelog: [
+        { field: 'Sprint', from: '1', to: '', at: '2024-01-03' }
+      ]
     }
   ];
 
@@ -77,7 +86,7 @@ const assert = require('assert');
     piBuckets
   });
 
-  assert.deepStrictEqual(series.plannedPi, [16, 2]);
+  assert.deepStrictEqual(series.plannedPi, [23, 2]);
   assert.deepStrictEqual(series.plannedNonPi, [0, 0]);
   assert.deepStrictEqual(series.completedPi, [5, 10]);
   assert.deepStrictEqual(series.completedNonPi, [0, 3]);

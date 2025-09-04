@@ -84,6 +84,7 @@ export function computeBucketSeries({ team, product, sprints = [], issues = [], 
 
   const processed = filtered.map(issue => {
     const sprintChanges = [];
+    let firstSprintChange = true;
     (issue.changelog || [])
       .filter(c => c.field === 'Sprint')
       .sort((a, b) => new Date(a.at) - new Date(b.at))
@@ -91,6 +92,12 @@ export function computeBucketSeries({ team, product, sprints = [], issues = [], 
         const at = new Date(c.at);
         const fromId = normalizeSprintId(c.from);
         const toId = normalizeSprintId(c.to);
+        if (firstSprintChange) {
+          firstSprintChange = false;
+          if (fromId !== undefined) {
+            sprintChanges.push({ at: new Date(0), sprintId: fromId });
+          }
+        }
         if (fromId !== undefined) {
           sprintChanges.push({ at: new Date(at.getTime() - 1), sprintId: fromId });
         }
