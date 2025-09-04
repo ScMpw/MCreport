@@ -252,16 +252,12 @@
               if (!r.ok) return;
               const d = await r.json();
               let events = [];
-              const addedKeySet = new Set(
-                d.contents?.issueKeysAddedAfterSprintStart || d.contents?.issueKeysAddedAfterStart || []
-              );
               const collect = (arr, completed = false) => {
                 (arr || []).forEach(it => {
-                  const added = addedKeySet.has(it.key) || it.addedAfterSprintStart || it.addedDuringSprint;
                   events.push({
                     key: it.key,
                     points: it.estimateStatistic?.statFieldValue?.value || 0,
-                    addedAfterStart: !!added,
+                    addedAfterStart: false,
                     blocked: !!it.flagged,
                     movedOut: false,
                     completed
@@ -280,12 +276,11 @@
                 if (existing) {
                   existing.movedOut = true;
                   existing.completed = false;
-                  existing.addedAfterStart = existing.addedAfterStart || addedKeySet.has(k);
                 } else {
                   events.push({
                     key: k,
                     points: 0,
-                    addedAfterStart: addedKeySet.has(k),
+                    addedAfterStart: false,
                     blocked: false,
                     movedOut: true,
                     completed: false
@@ -424,9 +419,12 @@
                   }
                   ev.completedPoints = pointsAtClose;
 
-                  for (const h of histories) {
+                  let addedDate = null;
+                  let inSprint = false;
+                  const sprintHist = histories.slice().sort((a, b) => new Date(a.created) - new Date(b.created));
+                  for (const h of sprintHist) {
                     const chDate = new Date(h.created);
-                    for (const item of h.items || []) {
+                    for (const item of (h.items || [])) {
                       if (item.field === 'Sprint') {
                         const from = (item.fromString || item.from || '').toString();
                         const to = (item.toString || item.to || '').toString();
@@ -437,21 +435,29 @@
                         if (fromHas && !toHas) {
                           ev.movedOut = true;
                           if (sprintStart && chDate < sprintStart) ev.removedBeforeStart = true;
+                          inSprint = false;
                         }
                         if (!fromHas && toHas) {
-                          if (sprintStart && chDate < sprintStart) ev.removedBeforeStart = false;
-                          if (sprintStart && chDate >= sprintStart) ev.addedAfterStart = true;
+                          if (sprintStart && chDate < sprintStart) {
+                            ev.removedBeforeStart = false;
+                            inSprint = true;
+                          } else if (!inSprint) {
+                            inSprint = true;
+                            addedDate = chDate;
+                          }
                         }
                       }
                     }
-                    // Continue scanning in case sprint membership changes occur later
                   }
 
-                  // Some issues may be created after the sprint starts and assigned
-                  // to the sprint during creation. These won't have an explicit
-                  // sprint change entry in the history, so detect this case using
-                  // the issue's creation date.
-                  if (!ev.addedAfterStart && sprintStart && created && new Date(created) > sprintStart) {
+                  if (!addedDate && sprintStart && created) {
+                    const createdDate = new Date(created);
+                    if (!inSprint && createdDate >= sprintStart) {
+                      addedDate = createdDate;
+                    }
+                  }
+
+                  if (addedDate && sprintStart && addedDate >= sprintStart) {
                     ev.addedAfterStart = true;
                   }
 
