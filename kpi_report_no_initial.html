@@ -202,7 +202,7 @@
       try {
         await Promise.all(boardNums.map(async boardNum => {
           const url = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/velocity?rapidViewId=${boardNum}`;
-          const isBfBoard = ['6347', '6390'].includes(String(boardNum));
+          const isBfBoard = ['6390'].includes(String(boardNum));
           const resp = await fetch(url, { credentials: 'include' });
           let data = {};
           if (resp.ok) {
@@ -263,25 +263,19 @@
               collect(d.contents.completedIssues, true);
               collect(d.contents.issuesNotCompletedInCurrentSprint, false);
               collect(d.contents.puntedIssues, false);
-              const removedSet = new Set(events.map(e => e.key));
               (d.contents.issueKeysRemovedFromSprint || []).forEach(k => {
-                if (k && !removedSet.has(k)) {
+                if (!k) return;
+                const existing = events.find(e => e.key === k);
+                if (existing) {
+                  existing.movedOut = true;
+                  existing.completed = false;
+                } else {
                   events.push({ key: k, points: 0, addedAfterStart: false, blocked: false, movedOut: true, completed: false });
                 }
               });
               if (isBfBoard) {
                 events = events.filter(ev => ev.key && ev.key.startsWith('BF-'));
               }
-
-              const entry = data.velocityStatEntries?.[s.id] || {};
-              let completed = entry.completed?.value || 0;
-              let completedSource = 'velocityStatEntries.completed';
-              if (!completed) {
-                completed = d.contents?.completedIssuesEstimateSum?.value || 0;
-                completedSource = 'completedIssuesEstimateSum';
-              }
-              let initiallyPlanned = entry.estimated?.value || 0;
-              let initiallyPlannedSource = 'velocityStatEntries.estimated';
               const sprintStart = s.startDate ? new Date(s.startDate) : null;
               const sprintEnd = s.completeDate ? new Date(s.completeDate) : (s.endDate ? new Date(s.endDate) : null);
 
@@ -404,18 +398,12 @@
                 } catch (e) {}
               }));
 
-              if (isBfBoard) {
-                completed = events.filter(ev => ev.completed)
-                                   .reduce((sum, ev) => sum + ev.points, 0);
-                initiallyPlanned = events.filter(ev => !ev.addedAfterStart)
-                                         .reduce((sum, ev) => sum + ev.points, 0);
-                completedSource = 'filtered events';
-                initiallyPlannedSource = 'filtered events';
-              } else if (!initiallyPlanned) {
-                initiallyPlanned = events.filter(ev => !ev.addedAfterStart)
-                                         .reduce((sum, ev) => sum + ev.points, 0);
-                initiallyPlannedSource = 'sum of events not added after start';
-              }
+              const completed = events.filter(ev => ev.completed && !ev.movedOut)
+                                      .reduce((sum, ev) => sum + ev.points, 0);
+              const initiallyPlanned = events.filter(ev => !ev.addedAfterStart)
+                                            .reduce((sum, ev) => sum + ev.points, 0);
+              const completedSource = 'sum of completed events (excluding moved out)';
+              const initiallyPlannedSource = 'sum of events not added after start';
               const key = `${boardNum}-${s.id}`;
               const existing = combined[key] || { board: boardNum, id: s.id, name: s.name, startDate: s.startDate, events: [], initiallyPlanned: 0, completed: 0, initiallyPlannedSource, completedSource };
               existing.id = existing.id || s.id;
