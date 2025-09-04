@@ -263,7 +263,10 @@
               collect(d.contents.completedIssues, true);
               collect(d.contents.issuesNotCompletedInCurrentSprint, false);
               collect(d.contents.puntedIssues, false);
-              (d.contents.issueKeysRemovedFromSprint || []).forEach(k => {
+              // Include issues that were removed from the sprint. These appear only as
+              // keys in the sprint report, so convert them into events so they are
+              // fetched and processed like other issues.
+              (d.contents?.issueKeysRemovedFromSprint || []).forEach(k => {
                 if (!k) return;
                 const existing = events.find(e => e.key === k);
                 if (existing) {
