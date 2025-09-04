@@ -75,6 +75,10 @@
           <th>Pulled In (SP / Issues)</th>
           <th>Blocked Days (Days / Issues)</th>
           <th>Moved Out (SP / Issues)</th>
+          <th>PI Completed (Issues)</th>
+          <th>PI Not Completed (Issues)</th>
+          <th>Other Completed (Issues)</th>
+          <th>Other Not Completed (Issues)</th>
           <th>Details</th>
         </tr>
       </thead>
@@ -475,6 +479,11 @@
     sorted.forEach((sprint, idx) => {
       const metrics = Disruption.calculateDisruptionMetrics(sprint.events);
       const detailsId = `details-${idx}`;
+      const events = sprint.events || [];
+      const piCompleted = events.filter(ev => ev.piRelevant && ev.completed).map(ev => ev.key);
+      const piNotCompleted = events.filter(ev => ev.piRelevant && !ev.completed).map(ev => ev.key);
+      const otherCompleted = events.filter(ev => !ev.piRelevant && ev.completed).map(ev => ev.key);
+      const otherNotCompleted = events.filter(ev => !ev.piRelevant && !ev.completed).map(ev => ev.key);
       html += `<tr>
         <td>[${sprint.board}] ${sprint.name}</td>
         <td title="${sprint.initiallyPlannedSource}">${sprint.initiallyPlanned || 0}</td>
@@ -482,15 +491,23 @@
         <td title="${metrics.pulledInIssues.join(', ')}">${metrics.pulledIn || 0} (${metrics.pulledInCount || 0})</td>
         <td title="${metrics.blockedIssues.join(', ')}">${(Math.ceil((metrics.blockedDays || 0) * 10) / 10).toFixed(1)} (${metrics.blockedCount || 0})</td>
         <td title="${metrics.movedOutIssues.join(', ')}">${metrics.movedOut || 0} (${metrics.movedOutCount || 0})</td>
+        <td title="${piCompleted.join(', ')}">${piCompleted.length}</td>
+        <td title="${piNotCompleted.join(', ')}">${piNotCompleted.length}</td>
+        <td title="${otherCompleted.join(', ')}">${otherCompleted.length}</td>
+        <td title="${otherNotCompleted.join(', ')}">${otherNotCompleted.length}</td>
         <td><button class="btn details-toggle" onclick="toggleDetails('${detailsId}', this)">Show Details</button></td>
       </tr>`;
-      html += `<tr id="${detailsId}" style="display:none"><td colspan="7">
+      html += `<tr id="${detailsId}" style="display:none"><td colspan="11">
         <table class="story-table">
           <thead><tr><th>Metric</th><th>Stories</th></tr></thead>
           <tbody>
             <tr><td>Pulled In</td><td>${metrics.pulledInIssues.join(', ') || '-'}</td></tr>
             <tr><td>Blocked</td><td>${metrics.blockedIssues.join(', ') || '-'}</td></tr>
             <tr><td>Moved Out</td><td>${metrics.movedOutIssues.join(', ') || '-'}</td></tr>
+            <tr><td>PI Completed</td><td>${piCompleted.join(', ') || '-'}</td></tr>
+            <tr><td>PI Not Completed</td><td>${piNotCompleted.join(', ') || '-'}</td></tr>
+            <tr><td>Other Completed</td><td>${otherCompleted.join(', ') || '-'}</td></tr>
+            <tr><td>Other Not Completed</td><td>${otherNotCompleted.join(', ') || '-'}</td></tr>
           </tbody>
         </table>
       </td></tr>`;
