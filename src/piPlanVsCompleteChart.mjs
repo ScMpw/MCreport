@@ -94,9 +94,10 @@ export function computeBucketSeries({ team, product, sprints = [], issues = [], 
         if (fromId !== undefined) {
           sprintChanges.push({ at: new Date(at.getTime() - 1), sprintId: fromId });
         }
-        if (toId !== undefined) {
-          sprintChanges.push({ at, sprintId: toId });
-        }
+        // Always record the target sprint change even if `to` is empty or null.
+        // This ensures we capture when an issue is removed from a sprint so that
+        // later lookups know the issue is no longer assigned to any sprint.
+        sprintChanges.push({ at, sprintId: toId });
       });
     const statusChanges = (issue.changelog || [])
       .filter(c => c.field === 'Status')
