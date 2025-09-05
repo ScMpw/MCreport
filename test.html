@@ -45,10 +45,10 @@
   </div>
   <div style="margin-top:20px;">
     <label>Jira Domain: <input id="jiraDomain" value="aldi-sued.atlassian.net" size="28"></label>
-    <label style="margin-left:10px;">Please select a Board:
+    <label id="boardLabel" style="margin-left:10px; display:none;">Please select a Board:
       <select id="boardNum" multiple></select>
     </label>
-    <button class="btn" onclick="loadDisruption()">Load Data</button>
+    <button id="loadBtn" class="btn" style="display:none;" onclick="loadDisruption()">Load Data</button>
     <button class="btn" onclick="exportPDF()">Download PDF</button>
   </div>
   <div id="pdfOptions" style="margin-top:10px;">
@@ -142,13 +142,13 @@
   let piMixChartInstance;
   let throughputChartInstance;
   let cycleTimeChartInstance;
-  const DISPLAY_SPRINT_COUNT = 6;
+  const DISPLAY_SPRINT_COUNT = 10;
   const RATING_WINDOW = 4;
   const CYCLE_TIME_START = new Date('2025-06-09');
   let sprints = [];
   let allSprints = [];
   let epicCache = new Map();
-  const PI_LABEL_RE = /\b\d{4}_PI\d+_committed\b/i;
+  const PI_LABEL_RE = /\b(?:BF_)?\d{4}_PI\d+_committ?ed\b/i;
 
 
   function filterRecentSprints(allSprints, excludeIds = [], desiredCount = DISPLAY_SPRINT_COUNT) {
@@ -166,7 +166,7 @@
     const wrap = document.getElementById('sprintList');
     if (!wrap) return;
     wrap.innerHTML = sprints.map(s =>
-      `<span class="sprint-item">${s.name}</span>`
+      `<span class="sprint-item">[${s.board}] ${s.name}</span>`
     ).join('');
   }
 
@@ -177,6 +177,14 @@
       const boards = await Jira.fetchBoardsByJql(domain);
       boardChoices.clearChoices();
       boardChoices.setChoices(boards.map(b => ({ value: b.id, label: b.name })), 'value', 'label', true);
+      boardChoices.removeActiveItems();
+      boards.forEach(b => boardChoices.setChoiceByValue(String(b.id)));
+      const show = boards.length ? '' : 'none';
+      document.getElementById('boardLabel').style.display = show;
+      document.getElementById('loadBtn').style.display = show;
+      if (boards.length) {
+        loadDisruption();
+      }
     } catch (e) {
       Logger.error('Failed to load boards', e);
     }
@@ -285,8 +293,6 @@
                 completed = d.contents?.completedIssuesEstimateSum?.value || 0;
                 completedSource = 'completedIssuesEstimateSum';
               }
-              let initiallyPlanned;
-              let initiallyPlannedSource;
               const sprintStart = s.startDate ? new Date(s.startDate) : null;
               const sprintEnd = s.completeDate ? new Date(s.completeDate) : (s.endDate ? new Date(s.endDate) : null);
 
@@ -310,15 +316,28 @@
                     ev.points = ev.points || Number(id.fields?.customfield_10002) || 0;
                     ev.blocked = ev.blocked || !!(id.fields?.flagged && id.fields.flagged.length);
                     ev.blocked = ev.blocked || currentStatus.toLowerCase().includes('block');
-                    const sorted = histories.slice().sort((a, b) => new Date(a.created) - new Date(b.created));
-                    initialType = currentType;
-                    for (const h of sorted) {
-                      const item = (h.items || []).find(i => i.field === 'issuetype');
-                      if (item) {
-                        initialType = item.fromString || item.from || item.toString || item.to || initialType;
-                        break;
+                    // Determine story points at sprint start
+                    let initialPoints = ev.points || 0;
+                    if (histories && sprintStart) {
+                      const sortedHist = histories.slice().sort((a, b) => new Date(a.created) - new Date(b.created));
+                      outer: for (const h of sortedHist) {
+                        const chDate = new Date(h.created);
+                        for (const item of h.items || []) {
+                          const fieldName = (item.field || '').toLowerCase();
+                          if (fieldName === 'story points' || fieldName === 'customfield_10002') {
+                            const toVal = Number(item.toString || item.to);
+                            const fromVal = Number(item.fromString || item.from);
+                            if (chDate <= sprintStart) {
+                              if (!isNaN(toVal)) initialPoints = toVal;
+                            } else {
+                              initialPoints = !isNaN(fromVal) ? fromVal : 0;
+                              break outer;
+                            }
+                          }
+                        }
                       }
                     }
+                    ev.initialPoints = initialPoints;
                     piRelevant = false;
                     if (parentKey) {
                       const epic = await getEpicInfo(jiraDomain, parentKey);
@@ -389,44 +408,80 @@
                     ev.cycleTime = Kpis.calculateWorkDays(devStart, new Date(resolutionDate));
                   }
 
+                  let pointsAtClose = ev.points || 0;
                   for (const h of histories) {
                     const chDate = new Date(h.created);
-                    if (sprintStart && chDate >= sprintStart) {
-                      for (const item of h.items || []) {
-                        if (item.field === 'Sprint') {
-                          const from = (item.fromString || item.from || '').toString();
-                          const to = (item.toString || item.to || '').toString();
-                          const sprintIdStr = String(s.id);
-                          const sprintName = s.name || '';
-                          const fromHas = from.includes(sprintIdStr) || from.includes(sprintName);
-                          const toHas = to.includes(sprintIdStr) || to.includes(sprintName);
-                          if (!fromHas && toHas) ev.addedAfterStart = true;
-                          if (fromHas && !toHas) ev.movedOut = true;
-                        }
+                    for (const item of (h.items || [])) {
+                      const fieldName = (item.field || '').toLowerCase();
+                      if ((fieldName === 'story points' || fieldName === 'customfield_10002')) {
+                        const val = Number(item.toString || item.to);
+                        if (!isNaN(val)) pointsAtClose = val;
                       }
                     }
                   }
+                  ev.completedPoints = pointsAtClose;
 
-                  // Some issues may be created after the sprint starts and assigned
-                  // to the sprint during creation. These won't have an explicit
-                  // sprint change entry in the history, so detect this case using
-                  // the issue's creation date.
-                  if (!ev.addedAfterStart && sprintStart && created && new Date(created) > sprintStart) {
+                  let addedDate = null;
+                  let inSprint = false;
+                  let wasInSprintAtStart = false;
+                  const sprintHist = histories.slice().sort((a, b) => new Date(a.created) - new Date(b.created));
+                  for (const h of sprintHist) {
+                    const chDate = new Date(h.created);
+                    for (const item of (h.items || [])) {
+                      if (item.field === 'Sprint') {
+                        const from = (item.fromString || item.from || '').toString();
+                        const to = (item.toString || item.to || '').toString();
+                        const sprintIdStr = String(s.id);
+                        const sprintName = s.name || '';
+                        const fromHas = from.includes(sprintIdStr) || from.includes(sprintName);
+                        const toHas = to.includes(sprintIdStr) || to.includes(sprintName);
+                        if (fromHas && !toHas) {
+                          ev.movedOut = true;
+                          if (sprintStart && chDate < sprintStart) ev.removedBeforeStart = true;
+                          inSprint = false;
+                        }
+                        if (!fromHas && toHas) {
+                          if (sprintStart && chDate < sprintStart) {
+                            ev.removedBeforeStart = false;
+                            inSprint = true;
+                          } else if (!inSprint) {
+                            inSprint = true;
+                            addedDate = chDate;
+                          }
+                        }
+                      }
+                    }
+                    if (sprintStart && chDate <= sprintStart) {
+                      wasInSprintAtStart = inSprint;
+                    }
+                  }
+
+                  if (!addedDate && sprintStart && created) {
+                    const createdDate = new Date(created);
+                    if (!inSprint && createdDate >= sprintStart) {
+                      addedDate = createdDate;
+                    }
+                  }
+
+                  if (addedDate && sprintStart && addedDate >= sprintStart && !wasInSprintAtStart) {
                     ev.addedAfterStart = true;
                   }
                 } catch (e) {}
               }));
 
-                initiallyPlanned = events.filter(ev => !ev.addedAfterStart)
-                                         .reduce((sum, ev) => sum + ev.points, 0);
-                initiallyPlannedSource = 'sum of events not added after start';
-              const existing = combined[s.name] || { id: s.id, name: s.name, startDate: s.startDate, events: [], initiallyPlanned: 0, completed: 0, initiallyPlannedSource, completedSource };
+              const initiallyPlanned = events
+                .filter(ev => !ev.addedAfterStart && !ev.removedBeforeStart)
+                .reduce((sum, ev) => sum + (ev.initialPoints ?? ev.points ?? 0), 0);
+              const initiallyPlannedSource = 'sum of events not added after start';
+              const key = `${boardNum}-${s.id}`;
+              const existing = combined[key] || { board: boardNum, id: s.id, name: s.name, startDate: s.startDate, events: [], initiallyPlanned: 0, completed: 0, initiallyPlannedSource, completedSource };
               existing.id = existing.id || s.id;
+              existing.board = boardNum;
               existing.startDate = existing.startDate || s.startDate;
               existing.events = existing.events.concat(events);
               existing.initiallyPlanned += initiallyPlanned || 0;
               existing.completed += completed || 0;
-              combined[s.name] = existing;
+              combined[key] = existing;
             } catch (e) {
               Logger.error('sprint fetch failed', e);
             }
@@ -449,8 +504,15 @@
     sorted.forEach((sprint, idx) => {
       const metrics = Disruption.calculateDisruptionMetrics(sprint.events);
       const detailsId = `details-${idx}`;
+      const events = sprint.events || [];
+      const initiallyPlannedIssues = Array.from(new Set(
+        events.filter(ev => !ev.addedAfterStart && !ev.removedBeforeStart).map(ev => ev.key)
+      ));
+      const completedIssues = Array.from(new Set(
+        events.filter(ev => ev.completed && !ev.movedOut).map(ev => ev.key)
+      ));
       html += `<tr>
-        <td>${sprint.name}</td>
+        <td>[${sprint.board}] ${sprint.name}</td>
         <td title="${sprint.initiallyPlannedSource}">${sprint.initiallyPlanned || 0}</td>
         <td title="${sprint.completedSource}">${sprint.completed || 0}</td>
         <td title="${metrics.pulledInIssues.join(', ')}">${metrics.pulledIn || 0} (${metrics.pulledInCount || 0})</td>
@@ -462,6 +524,8 @@
         <table class="story-table">
           <thead><tr><th>Metric</th><th>Stories</th></tr></thead>
           <tbody>
+            <tr><td>Initially Planned</td><td>${initiallyPlannedIssues.join(', ') || '-'}</td></tr>
+            <tr><td>Completed</td><td>${completedIssues.join(', ') || '-'}</td></tr>
             <tr><td>Pulled In</td><td>${metrics.pulledInIssues.join(', ') || '-'}</td></tr>
             <tr><td>Blocked</td><td>${metrics.blockedIssues.join(', ') || '-'}</td></tr>
             <tr><td>Moved Out</td><td>${metrics.movedOutIssues.join(', ') || '-'}</td></tr>
@@ -504,7 +568,7 @@ function renderVelocityStats(allSprints) {
   }
 
 function renderCharts(displaySprints, allSprints) {
-  const sprintLabels = displaySprints.map(s => s.name);
+  const sprintLabels = displaySprints.map(s => `[${s.board}] ${s.name}`);
   const completedSPAll = (allSprints || displaySprints).map(s => s.completed || 0);
   const completedSP = completedSPAll.slice(-displaySprints.length);
   const plannedSPAll = (allSprints || displaySprints).map(s => s.initiallyPlanned || 0);
@@ -515,17 +579,24 @@ function renderCharts(displaySprints, allSprints) {
   const blockedCount = metricsArr.map(m => m.blockedCount || 0);
   const movedOutCount = metricsArr.map(m => m.movedOutCount || 0);
 
-  function sumSP(events, pred) {
-    return (events || []).reduce((sum, ev) => sum + (pred(ev) ? (ev.points || 0) : 0), 0);
+  function sumSP(events, pred, field = 'points') {
+    return (events || []).reduce((sum, ev) => {
+      if (!pred(ev)) return sum;
+      let val = ev[field];
+      if ((field === 'initialPoints' || field === 'completedPoints') && (val === undefined || val === null)) {
+        val = ev.points;
+      }
+      return sum + (val || 0);
+    }, 0);
   }
   const plannedPI = displaySprints.map(s =>
-    sumSP(s.events, ev => !ev.addedAfterStart && !ev.movedOut && ev.piRelevant)
+    sumSP(s.events, ev => !ev.addedAfterStart && !ev.removedBeforeStart && ev.piRelevant, 'initialPoints')
   );
   const plannedOther = displaySprints.map((s, i) =>
     Math.max(0, (s.initiallyPlanned || 0) - plannedPI[i])
   );
   const completedPI = displaySprints.map(s =>
-    sumSP(s.events, ev => ev.completed && ev.piRelevant)
+    sumSP(s.events, ev => ev.completed && ev.piRelevant, 'completedPoints')
   );
   const completedOther = displaySprints.map((s, i) =>
     Math.max(0, (s.completed || 0) - completedPI[i])
@@ -533,8 +604,8 @@ function renderCharts(displaySprints, allSprints) {
 
   const initialCompleted = displaySprints.map(s =>
     (s.events || [])
-      .filter(ev => !ev.addedAfterStart && !ev.movedOut && ev.completed)
-      .reduce((sum, ev) => sum + (ev.points || 0), 0)
+      .filter(ev => !ev.addedAfterStart && !ev.removedBeforeStart && !ev.movedOut && ev.completed)
+      .reduce((sum, ev) => sum + ((ev.completedPoints ?? ev.points) || 0), 0)
   );
 
     const throughputPerSprint = displaySprints.map(s =>
@@ -887,7 +958,7 @@ function renderCharts(displaySprints, allSprints) {
     Logger.info('Loading disruption report for boards', boards.join(','));
     const { sprints: fetchedSprints } = await fetchDisruptionData(jiraDomain, boards);
     allSprints = fetchedSprints;
-    sprints = fetchedSprints.slice(-DISPLAY_SPRINT_COUNT);
+    sprints = filterRecentSprints(allSprints, [], DISPLAY_SPRINT_COUNT);
     renderTable(sprints);
     renderSprintList();
     document.getElementById('sprintRow').style.display = sprints.length ? '' : 'none';
