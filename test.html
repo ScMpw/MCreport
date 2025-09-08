@@ -176,13 +176,9 @@
         ...groupChoices
       ], 'value', 'label', true);
       boardChoices.removeActiveItems();
-      boards.forEach(b => boardChoices.setChoiceByValue(String(b.id)));
       const show = boards.length ? '' : 'none';
       document.getElementById('boardLabel').style.display = show;
       document.getElementById('loadBtn').style.display = show;
-      if (boards.length) {
-        loadDisruption();
-      }
     } catch (e) {
       Logger.error('Failed to load boards', e);
     }
