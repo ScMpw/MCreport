@@ -228,16 +228,23 @@
       const combined = {};
       const issueCache = new Map();
       try {
-        const expandedBoards = [];
+        const boardToGroups = {};
+        const uniqueBoards = [];
         boardNums.forEach(b => {
           if (BOARD_GROUPS[b]) {
-            BOARD_GROUPS[b].forEach(id => expandedBoards.push({ id, group: b }));
+            BOARD_GROUPS[b].forEach(id => {
+              uniqueBoards.push(id);
+              if (!boardToGroups[id]) boardToGroups[id] = [];
+              boardToGroups[id].push(b);
+            });
           } else {
-            expandedBoards.push({ id: b, group: null });
+            uniqueBoards.push(b);
           }
         });
-        await Promise.all(expandedBoards.map(async ({ id: boardNum, group }) => {
-          const boardKey = group || boardNum;
+        const fetchBoards = Array.from(new Set(uniqueBoards));
+        await Promise.all(fetchBoards.map(async boardNum => {
+          const groups = boardToGroups[boardNum] || [];
+          const boardKey = boardNum;
           const url = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/velocity?rapidViewId=${boardNum}`;
           const isBfBoard = ['6347', '6390'].includes(String(boardNum));
           const resp = await fetch(url, { credentials: 'include' });
@@ -517,15 +524,25 @@
                 .reduce((sum, ev) => sum + (ev.initialPoints ?? ev.points ?? 0), 0);
               const initiallyPlannedSource = 'sum of events not added after start';
 
+              const boardSprintName = s.name;
+              const boardEntryKey = `${boardKey}-${boardNum}-${s.id}`;
+              const existingBoard = combined[boardEntryKey] || { board: boardKey, id: s.id, name: boardSprintName, startDate: s.startDate, events: [], initiallyPlanned: 0, completed: 0, initiallyPlannedSource, completedSource };
+              existingBoard.startDate = !existingBoard.startDate || new Date(existingBoard.startDate) > new Date(s.startDate) ? s.startDate : existingBoard.startDate;
+              existingBoard.events = existingBoard.events.concat(events);
+              existingBoard.initiallyPlanned += initiallyPlanned || 0;
+              existingBoard.completed += completed || 0;
+              combined[boardEntryKey] = existingBoard;
 
-              const sprintName = group ? (extractSprintKey(s.name) || s.name) : s.name;
-              const key = group ? `${boardKey}-${sprintName}` : `${boardKey}-${boardNum}-${s.id}`;
-              const existing = combined[key] || { board: boardKey, id: group ? sprintName : s.id, name: sprintName, startDate: s.startDate, events: [], initiallyPlanned: 0, completed: 0, initiallyPlannedSource, completedSource };
-              existing.startDate = !existing.startDate || new Date(existing.startDate) > new Date(s.startDate) ? s.startDate : existing.startDate;
-              existing.events = existing.events.concat(events);
-              existing.initiallyPlanned += initiallyPlanned || 0;
-              existing.completed += completed || 0;
-              combined[key] = existing;
+              groups.forEach(group => {
+                const sprintName = extractSprintKey(s.name) || s.name;
+                const key = `${group}-${sprintName}`;
+                const existing = combined[key] || { board: group, id: sprintName, name: sprintName, startDate: s.startDate, events: [], initiallyPlanned: 0, completed: 0, initiallyPlannedSource, completedSource };
+                existing.startDate = !existing.startDate || new Date(existing.startDate) > new Date(s.startDate) ? s.startDate : existing.startDate;
+                existing.events = existing.events.concat(events);
+                existing.initiallyPlanned += initiallyPlanned || 0;
+                existing.completed += completed || 0;
+                combined[key] = existing;
+              });
             } catch (e) {
               Logger.error('sprint fetch failed', e);
             }
