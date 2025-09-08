@@ -59,6 +59,8 @@
     <label style="margin-left:5px;"><input type="checkbox" id="includePi" checked> Initially Planned &amp; Completed</label>
     <label style="margin-left:5px;"><input type="checkbox" id="includeDisruption" checked> Disruption Chart</label>
     <label style="margin-left:5px;"><input type="checkbox" id="includeRating" checked> Rating Zone Chart</label>
+    <label style="margin-left:5px;"><input type="checkbox" id="includeThroughput" checked> Throughput Chart</label>
+    <label style="margin-left:5px;"><input type="checkbox" id="includeCycle" checked> Cycle Time Chart</label>
   </div>
   <div id="sprintRow" style="margin-top:10px; display:none;">
     <span>Sprints:</span>
@@ -143,6 +145,7 @@
   };
   const DISPLAY_SPRINT_COUNT = 6;
   const RATING_WINDOW = 4;
+  const CYCLE_TIME_START = new Date('2025-06-09');
   let sprints = [];
   let allSprints = [];
   let epicCache = new Map();
@@ -596,7 +599,8 @@ function renderVelocityStats(allSprints) {
       (s.events || []).forEach(ev => {
         if (ev.completedDate) {
           totalCompleted++;
-          if (typeof ev.cycleTime === 'number') {
+          const sprintStart = s.startDate ? new Date(s.startDate) : null;
+          if (sprintStart && sprintStart > CYCLE_TIME_START && typeof ev.cycleTime === 'number') {
             totalCycle += ev.cycleTime;
             cycleCount++;
           }
@@ -652,6 +656,25 @@ function renderBoardCharts(displaySprints, allSprints, container) {
     (s.events || []).filter(ev => ev.completedDate).length
   );
 
+  const cycleTimePerSprint = displaySprints.map((s, idx) => {
+    const sprintStart = s.startDate ? new Date(s.startDate) : null;
+    if (!sprintStart || sprintStart <= CYCLE_TIME_START) return null;
+    const windowSprints = displaySprints
+      .slice(Math.max(0, idx - 4), idx + 1)
+      .filter(ws => ws.startDate && new Date(ws.startDate) > CYCLE_TIME_START);
+    const times = [];
+    windowSprints.forEach(ws => {
+      (ws.events || []).forEach(ev => {
+        if (typeof ev.cycleTime === 'number') times.push(ev.cycleTime);
+      });
+    });
+    if (!times.length) return null;
+    times.sort((a, b) => a - b);
+    const mid = Math.floor(times.length / 2);
+    const median = times.length % 2 ? times[mid] : (times[mid - 1] + times[mid]) / 2;
+    return Number(median.toFixed(1));
+  });
+
   const chartWidth = Math.max(sprintLabels.length * 120, 600);
   const piTitle = document.createElement('h2');
   piTitle.textContent = 'Initially planned & completed';
@@ -670,6 +693,24 @@ function renderBoardCharts(displaySprints, allSprints, container) {
   completedCanvas.height = 300;
   completedCanvas.dataset.type = 'rating';
   container.appendChild(completedCanvas);
+
+  const throughputTitle = document.createElement('h2');
+  throughputTitle.textContent = 'Throughput per Sprint';
+  container.appendChild(throughputTitle);
+  const throughputCanvas = document.createElement('canvas');
+  throughputCanvas.width = chartWidth;
+  throughputCanvas.height = 300;
+  throughputCanvas.dataset.type = 'throughput';
+  container.appendChild(throughputCanvas);
+
+  const cycleTitle = document.createElement('h2');
+  cycleTitle.textContent = 'Cycle Time (5-sprint median)';
+  container.appendChild(cycleTitle);
+  const cycleCanvas = document.createElement('canvas');
+  cycleCanvas.width = chartWidth;
+  cycleCanvas.height = 300;
+  cycleCanvas.dataset.type = 'cycle';
+  container.appendChild(cycleCanvas);
 
   const disruptionTitle = document.createElement('h2');
   disruptionTitle.textContent = 'Disruption Metrics';
@@ -855,6 +896,62 @@ function renderBoardCharts(displaySprints, allSprints, container) {
     plugins: [ratingZonesPlugin]
   });
 
+  const tctx = throughputCanvas.getContext('2d');
+  const throughputChart = new Chart(tctx, {
+    type: 'bar',
+    data: {
+      labels: sprintLabels,
+      datasets: [
+        { label: 'Throughput per Sprint', data: throughputPerSprint, backgroundColor: '#f97316', borderColor: '#f97316' }
+      ]
+    },
+    options: {
+      responsive: false,
+      maintainAspectRatio: false,
+      scales: {
+        x: { offset: true },
+        y: { beginAtZero: true, title: { display: true, text: 'Issues' } }
+      },
+      plugins: {
+        legend: { position: 'bottom' },
+        datalabels: {
+          display: true,
+          color: '#000',
+          anchor: 'end',
+          align: 'top'
+        }
+      }
+    }
+  });
+
+  const cctx = cycleCanvas.getContext('2d');
+  const cycleTimeChart = new Chart(cctx, {
+    type: 'bar',
+    data: {
+      labels: sprintLabels,
+      datasets: [
+        { label: 'Cycle Time (5-sprint median)', data: cycleTimePerSprint, backgroundColor: '#8b5cf6', borderColor: '#8b5cf6' }
+      ]
+    },
+    options: {
+      responsive: false,
+      maintainAspectRatio: false,
+      scales: {
+        x: { offset: true },
+        y: { beginAtZero: true, title: { display: true, text: 'Days' } }
+      },
+      plugins: {
+        legend: { position: 'bottom' },
+        datalabels: {
+          display: true,
+          color: '#000',
+          anchor: 'end',
+          align: 'top'
+        }
+      }
+    }
+  });
+
   const dctx = disruptionCanvas.getContext('2d');
   const disruptionChart = new Chart(dctx, {
     type: 'bar',
@@ -863,8 +960,7 @@ function renderBoardCharts(displaySprints, allSprints, container) {
       datasets: [
         { label: 'Pulled In Issues', data: pulledInCount, backgroundColor: '#3b82f6', borderColor: '#3b82f6' },
         { label: 'Blocked Days', data: blockedDays, backgroundColor: '#ef4444', borderColor: '#ef4444' },
-        { label: 'Moved Out Issues', data: movedOutCount, backgroundColor: '#10b981', borderColor: '#10b981' },
-        { label: 'Throughput per Sprint', data: throughputPerSprint, backgroundColor: '#f97316', borderColor: '#f97316' }
+        { label: 'Moved Out Issues', data: movedOutCount, backgroundColor: '#10b981', borderColor: '#10b981' }
       ]
     },
     options: {
@@ -886,7 +982,7 @@ function renderBoardCharts(displaySprints, allSprints, container) {
     }
   });
 
-  return [piMixChart, completedChart, disruptionChart];
+  return [piMixChart, completedChart, throughputChart, cycleTimeChart, disruptionChart];
 }
 
 function renderCharts(displaySprints, allSprints) {
@@ -986,6 +1082,8 @@ function renderCharts(displaySprints, allSprints) {
     const includePi = document.getElementById('includePi')?.checked;
     const includeDisruption = document.getElementById('includeDisruption')?.checked;
     const includeRating = document.getElementById('includeRating')?.checked;
+    const includeThroughput = document.getElementById('includeThroughput')?.checked;
+    const includeCycle = document.getElementById('includeCycle')?.checked;
     const pageWidth = pdf.internal.pageSize.getWidth();
     const pageHeight = pdf.internal.pageSize.getHeight();
     const margin = 20;
@@ -1003,7 +1101,9 @@ function renderCharts(displaySprints, allSprints) {
         const type = canvas.dataset.type;
         if ((type === 'pi' && !includePi) ||
             (type === 'disruption' && !includeDisruption) ||
-            (type === 'rating' && !includeRating)) {
+            (type === 'rating' && !includeRating) ||
+            (type === 'throughput' && !includeThroughput) ||
+            (type === 'cycle' && !includeCycle)) {
           continue;
         }
         const width = pageWidth - margin * 2;
