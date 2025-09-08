@@ -536,7 +536,11 @@
 
               groups.forEach(group => {
                 const sprintName = extractSprintKey(s.name) || s.name;
-                const key = `${group}-${sprintName}`;
+                // Use the sprint start date as the aggregation key to ensure that
+                // all boards for the same time period are combined even if their
+                // sprint names differ.
+                const groupKey = s.startDate ? new Date(s.startDate).toISOString().split('T')[0] : sprintName;
+                const key = `${group}-${groupKey}`;
                 const existing = combined[key] || { board: group, id: sprintName, name: sprintName, startDate: s.startDate, events: [], initiallyPlanned: 0, completed: 0, initiallyPlannedSource, completedSource };
                 existing.startDate = !existing.startDate || new Date(existing.startDate) > new Date(s.startDate) ? s.startDate : existing.startDate;
                 existing.events = existing.events.concat(events);
