@@ -150,6 +150,20 @@
   let allSprints = [];
   let epicCache = new Map();
   const PI_LABEL_RE = /\b(?:BF_)?\d{4}_PI\d+_committ?ed\b/i;
+  const SPRINT_KEY_RE = /\b(?:\d{4}[-_ ]?)?(?:PI)?(\d+)[-_ ]?(\d+)(?:[|/](\d+))?\b/i;
+
+  function extractSprintKey(name) {
+    const m = (name || '').match(SPRINT_KEY_RE);
+    if (!m) return name;
+    const pi = m[1];
+    let sprint = m[2] || '';
+    if (m[3]) {
+      sprint = m[2];
+    } else if (sprint.length > 1) {
+      sprint = sprint[0];
+    }
+    return `PI${pi}-${sprint}`;
+  }
 
 
   function filterRecentSprints(allSprints, excludeIds = [], desiredCount = DISPLAY_SPRINT_COUNT) {
@@ -504,11 +518,10 @@
               const initiallyPlannedSource = 'sum of events not added after start';
 
 
-              const key = `${boardKey}-${boardNum}-${s.id}`;
-              const existing = combined[key] || { board: boardKey, id: s.id, name: s.name, startDate: s.startDate, events: [], initiallyPlanned: 0, completed: 0, initiallyPlannedSource, completedSource };
-              existing.id = existing.id || s.id;
-              existing.board = boardKey;
-              existing.startDate = existing.startDate || s.startDate;
+              const sprintName = group ? (extractSprintKey(s.name) || s.name) : s.name;
+              const key = group ? `${boardKey}-${sprintName}` : `${boardKey}-${boardNum}-${s.id}`;
+              const existing = combined[key] || { board: boardKey, id: group ? sprintName : s.id, name: sprintName, startDate: s.startDate, events: [], initiallyPlanned: 0, completed: 0, initiallyPlannedSource, completedSource };
+              existing.startDate = !existing.startDate || new Date(existing.startDate) > new Date(s.startDate) ? s.startDate : existing.startDate;
               existing.events = existing.events.concat(events);
               existing.initiallyPlanned += initiallyPlanned || 0;
               existing.completed += completed || 0;
