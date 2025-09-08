@@ -22,12 +22,15 @@
       pulledIn: 0,
       blockedDays: 0,
       movedOut: 0,
+      spillover: 0,
       pulledInIssues: new Set(),
       blockedIssues: new Set(),
       movedOutIssues: new Set(),
+      spilloverIssues: new Set(),
       pulledInCount: 0,
       blockedCount: 0,
-      movedOutCount: 0
+      movedOutCount: 0,
+      spilloverCount: 0
     };
 
     // Track which categories each issue has already contributed to so the same
@@ -47,6 +50,11 @@
 
       logger.debug('Processing event', ev);
 
+      // Track latest known information about each issue for spillover detection
+      rec.points = ev.points || rec.points || 0;
+      if (ev.completed) rec.completed = true;
+      if (ev.movedOut && !ev.removedBeforeStart) rec.movedOut = true;
+
       if (ev.addedAfterStart && !rec.pulledIn) {
         metrics.pulledIn += pts;
         metrics.pulledInIssues.add(ev.key);
@@ -59,21 +67,31 @@
         rec.blocked = true;
       }
 
-      if (ev.movedOut && !ev.removedBeforeStart && !rec.movedOut) {
+      if (ev.movedOut && !ev.removedBeforeStart && !rec.movedOutCounted) {
         metrics.movedOut += pts;
         metrics.movedOutIssues.add(ev.key);
-        rec.movedOut = true;
+        rec.movedOutCounted = true;
+      }
+    });
+
+    // After processing all events determine spillover issues
+    seen.forEach((rec, key) => {
+      if (!rec.completed && !rec.movedOut) {
+        metrics.spillover += rec.points || 0;
+        metrics.spilloverIssues.add(key);
       }
     });
 
     metrics.pulledInCount = metrics.pulledInIssues.size;
     metrics.blockedCount = metrics.blockedIssues.size;
     metrics.movedOutCount = metrics.movedOutIssues.size;
+    metrics.spilloverCount = metrics.spilloverIssues.size;
 
     // Convert sets back to arrays for downstream consumers
     metrics.pulledInIssues = Array.from(metrics.pulledInIssues);
     metrics.blockedIssues = Array.from(metrics.blockedIssues);
     metrics.movedOutIssues = Array.from(metrics.movedOutIssues);
+    metrics.spilloverIssues = Array.from(metrics.spilloverIssues);
 
     logger.debug('Calculated metrics', metrics);
     return metrics;

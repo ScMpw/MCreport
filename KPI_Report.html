@@ -77,6 +77,7 @@
           <th>Pulled In (SP / Issues)</th>
           <th>Blocked Days (Days / Issues)</th>
           <th>Moved Out (SP / Issues)</th>
+          <th>Spillover (SP / Issues)</th>
           <th>PI Completed (Issues)</th>
           <th>PI Not Completed (Issues)</th>
           <th>Other Completed (Issues)</th>
@@ -570,13 +571,14 @@
         <td title="${metrics.pulledInIssues.join(', ')}">${metrics.pulledIn || 0} (${metrics.pulledInCount || 0})</td>
         <td title="${metrics.blockedIssues.join(', ')}">${(Math.ceil((metrics.blockedDays || 0) * 10) / 10).toFixed(1)} (${metrics.blockedCount || 0})</td>
         <td title="${metrics.movedOutIssues.join(', ')}">${metrics.movedOut || 0} (${metrics.movedOutCount || 0})</td>
+        <td title="${metrics.spilloverIssues.join(', ')}">${metrics.spillover || 0} (${metrics.spilloverCount || 0})</td>
         <td title="${piCompleted.join(', ')}">${piCompleted.length}</td>
         <td title="${piNotCompleted.join(', ')}">${piNotCompleted.length}</td>
         <td title="${otherCompleted.join(', ')}">${otherCompleted.length}</td>
         <td title="${otherNotCompleted.join(', ')}">${otherNotCompleted.length}</td>
         <td><button class="btn details-toggle" onclick="toggleDetails('${detailsId}', this)">Show Details</button></td>
       </tr>`;
-      html += `<tr id="${detailsId}" style="display:none"><td colspan="11">
+      html += `<tr id="${detailsId}" style="display:none"><td colspan="12">
         <table class="story-table">
           <thead><tr><th>Metric</th><th>Stories</th></tr></thead>
           <tbody>
@@ -585,6 +587,7 @@
             <tr><td>Pulled In</td><td>${metrics.pulledInIssues.join(', ') || '-'}</td></tr>
             <tr><td>Blocked</td><td>${metrics.blockedIssues.join(', ') || '-'}</td></tr>
             <tr><td>Moved Out</td><td>${metrics.movedOutIssues.join(', ') || '-'}</td></tr>
+            <tr><td>Spillover</td><td>${metrics.spilloverIssues.join(', ') || '-'}</td></tr>
             <tr><td>PI Completed</td><td>${piCompleted.join(', ') || '-'}</td></tr>
             <tr><td>PI Not Completed</td><td>${piNotCompleted.join(', ') || '-'}</td></tr>
             <tr><td>Other Completed</td><td>${otherCompleted.join(', ') || '-'}</td></tr>
@@ -636,6 +639,7 @@ function renderBoardCharts(displaySprints, allSprints, container) {
   const blockedDays = metricsArr.map(m => Math.ceil((m.blockedDays || 0) * 10) / 10);
   const blockedCount = metricsArr.map(m => m.blockedCount || 0);
   const movedOutCount = metricsArr.map(m => m.movedOutCount || 0);
+  const spilloverCount = metricsArr.map(m => m.spilloverCount || 0);
 
 
   function sumSP(events, pred, field = 'points') {
@@ -986,7 +990,8 @@ function renderBoardCharts(displaySprints, allSprints, container) {
       datasets: [
         { label: 'Pulled In Issues', data: pulledInCount, backgroundColor: '#3b82f6', borderColor: '#3b82f6' },
         { label: 'Blocked Days', data: blockedDays, backgroundColor: '#ef4444', borderColor: '#ef4444' },
-        { label: 'Moved Out Issues', data: movedOutCount, backgroundColor: '#10b981', borderColor: '#10b981' }
+        { label: 'Moved Out Issues', data: movedOutCount, backgroundColor: '#10b981', borderColor: '#10b981' },
+        { label: 'Spillover Issues', data: spilloverCount, backgroundColor: '#f59e0b', borderColor: '#f59e0b' }
       ]
     },
     options: {

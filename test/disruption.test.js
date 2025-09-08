@@ -39,4 +39,16 @@ const { calculateDisruptionMetrics } = require('../src/disruption');
   assert.deepStrictEqual(metrics.movedOutIssues, []);
 })();
 
+// Test spillover issues are counted
+(() => {
+  const events = [
+    { key: 'ST-5', points: 3, completed: false },
+    { key: 'ST-6', points: 2, completed: false, movedOut: true }
+  ];
+  const metrics = calculateDisruptionMetrics(events);
+  assert.strictEqual(metrics.spillover, 3);
+  assert.strictEqual(metrics.spilloverCount, 1);
+  assert.deepStrictEqual(metrics.spilloverIssues, ['ST-5']);
+})();
+
 console.log('disruption tests passed');
