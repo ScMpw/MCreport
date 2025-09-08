@@ -135,6 +135,12 @@
   // an error about reusing a canvas that is already in use.
   let chartInstances = [];
   let boardLabels = {};
+  const BOARD_GROUPS = {
+    'SCO': ['4133', '4132', '4131'],
+    'MCO': ['2796', '2526', '6346'],
+    'Butterfly': ['6347', '6390'],
+    'ACOSS': ['2796', '2526', '6346', '4133', '4132', '4131', '6347', '6390', '4894']
+  };
   const DISPLAY_SPRINT_COUNT = 6;
   const RATING_WINDOW = 4;
   let sprints = [];
@@ -168,7 +174,11 @@
     try {
       const boards = await Jira.fetchBoardsByJql(domain);
       boardChoices.clearChoices();
-      boardChoices.setChoices(boards.map(b => ({ value: b.id, label: b.name })), 'value', 'label', true);
+      const groupChoices = Object.keys(BOARD_GROUPS).map(g => ({ value: g, label: g }));
+      boardChoices.setChoices([
+        ...boards.map(b => ({ value: String(b.id), label: b.name })),
+        ...groupChoices
+      ], 'value', 'label', true);
       boardChoices.removeActiveItems();
       boards.forEach(b => boardChoices.setChoiceByValue(String(b.id)));
       const show = boards.length ? '' : 'none';
@@ -204,9 +214,18 @@
       const combined = {};
       const issueCache = new Map();
       try {
-        await Promise.all(boardNums.map(async boardNum => {
+        const expandedBoards = [];
+        boardNums.forEach(b => {
+          if (BOARD_GROUPS[b]) {
+            BOARD_GROUPS[b].forEach(id => expandedBoards.push({ id, group: b }));
+          } else {
+            expandedBoards.push({ id: b, group: null });
+          }
+        });
+        await Promise.all(expandedBoards.map(async ({ id: boardNum, group }) => {
+          const boardKey = group || boardNum;
           const url = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/velocity?rapidViewId=${boardNum}`;
-          const isBfBoard = ['6390'].includes(String(boardNum));
+          const isBfBoard = ['6347', '6390'].includes(String(boardNum));
           const resp = await fetch(url, { credentials: 'include' });
           let data = {};
           if (resp.ok) {
@@ -486,10 +505,10 @@
               const initiallyPlannedSource = 'sum of events not added after start';
 
 
-              const key = `${boardNum}-${s.id}`;
-              const existing = combined[key] || { board: boardNum, id: s.id, name: s.name, startDate: s.startDate, events: [], initiallyPlanned: 0, completed: 0, initiallyPlannedSource, completedSource };
+              const key = `${boardKey}-${boardNum}-${s.id}`;
+              const existing = combined[key] || { board: boardKey, id: s.id, name: s.name, startDate: s.startDate, events: [], initiallyPlanned: 0, completed: 0, initiallyPlannedSource, completedSource };
               existing.id = existing.id || s.id;
-              existing.board = boardNum;
+              existing.board = boardKey;
               existing.startDate = existing.startDate || s.startDate;
               existing.events = existing.events.concat(events);
               existing.initiallyPlanned += initiallyPlanned || 0;
