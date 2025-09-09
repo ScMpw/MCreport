@@ -614,7 +614,7 @@ function renderVelocityStats(allSprints) {
 
     (allSprints || []).forEach(s => {
       (s.events || []).forEach(ev => {
-        if (ev.completedDate) {
+        if (ev.completed) {
           totalCompleted++;
           const sprintStart = s.startDate ? new Date(s.startDate) : null;
           if (sprintStart && sprintStart > CYCLE_TIME_START && typeof ev.cycleTime === 'number') {
@@ -677,7 +677,7 @@ function renderBoardCharts(displaySprints, allSprints, container) {
   );
 
   const throughputPerSprint = displaySprints.map(s =>
-    (s.events || []).filter(ev => ev.completedDate).length
+    (s.events || []).filter(ev => ev.completed).length
   );
 
   const cycleTimePerSprint = displaySprints.map((s, idx) => {
