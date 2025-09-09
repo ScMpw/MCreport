@@ -1079,6 +1079,7 @@ function renderCharts(displaySprints, allSprints) {
       if (!byBoard[s.board]) byBoard[s.board] = [];
       byBoard[s.board].push(s);
     });
+    Object.values(byBoard).forEach(arr => arr.sort((a, b) => new Date(a.startDate) - new Date(b.startDate)));
 
     const groupMap = {};
     Object.entries(boardToGroups || {}).forEach(([boardId, groups]) => {
@@ -1088,51 +1089,70 @@ function renderCharts(displaySprints, allSprints) {
       });
     });
 
-    const groupSprints = {};
     Object.entries(groupMap).forEach(([group, boardIds]) => {
-      boardIds.forEach(id => {
-        (byBoard[id] || []).forEach(s => {
+      const aggregated = [];
+      for (let i = 0; i < DISPLAY_SPRINT_COUNT; i++) {
+        const agg = {
+          board: group,
+          id: '',
+          name: '',
+          startDate: null,
+          events: [],
+          initiallyPlanned: 0,
+          completed: 0,
+          metrics: {
+            pulledIn: 0,
+            blockedDays: 0,
+            movedOut: 0,
+            spillover: 0,
+            pulledInIssues: new Set(),
+            blockedIssues: new Set(),
+            movedOutIssues: new Set(),
+            spilloverIssues: new Set()
+          }
+        };
+        let found = false;
+        boardIds.forEach(id => {
+          const arr = byBoard[id] || [];
+          const s = arr[arr.length - 1 - i];
+          if (!s) return;
+          found = true;
           const sprintName = extractSprintKey(s.name) || s.name;
-          const groupKey = s.startDate ? new Date(s.startDate).toISOString().split('T')[0] : sprintName;
-          const key = `${group}-${groupKey}`;
-          const existing = groupSprints[key] || { board: group, id: sprintName, name: sprintName, startDate: s.startDate, events: [], initiallyPlanned: 0, completed: 0, metrics: { pulledIn: 0, blockedDays: 0, movedOut: 0, spillover: 0, pulledInIssues: new Set(), blockedIssues: new Set(), movedOutIssues: new Set(), spilloverIssues: new Set() } };
-          existing.startDate = !existing.startDate || new Date(existing.startDate) > new Date(s.startDate) ? s.startDate : existing.startDate;
-          existing.events = existing.events.concat(s.events || []);
-          existing.initiallyPlanned += s.initiallyPlanned || 0;
-          existing.completed += s.completed || 0;
+          if (!agg.name) { agg.name = sprintName; agg.id = sprintName; }
+          if (!agg.startDate || new Date(agg.startDate) > new Date(s.startDate)) {
+            agg.startDate = s.startDate;
+          }
+          agg.events = agg.events.concat(s.events || []);
+          agg.initiallyPlanned += s.initiallyPlanned || 0;
+          agg.completed += s.completed || 0;
           const m = s.metrics || {};
-          existing.metrics.pulledIn += m.pulledIn || 0;
-          existing.metrics.blockedDays += m.blockedDays || 0;
-          existing.metrics.movedOut += m.movedOut || 0;
-          existing.metrics.spillover += m.spillover || 0;
-          (m.pulledInIssues || []).forEach(k => existing.metrics.pulledInIssues.add(k));
-          (m.blockedIssues || []).forEach(k => existing.metrics.blockedIssues.add(k));
-          (m.movedOutIssues || []).forEach(k => existing.metrics.movedOutIssues.add(k));
-          (m.spilloverIssues || []).forEach(k => existing.metrics.spilloverIssues.add(k));
-          groupSprints[key] = existing;
+          agg.metrics.pulledIn += m.pulledIn || 0;
+          agg.metrics.blockedDays += m.blockedDays || 0;
+          agg.metrics.movedOut += m.movedOut || 0;
+          agg.metrics.spillover += m.spillover || 0;
+          (m.pulledInIssues || []).forEach(k => agg.metrics.pulledInIssues.add(k));
+          (m.blockedIssues || []).forEach(k => agg.metrics.blockedIssues.add(k));
+          (m.movedOutIssues || []).forEach(k => agg.metrics.movedOutIssues.add(k));
+          (m.spilloverIssues || []).forEach(k => agg.metrics.spilloverIssues.add(k));
         });
+        if (!found) break;
+        aggregated.push(agg);
+      }
+      aggregated.forEach(s => {
+        const m = s.metrics;
+        m.pulledInCount = m.pulledInIssues.size;
+        m.blockedCount = m.blockedIssues.size;
+        m.movedOutCount = m.movedOutIssues.size;
+        m.spilloverCount = m.spilloverIssues.size;
+        m.pulledInIssues = Array.from(m.pulledInIssues);
+        m.blockedIssues = Array.from(m.blockedIssues);
+        m.movedOutIssues = Array.from(m.movedOutIssues);
+        m.spilloverIssues = Array.from(m.spilloverIssues);
       });
+      aggregated.sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
+      byBoard[group] = aggregated;
     });
 
-    const groupArr = Object.values(groupSprints).map(s => {
-      const m = s.metrics;
-      m.pulledInCount = m.pulledInIssues.size;
-      m.blockedCount = m.blockedIssues.size;
-      m.movedOutCount = m.movedOutIssues.size;
-      m.spilloverCount = m.spilloverIssues.size;
-      m.pulledInIssues = Array.from(m.pulledInIssues);
-      m.blockedIssues = Array.from(m.blockedIssues);
-      m.movedOutIssues = Array.from(m.movedOutIssues);
-      m.spilloverIssues = Array.from(m.spilloverIssues);
-      return s;
-    });
-
-    groupArr.forEach(s => {
-      if (!byBoard[s.board]) byBoard[s.board] = [];
-      byBoard[s.board].push(s);
-    });
-
-    Object.values(byBoard).forEach(arr => arr.sort((a, b) => new Date(a.startDate) - new Date(b.startDate)));
     sprints = Object.values(byBoard).flatMap(arr => arr.slice(-DISPLAY_SPRINT_COUNT));
     renderTable(sprints);
     renderSprintList();
