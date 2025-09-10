@@ -1116,8 +1116,12 @@ function renderCharts(displaySprints, allSprints) {
           const s = arr[arr.length - 1 - i];
           if (!s) return;
           found = true;
-          const sprintName = extractSprintKey(s.name) || s.name;
-          if (!agg.name) { agg.name = sprintName; agg.id = sprintName; }
+          if (!agg.name) {
+            const sprintNum = i + 1;
+            const sprintName = `${group} ${sprintNum}`;
+            agg.name = sprintName;
+            agg.id = sprintName;
+          }
           if (!agg.startDate || new Date(agg.startDate) > new Date(s.startDate)) {
             agg.startDate = s.startDate;
           }
@@ -1152,7 +1156,17 @@ function renderCharts(displaySprints, allSprints) {
       byBoard[group] = aggregated;
     });
 
-    sprints = Object.values(byBoard).flatMap(arr => arr.slice(-DISPLAY_SPRINT_COUNT));
+    const selectedDisplay = [];
+    const selectedAll = [];
+    boards.forEach(b => {
+      const arr = byBoard[b];
+      if (arr) {
+        selectedAll.push(...arr);
+        selectedDisplay.push(...arr.slice(-DISPLAY_SPRINT_COUNT));
+      }
+    });
+    sprints = selectedDisplay;
+    allSprints = selectedAll;
     renderTable(sprints);
     renderSprintList();
     document.getElementById('sprintRow').style.display = sprints.length ? '' : 'none';
