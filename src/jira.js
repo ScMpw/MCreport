@@ -59,13 +59,17 @@
 
   // Convenience helpers for common Jira lookups
   async function fetchIssue(jiraDomain, issueId, { ttl = CACHE_TTL, forceRefresh = false } = {}) {
-    const key = `issue:${issueId}`;
+
+    const key = `issue:${jiraDomain}:${issueId}`;
+
     if (forceRefresh) clearCache(key);
     return fetchWithCache(key, `https://${jiraDomain}/rest/api/2/issue/${issueId}`, ttl);
   }
 
   async function fetchSprint(jiraDomain, sprintId, { ttl = CACHE_TTL, forceRefresh = false } = {}) {
-    const key = `sprint:${sprintId}`;
+
+    const key = `sprint:${jiraDomain}:${sprintId}`;
+
     if (forceRefresh) clearCache(key);
     return fetchWithCache(key, `https://${jiraDomain}/rest/agile/1.0/sprint/${sprintId}`, ttl);
   }
@@ -73,36 +77,44 @@
   async function fetchBoardsByJql(jiraDomain) {
     logger.info('Fetching boards for domain', jiraDomain);
 
-    // Restrict the search to a predefined set of boards to avoid
-    // querying every board in the instance which previously resulted in
-    // numerous 404 errors. Additional board IDs can be added to this
-    // list as needed.
-    const boardIds = [2796, 2526, 6346, 4133, 4132, 4131, 6347, 6390, 4894];
     const results = [];
-
-    // Accept boards whose project keys match any of these values.
     const allowedProjects = new Set(['ANP', 'BF', 'NPSCO']);
 
-    for (const id of boardIds) {
+    let startAt = 0;
+    const maxResults = 50;
+    while (true) {
+      let page;
       try {
-        const board = await fetchWithCache(
-          `board:${id}`,
-          `https://${jiraDomain}/rest/agile/1.0/board/${id}`
-        );
 
-        // Query projects associated with this board instead of the board's filter.
-        const pdata = await fetchWithCache(
-          `board:${id}:projects`,
-          `https://${jiraDomain}/rest/agile/1.0/board/${id}/project`
+        page = await fetchWithCache(
+          `boards:${jiraDomain}:${startAt}`,
+          `https://${jiraDomain}/rest/agile/1.0/board?maxResults=${maxResults}&startAt=${startAt}`
         );
-        const projects = pdata.values || [];
-        const matches = projects.some(p => allowedProjects.has((p.key || '').toUpperCase()));
-        if (matches) {
-          results.push({ id, name: board.name });
-        }
       } catch (e) {
-        logger.warn('Failed to inspect board', id, e);
+        logger.warn('Failed to fetch board page', startAt, e);
+        break;
       }
+
+      const boards = page.values || [];
+      for (const board of boards) {
+        try {
+          const pdata = await fetchWithCache(
+            `board:${jiraDomain}:${board.id}:projects`,
+            `https://${jiraDomain}/rest/agile/1.0/board/${board.id}/project`
+          );
+          const projects = pdata.values || [];
+          const matches = projects.some(p => allowedProjects.has((p.key || '').toUpperCase()));
+          if (matches) {
+            results.push({ id: board.id, name: board.name });
+          }
+        } catch (e) {
+          logger.warn('Failed to inspect board', board.id, e);
+        }
+
+      }
+
+      if (page.isLast || boards.length === 0) break;
+      startAt += boards.length;
     }
 
     logger.info('Boards matching filter:', results.map(r => `${r.name} (${r.id})`).join(', '));
