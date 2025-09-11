@@ -27,10 +27,12 @@
       blockedIssues: new Set(),
       movedOutIssues: new Set(),
       spilloverIssues: new Set(),
+      spilloverPulledInIssues: new Set(),
       pulledInCount: 0,
       blockedCount: 0,
       movedOutCount: 0,
-      spilloverCount: 0
+      spilloverCount: 0,
+      spilloverPulledInCount: 0
     };
 
     // Track which categories each issue has already contributed to so the same
@@ -82,16 +84,25 @@
       }
     });
 
+    // Determine issues that were both pulled in and ended up as spillovers
+    metrics.spilloverIssues.forEach(key => {
+      if (metrics.pulledInIssues.has(key)) {
+        metrics.spilloverPulledInIssues.add(key);
+      }
+    });
+
     metrics.pulledInCount = metrics.pulledInIssues.size;
     metrics.blockedCount = metrics.blockedIssues.size;
     metrics.movedOutCount = metrics.movedOutIssues.size;
     metrics.spilloverCount = metrics.spilloverIssues.size;
+    metrics.spilloverPulledInCount = metrics.spilloverPulledInIssues.size;
 
     // Convert sets back to arrays for downstream consumers
     metrics.pulledInIssues = Array.from(metrics.pulledInIssues);
     metrics.blockedIssues = Array.from(metrics.blockedIssues);
     metrics.movedOutIssues = Array.from(metrics.movedOutIssues);
     metrics.spilloverIssues = Array.from(metrics.spilloverIssues);
+    metrics.spilloverPulledInIssues = Array.from(metrics.spilloverPulledInIssues);
 
     logger.debug('Calculated metrics', metrics);
     return metrics;
