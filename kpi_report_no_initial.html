@@ -643,6 +643,8 @@ function renderBoardCharts(displaySprints, allSprints, container) {
   const blockedCount = metricsArr.map(m => m.blockedCount || 0);
   const movedOutCount = metricsArr.map(m => m.movedOutCount || 0);
   const spilloverCount = metricsArr.map(m => m.spilloverCount || 0);
+  const spilloverPulledInCount = metricsArr.map(m => m.spilloverPulledInCount || 0);
+  const spilloverOnlyCount = spilloverCount.map((n, i) => n - spilloverPulledInCount[i]);
 
 
   function sumSP(events, pred, field = 'points') {
@@ -970,23 +972,36 @@ function renderBoardCharts(displaySprints, allSprints, container) {
   });
 
   const dctx = disruptionCanvas.getContext('2d');
+  const patternCanvas = document.createElement('canvas');
+  patternCanvas.width = 6;
+  patternCanvas.height = 6;
+  const pctx = patternCanvas.getContext('2d');
+  pctx.fillStyle = '#f59e0b';
+  pctx.fillRect(0, 0, 6, 6);
+  pctx.strokeStyle = '#ffffff';
+  pctx.beginPath();
+  pctx.moveTo(0, 6);
+  pctx.lineTo(6, 0);
+  pctx.stroke();
+  const hatchPattern = dctx.createPattern(patternCanvas, 'repeat');
   const disruptionChart = new Chart(dctx, {
     type: 'bar',
     data: {
       labels: sprintLabels,
       datasets: [
-        { label: 'Pulled In Issues', data: pulledInCount, backgroundColor: '#3b82f6', borderColor: '#3b82f6' },
-        { label: 'Blocked Days', data: blockedDays, backgroundColor: '#ef4444', borderColor: '#ef4444' },
-        { label: 'Moved Out Issues', data: movedOutCount, backgroundColor: '#10b981', borderColor: '#10b981' },
-        { label: 'Spillover Issues', data: spilloverCount, backgroundColor: '#f59e0b', borderColor: '#f59e0b' }
+        { label: 'Pulled In Issues', data: pulledInCount, backgroundColor: '#3b82f6', borderColor: '#3b82f6', stack: 'pulledIn' },
+        { label: 'Blocked Days', data: blockedDays, backgroundColor: '#ef4444', borderColor: '#ef4444', stack: 'blocked' },
+        { label: 'Moved Out Issues', data: movedOutCount, backgroundColor: '#10b981', borderColor: '#10b981', stack: 'movedOut' },
+        { label: 'Spillover Issues', data: spilloverOnlyCount, backgroundColor: '#f59e0b', borderColor: '#f59e0b', stack: 'spillover' },
+        { label: 'Spillover & Pulled In Issues', data: spilloverPulledInCount, backgroundColor: hatchPattern, borderColor: '#f59e0b', stack: 'spillover' }
       ]
     },
     options: {
       responsive: false,
       maintainAspectRatio: false,
       scales: {
-        x: { offset: true },
-        y: { beginAtZero: true, title: { display: true, text: 'Issue Count / Blocked Days' } }
+        x: { offset: true, stacked: true },
+        y: { beginAtZero: true, stacked: true, title: { display: true, text: 'Issue Count / Blocked Days' } }
       },
       plugins: {
         legend: { position: 'bottom' },
