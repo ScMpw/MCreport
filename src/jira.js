@@ -59,13 +59,17 @@
 
   // Convenience helpers for common Jira lookups
   async function fetchIssue(jiraDomain, issueId, { ttl = CACHE_TTL, forceRefresh = false } = {}) {
+
     const key = `issue:${jiraDomain}:${issueId}`;
+
     if (forceRefresh) clearCache(key);
     return fetchWithCache(key, `https://${jiraDomain}/rest/api/2/issue/${issueId}`, ttl);
   }
 
   async function fetchSprint(jiraDomain, sprintId, { ttl = CACHE_TTL, forceRefresh = false } = {}) {
+
     const key = `sprint:${jiraDomain}:${sprintId}`;
+
     if (forceRefresh) clearCache(key);
     return fetchWithCache(key, `https://${jiraDomain}/rest/agile/1.0/sprint/${sprintId}`, ttl);
   }
@@ -81,6 +85,7 @@
     while (true) {
       let page;
       try {
+
         page = await fetchWithCache(
           `boards:${jiraDomain}:${startAt}`,
           `https://${jiraDomain}/rest/agile/1.0/board?maxResults=${maxResults}&startAt=${startAt}`
@@ -105,6 +110,7 @@
         } catch (e) {
           logger.warn('Failed to inspect board', board.id, e);
         }
+
       }
 
       if (page.isLast || boards.length === 0) break;
