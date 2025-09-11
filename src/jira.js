@@ -15,6 +15,61 @@
     ? require('./logger')
     : (getGlobal().Logger || { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} });
 
+  // Simple in-memory cache for Jira resources. Entries are keyed by
+  // a string such as `issue:123` or `sprint:456`. Each record stores the
+  // fetched value and an expiry timestamp so we can evict stale data.
+  const CACHE_TTL = 5 * 60 * 1000; // five minutes
+  const cache = new Map();
+
+  function getCached(key) {
+    const entry = cache.get(key);
+    if (entry && entry.expiry > Date.now()) {
+      logger.debug('Cache hit for', key);
+      return entry.value;
+    }
+    // Remove stale entries to keep the cache small.
+    cache.delete(key);
+    return null;
+    }
+
+  function setCached(key, value, ttl = CACHE_TTL) {
+    cache.set(key, { value, expiry: Date.now() + ttl });
+  }
+
+  function clearCache(key) {
+    if (key) {
+      cache.delete(key);
+    } else {
+      cache.clear();
+    }
+  }
+
+  async function fetchWithCache(key, url, ttl = CACHE_TTL) {
+    const cached = getCached(key);
+    if (cached) return cached;
+
+    const resp = await fetch(url, { credentials: 'include' });
+    if (!resp.ok) {
+      throw new Error(`Failed to fetch ${url} ${resp.status}`);
+    }
+    const data = await resp.json();
+    setCached(key, data, ttl);
+    return data;
+  }
+
+  // Convenience helpers for common Jira lookups
+  async function fetchIssue(jiraDomain, issueId, { ttl = CACHE_TTL, forceRefresh = false } = {}) {
+    const key = `issue:${issueId}`;
+    if (forceRefresh) clearCache(key);
+    return fetchWithCache(key, `https://${jiraDomain}/rest/api/2/issue/${issueId}`, ttl);
+  }
+
+  async function fetchSprint(jiraDomain, sprintId, { ttl = CACHE_TTL, forceRefresh = false } = {}) {
+    const key = `sprint:${sprintId}`;
+    if (forceRefresh) clearCache(key);
+    return fetchWithCache(key, `https://${jiraDomain}/rest/agile/1.0/sprint/${sprintId}`, ttl);
+  }
+
   async function fetchBoardsByJql(jiraDomain) {
     logger.info('Fetching boards for domain', jiraDomain);
 
@@ -30,20 +85,16 @@
 
     for (const id of boardIds) {
       try {
-        const bResp = await fetch(`https://${jiraDomain}/rest/agile/1.0/board/${id}`, { credentials: 'include' });
-        if (!bResp.ok) {
-          logger.warn('Failed to fetch board', id, bResp.status);
-          continue;
-        }
-        const board = await bResp.json();
+        const board = await fetchWithCache(
+          `board:${id}`,
+          `https://${jiraDomain}/rest/agile/1.0/board/${id}`
+        );
 
         // Query projects associated with this board instead of the board's filter.
-        const pResp = await fetch(`https://${jiraDomain}/rest/agile/1.0/board/${id}/project`, { credentials: 'include' });
-        if (!pResp.ok) {
-          logger.warn('Failed to fetch board projects', id, pResp.status);
-          continue;
-        }
-        const pdata = await pResp.json();
+        const pdata = await fetchWithCache(
+          `board:${id}:projects`,
+          `https://${jiraDomain}/rest/agile/1.0/board/${id}/project`
+        );
         const projects = pdata.values || [];
         const matches = projects.some(p => allowedProjects.has((p.key || '').toUpperCase()));
         if (matches) {
@@ -58,5 +109,5 @@
     return results;
   }
 
-  return { fetchBoardsByJql };
+  return { fetchBoardsByJql, fetchIssue, fetchSprint, clearCache };
 }));
