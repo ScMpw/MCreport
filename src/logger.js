@@ -38,5 +38,27 @@
   logger.getLevel = () => current;
   logger.setListener = fn => { listener = fn; };
 
+  // Wrap global fetch to track total time across all requests.
+  if (typeof globalThis !== 'undefined' && typeof globalThis.fetch === 'function') {
+    const origFetch = globalThis.fetch;
+    let firstStart = null;
+    let pending = 0;
+
+    globalThis.fetch = async (...args) => {
+      if (firstStart === null) firstStart = Date.now();
+      pending++;
+      try {
+        return await origFetch(...args);
+      } finally {
+        pending--;
+        if (pending === 0 && firstStart !== null) {
+          const total = Date.now() - firstStart;
+          logger.info('All fetches completed in', total + 'ms');
+          firstStart = null;
+        }
+      }
+    };
+  }
+
   return logger;
 }));
