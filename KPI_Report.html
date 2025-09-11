@@ -1012,8 +1012,8 @@ function renderBoardCharts(displaySprints, allSprints, container) {
         { label: 'Pulled In Issues', data: pulledInCount, backgroundColor: '#3b82f6', borderColor: '#3b82f6', stack: 'pulledIn' },
         { label: 'Blocked Days', data: blockedDays, backgroundColor: '#ef4444', borderColor: '#ef4444', stack: 'blocked' },
         { label: 'Moved Out Issues', data: movedOutCount, backgroundColor: '#10b981', borderColor: '#10b981', stack: 'movedOut' },
-        { label: 'Spillover Issues', data: spilloverOnlyCount, backgroundColor: '#f59e0b', borderColor: '#f59e0b', stack: 'spillover' },
-        { label: 'Spillover & Pulled In Issues', data: spilloverPulledInCount, backgroundColor: hatchPattern, borderColor: '#f59e0b', stack: 'spillover' }
+        { label: 'Spillover Issues', data: spilloverOnlyCount, backgroundColor: '#f59e0b', borderColor: '#f59e0b', stack: 'spillover', datalabels: { display: false } },
+        { label: 'Spillover & Pulled In Issues', data: spilloverPulledInCount, backgroundColor: hatchPattern, borderColor: '#f59e0b', stack: 'spillover', datalabels: { formatter: (v, ctx) => spilloverCount[ctx.dataIndex] } }
       ]
     },
     options: {
