@@ -1161,14 +1161,21 @@ function renderCharts(displaySprints, allSprints) {
       }
       aggregated.forEach(s => {
         const m = s.metrics;
-        m.pulledInCount = m.pulledInIssues.size;
-        m.blockedCount = m.blockedIssues.size;
-        m.movedOutCount = m.movedOutIssues.size;
-        m.spilloverCount = m.spilloverIssues.size;
-        m.pulledInIssues = Array.from(m.pulledInIssues);
-        m.blockedIssues = Array.from(m.blockedIssues);
-        m.movedOutIssues = Array.from(m.movedOutIssues);
-        m.spilloverIssues = Array.from(m.spilloverIssues);
+        const pulledSet = m.pulledInIssues;
+        const blockedSet = m.blockedIssues;
+        const movedOutSet = m.movedOutIssues;
+        const spillSet = m.spilloverIssues;
+        const spillPullSet = new Set([...pulledSet].filter(k => spillSet.has(k)));
+        m.pulledInCount = pulledSet.size;
+        m.blockedCount = blockedSet.size;
+        m.movedOutCount = movedOutSet.size;
+        m.spilloverCount = spillSet.size;
+        m.spilloverPulledInCount = spillPullSet.size;
+        m.pulledInIssues = Array.from(pulledSet);
+        m.blockedIssues = Array.from(blockedSet);
+        m.movedOutIssues = Array.from(movedOutSet);
+        m.spilloverIssues = Array.from(spillSet);
+        m.spilloverPulledInIssues = Array.from(spillPullSet);
       });
       aggregated.sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
       byBoard[group] = aggregated;
