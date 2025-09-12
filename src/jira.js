@@ -85,21 +85,42 @@
     const results = [];
     for (const id of boardIds) {
       try {
+        // Fetch the board itself first. Some IDs may no longer exist or be
+        // inaccessible to the current user. Those cases return a 404 which we
+        // quietly skip to avoid noisy warnings in the log output.
         const board = await fetchWithCache(
           `board:${jiraDomain}:${id}`,
           `https://${jiraDomain}/rest/agile/1.0/board/${id}`
         );
 
-        const filterData = await fetchWithCache(
-          `board:${jiraDomain}:${id}:filter`,
-          `https://${jiraDomain}/rest/agile/1.0/board/${id}/filter`
-        );
+        // Team-managed boards do not expose a filter endpoint and Jira returns
+        // a 404 for `/board/{id}/filter`. Treat this as a signal to skip the
+        // board rather than logging a warning.
+        let filterData;
+        try {
+          filterData = await fetchWithCache(
+            `board:${jiraDomain}:${id}:filter`,
+            `https://${jiraDomain}/rest/agile/1.0/board/${id}/filter`
+          );
+        } catch (e) {
+          if (String(e).includes('404')) {
+            logger.debug('Skipping board without filter', id);
+            continue;
+          }
+          throw e;
+        }
+
         const jql = (filterData && filterData.jql ? filterData.jql.toUpperCase() : '');
         if (jql.includes(target)) {
           results.push({ id: board.id, name: board.name });
         }
       } catch (e) {
-        logger.warn('Failed to inspect board', id, e);
+        if (String(e).includes('404')) {
+          // Board itself is missing or inaccessible – ignore.
+          logger.debug('Skipping missing board', id);
+        } else {
+          logger.warn('Failed to inspect board', id, e);
+        }
       }
     }
 
