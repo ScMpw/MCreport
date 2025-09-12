@@ -225,6 +225,13 @@
     return info;
   }
 
+  async function runBatches(items, batchSize, handler) {
+    for (let i = 0; i < items.length; i += batchSize) {
+      const batch = items.slice(i, i + batchSize);
+      await Promise.all(batch.map(handler));
+    }
+  }
+
     async function fetchDisruptionData(jiraDomain, boardNums = []) {
       Logger.info('Fetching disruption data for boards', boardNums.join(','));
       const combined = {};
@@ -244,7 +251,7 @@
           }
         });
         const fetchBoards = Array.from(new Set(uniqueBoards));
-        await Promise.all(fetchBoards.map(async boardNum => {
+        await runBatches(fetchBoards, 3, async boardNum => {
           const boardKey = boardNum;
           const url = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/velocity?rapidViewId=${boardNum}`;
           const isBfBoard = ['6347', '6390'].includes(String(boardNum));
@@ -286,7 +293,7 @@
 
           closed = filterRecentSprints(closed, [], DISPLAY_SPRINT_COUNT + RATING_WINDOW);
 
-          await Promise.all(closed.map(async (s, idx) => {
+          await runBatches(closed, 2, async s => {
             const surl = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/sprintreport?rapidViewId=${boardNum}&sprintId=${s.id}`;
             try {
               const r = await fetch(surl, { credentials: 'include' });
@@ -337,7 +344,7 @@
                 sprintStart = null;
               }
 
-              await Promise.all(events.map(async ev => {
+              await runBatches(events, 10, async ev => {
                 try {
                   let cached = issueCache.get(ev.key);
                   let histories, currentStatus, created, resolutionDate, piRelevant, parentKey;
@@ -510,7 +517,7 @@
                   }
 
                 } catch (e) {}
-              }));
+              });
 
               const entry = data.velocityStatEntries?.[s.id] || {};
               let completed = entry.completed?.value || 0;
@@ -536,8 +543,8 @@
             } catch (e) {
               Logger.error('sprint fetch failed', e);
             }
-          }));
-        }));
+          });
+        });
         Logger.info('Disruption data fetched for', Object.keys(combined).length, 'sprints');
         const sprintsArr = Object.values(combined).sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
         return { sprints: sprintsArr, boardToGroups };
