@@ -25,6 +25,17 @@
   // boards will be returned by `fetchBoardsByJql` which prevents hitting the
   // Jira API for every board in the instance.
   const DEFAULT_BOARD_IDS = [2796, 2526, 6346, 4133, 4132, 4131, 6347, 6390, 4894];
+  // Track in-flight requests so duplicate calls can share the same promise.
+  const pendingRequests = new Map();
+
+  async function fetchWithDedup(key, fetchFn) {
+    if (pendingRequests.has(key)) {
+      return pendingRequests.get(key);
+    }
+    const p = fetchFn().finally(() => pendingRequests.delete(key));
+    pendingRequests.set(key, p);
+    return p;
+  }
 
 
   function getCached(key) {
@@ -54,13 +65,15 @@
     const cached = getCached(key);
     if (cached) return cached;
 
-    const resp = await fetch(url, { credentials: 'include' });
-    if (!resp.ok) {
-      throw new Error(`Failed to fetch ${url} ${resp.status}`);
-    }
-    const data = await resp.json();
-    setCached(key, data, ttl);
-    return data;
+    return fetchWithDedup(key, async () => {
+      const resp = await fetch(url, { credentials: 'include' });
+      if (!resp.ok) {
+        throw new Error(`Failed to fetch ${url} ${resp.status}`);
+      }
+      const data = await resp.json();
+      setCached(key, data, ttl);
+      return data;
+    });
   }
 
   // Convenience helpers for common Jira lookups
@@ -96,5 +109,42 @@
     return results;
   }
 
-  return { fetchBoardsByJql, fetchIssue, fetchSprint, clearCache };
+  async function fetchIssuesBatch(jiraDomain, issueKeys = [], { ttl = CACHE_TTL, forceRefresh = false } = {}) {
+    const BATCH_SIZE = 100;
+    const issueMap = new Map();
+    const keysToFetch = [];
+
+    for (const key of issueKeys) {
+      const cacheKey = `issue:${jiraDomain}:${key}`;
+      if (forceRefresh) clearCache(cacheKey);
+      const cached = getCached(cacheKey);
+      if (cached) {
+        issueMap.set(key, cached);
+      } else {
+        keysToFetch.push(key);
+      }
+    }
+
+    for (let i = 0; i < keysToFetch.length; i += BATCH_SIZE) {
+      const batch = keysToFetch.slice(i, i + BATCH_SIZE);
+      const jql = `key in (${batch.join(',')})`;
+      const url = `https://${jiraDomain}/rest/api/3/search?jql=${encodeURIComponent(jql)}&expand=changelog&fields=*all&maxResults=${BATCH_SIZE}`;
+      const data = await fetchWithDedup(`search:${jiraDomain}:${batch.join(',')}`, async () => {
+        const resp = await fetch(url, { credentials: 'include' });
+        if (!resp.ok) {
+          throw new Error(`Failed to fetch ${url} ${resp.status}`);
+        }
+        return resp.json();
+      });
+      (data.issues || []).forEach(issue => {
+        const cacheKey = `issue:${jiraDomain}:${issue.key}`;
+        setCached(cacheKey, issue, ttl);
+        issueMap.set(issue.key, issue);
+      });
+    }
+
+    return issueMap;
+  }
+
+  return { fetchBoardsByJql, fetchIssue, fetchSprint, fetchIssuesBatch, clearCache };
 }));
