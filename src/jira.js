@@ -93,9 +93,16 @@
           `https://${jiraDomain}/rest/agile/1.0/board/${id}`
         );
 
-        // Team-managed boards do not expose a filter endpoint and Jira returns
-        // a 404 for `/board/{id}/filter`. Treat this as a signal to skip the
-        // board rather than logging a warning.
+        // Team-managed boards (type 'simple') do not have a filter endpoint.
+        // Skip these entirely so the browser does not log 404 warnings.
+        if (board.type && String(board.type).toLowerCase() === 'simple') {
+          logger.debug('Skipping team-managed board', id);
+          continue;
+        }
+
+        // Fetch the board's underlying filter to check the JQL. Classic boards
+        // always expose this endpoint; if it returns a 404 for other reasons,
+        // treat that as a signal to skip the board quietly.
         let filterData;
         try {
           filterData = await fetchWithCache(
