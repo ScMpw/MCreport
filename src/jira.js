@@ -59,17 +59,13 @@
 
   // Convenience helpers for common Jira lookups
   async function fetchIssue(jiraDomain, issueId, { ttl = CACHE_TTL, forceRefresh = false } = {}) {
-
     const key = `issue:${jiraDomain}:${issueId}`;
-
     if (forceRefresh) clearCache(key);
     return fetchWithCache(key, `https://${jiraDomain}/rest/api/2/issue/${issueId}`, ttl);
   }
 
   async function fetchSprint(jiraDomain, sprintId, { ttl = CACHE_TTL, forceRefresh = false } = {}) {
-
     const key = `sprint:${jiraDomain}:${sprintId}`;
-
     if (forceRefresh) clearCache(key);
     return fetchWithCache(key, `https://${jiraDomain}/rest/agile/1.0/sprint/${sprintId}`, ttl);
   }
@@ -77,58 +73,42 @@
   async function fetchBoardsByJql(jiraDomain) {
     logger.info('Fetching boards for domain', jiraDomain);
 
-    // Restrict the search to a predefined set of board IDs to avoid
-    // enumerating every board in the instance, which can be slow.
-    const boardIds = [2796, 2526, 6346, 4133, 4132, 4131, 6347, 6390, 4894];
-    const target = 'PROJECT IN (ANP, BF, NPSCO)';
-
     const results = [];
-    for (const id of boardIds) {
+    const allowedProjects = new Set(['ANP', 'BF', 'NPSCO']);
+
+    let startAt = 0;
+    const maxResults = 50;
+    while (true) {
+      let page;
       try {
-        // Fetch the board itself first. Some IDs may no longer exist or be
-        // inaccessible to the current user. Those cases return a 404 which we
-        // quietly skip to avoid noisy warnings in the log output.
-        const board = await fetchWithCache(
-          `board:${jiraDomain}:${id}`,
-          `https://${jiraDomain}/rest/agile/1.0/board/${id}`
+        page = await fetchWithCache(
+          `boards:${jiraDomain}:${startAt}`,
+          `https://${jiraDomain}/rest/agile/1.0/board?maxResults=${maxResults}&startAt=${startAt}`
         );
-
-        // Team-managed boards (type 'simple') do not have a filter endpoint.
-        // Skip these entirely so the browser does not log 404 warnings.
-        if (board.type && String(board.type).toLowerCase() === 'simple') {
-          logger.debug('Skipping team-managed board', id);
-          continue;
-        }
-
-        // Fetch the board's underlying filter to check the JQL. Classic boards
-        // always expose this endpoint; if it returns a 404 for other reasons,
-        // treat that as a signal to skip the board quietly.
-        let filterData;
-        try {
-          filterData = await fetchWithCache(
-            `board:${jiraDomain}:${id}:filter`,
-            `https://${jiraDomain}/rest/agile/1.0/board/${id}/filter`
-          );
-        } catch (e) {
-          if (String(e).includes('404')) {
-            logger.debug('Skipping board without filter', id);
-            continue;
-          }
-          throw e;
-        }
-
-        const jql = (filterData && filterData.jql ? filterData.jql.toUpperCase() : '');
-        if (jql.includes(target)) {
-          results.push({ id: board.id, name: board.name });
-        }
       } catch (e) {
-        if (String(e).includes('404')) {
-          // Board itself is missing or inaccessible – ignore.
-          logger.debug('Skipping missing board', id);
-        } else {
-          logger.warn('Failed to inspect board', id, e);
+        logger.warn('Failed to fetch board page', startAt, e);
+        break;
+      }
+
+      const boards = page.values || [];
+      for (const board of boards) {
+        try {
+          const pdata = await fetchWithCache(
+            `board:${jiraDomain}:${board.id}:projects`,
+            `https://${jiraDomain}/rest/agile/1.0/board/${board.id}/project`
+          );
+          const projects = pdata.values || [];
+          const matches = projects.some(p => allowedProjects.has((p.key || '').toUpperCase()));
+          if (matches) {
+            results.push({ id: board.id, name: board.name });
+          }
+        } catch (e) {
+          logger.warn('Failed to inspect board', board.id, e);
         }
       }
+
+      if (page.isLast || boards.length === 0) break;
+      startAt += boards.length;
     }
 
     logger.info('Boards matching filter:', results.map(r => `${r.name} (${r.id})`).join(', '));
