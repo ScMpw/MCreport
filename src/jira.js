@@ -21,6 +21,12 @@
   const CACHE_TTL = 5 * 60 * 1000; // five minutes
   const cache = new Map();
 
+  // Board IDs that should be fetched when looking up boards. Only these
+  // boards will be returned by `fetchBoardsByJql` which prevents hitting the
+  // Jira API for every board in the instance.
+  const DEFAULT_BOARD_IDS = [2796, 2526, 6346, 4133, 4132, 4131, 6347, 6390, 4894];
+
+
   function getCached(key) {
     const entry = cache.get(key);
     if (entry && entry.expiry > Date.now()) {
@@ -70,48 +76,23 @@
     return fetchWithCache(key, `https://${jiraDomain}/rest/agile/1.0/sprint/${sprintId}`, ttl);
   }
 
-  async function fetchBoardsByJql(jiraDomain) {
+  async function fetchBoardsByJql(jiraDomain, { boardIds = DEFAULT_BOARD_IDS } = {}) {
     logger.info('Fetching boards for domain', jiraDomain);
 
     const results = [];
-    const allowedProjects = new Set(['ANP', 'BF', 'NPSCO']);
-
-    let startAt = 0;
-    const maxResults = 50;
-    while (true) {
-      let page;
+    for (const id of boardIds) {
       try {
-        page = await fetchWithCache(
-          `boards:${jiraDomain}:${startAt}`,
-          `https://${jiraDomain}/rest/agile/1.0/board?maxResults=${maxResults}&startAt=${startAt}`
+        const board = await fetchWithCache(
+          `board:${jiraDomain}:${id}`,
+          `https://${jiraDomain}/rest/agile/1.0/board/${id}`
         );
+        results.push({ id: board.id, name: board.name });
       } catch (e) {
-        logger.warn('Failed to fetch board page', startAt, e);
-        break;
+        logger.warn('Failed to fetch board', id, e);
       }
-
-      const boards = page.values || [];
-      for (const board of boards) {
-        try {
-          const pdata = await fetchWithCache(
-            `board:${jiraDomain}:${board.id}:projects`,
-            `https://${jiraDomain}/rest/agile/1.0/board/${board.id}/project`
-          );
-          const projects = pdata.values || [];
-          const matches = projects.some(p => allowedProjects.has((p.key || '').toUpperCase()));
-          if (matches) {
-            results.push({ id: board.id, name: board.name });
-          }
-        } catch (e) {
-          logger.warn('Failed to inspect board', board.id, e);
-        }
-      }
-
-      if (page.isLast || boards.length === 0) break;
-      startAt += boards.length;
     }
 
-    logger.info('Boards matching filter:', results.map(r => `${r.name} (${r.id})`).join(', '));
+    logger.info('Boards fetched:', results.map(r => `${r.name} (${r.id})`).join(', '));
     return results;
   }
 
