@@ -13,7 +13,7 @@ const Jira = require('../src/jira');
     };
   };
 
-  const boards = await Jira.fetchBoardsByJql('example.atlassian.net');
+  const boards = await Jira.fetchBoardsByJql('example.atlassian.net', { boardIds: [1, 2, 3] });
 
   assert.strictEqual(boards.length, 3);
   assert.deepStrictEqual(boards.map(b => b.id), [1, 2, 3]);

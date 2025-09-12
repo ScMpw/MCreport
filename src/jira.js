@@ -24,7 +24,8 @@
   // Board IDs that should be fetched when looking up boards. Only these
   // boards will be returned by `fetchBoardsByJql` which prevents hitting the
   // Jira API for every board in the instance.
-  const DEFAULT_BOARD_IDS = [1, 2, 3];
+  const DEFAULT_BOARD_IDS = [2796, 2526, 6346, 4133, 4132, 4131, 6347, 6390, 4894];
+
 
   function getCached(key) {
     const entry = cache.get(key);
