@@ -246,7 +246,7 @@ function addTooltipListeners() {
             boardJql = (fd.jql || '').replace(/ORDER BY[\s\S]*$/i, '').trim();
           }
         }
-        const jql = `${boardJql ? '('+boardJql+') AND ' : ''}issuetype in (Story,Bug,Task) AND statusCategory = Done AND resolutiondate >= startOfWeek(-12) AND resolutiondate < startOfWeek()`;
+        const jql = `${boardJql ? '('+boardJql+') AND ' : ''}issuetype in (Story,Bug,Task) AND statusCategory = Done AND resolutiondate >= startOfWeek(-11)`;
         const enc = encodeURIComponent(jql);
         let startAt = 0;
         let issues = [];
@@ -262,9 +262,9 @@ function addTooltipListeners() {
         const weeks = new Array(12).fill(0).map(()=>[]);
         const current = weekStart(new Date());
         throughputWeekNums = [];
-        for (let i=0; i<12; i++) {
+        for (let i=0;i<12;i++) {
           const d = new Date(current);
-          d.setDate(d.getDate() - (12 - i) * 7);
+          d.setDate(d.getDate() - (11-i)*7);
           throughputWeekNums.push(isoWeekNumber(d));
         }
         for (const it of issues) {
@@ -274,7 +274,7 @@ function addTooltipListeners() {
           if (!dateStr) continue;
           const w = weekStart(dateStr);
           const diff = Math.floor((current - w) / (7*24*60*60*1000));
-          if (diff >= 1 && diff <= 12) weeks[12 - diff].push(it.key);
+          if (diff >=0 && diff < 12) weeks[11-diff].push(it.key);
         }
         throughputIssues = weeks;
         const counts = weeks.map(w=>w.length);
