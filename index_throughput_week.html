@@ -233,7 +233,7 @@ function addTooltipListeners() {
         return Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
       }
       try {
-        const cfgUrl = `https://${jiraDomain}/rest/agile/1.0/board/${boardNum}/configuration`;
+        const cfgUrl = `https://${jiraDomain}/rest/agile/latest/board/${boardNum}/configuration`;
         const cfgResp = await fetch(cfgUrl, { credentials: "include" });
         if (!cfgResp.ok) throw new Error('cfg');
         const cfg = await cfgResp.json();
@@ -290,7 +290,7 @@ function addTooltipListeners() {
     async function fetchBoardTeam() {
       boardTeams = [];
       try {
-        const cfgUrl = `https://${jiraDomain}/rest/agile/1.0/board/${boardNum}/configuration`;
+        const cfgUrl = `https://${jiraDomain}/rest/agile/latest/board/${boardNum}/configuration`;
         const cfgResp = await fetch(cfgUrl, { credentials: "include" });
         if (!cfgResp.ok) return;
         const cfg = await cfgResp.json();
@@ -332,7 +332,7 @@ function addTooltipListeners() {
       let total = null;
 
       while (true) {
-        const url = `https://${jiraDomain}/rest/agile/1.0/board/${boardNum}/sprint?maxResults=${maxResults}&startAt=${startAt}`;
+        const url = `https://${jiraDomain}/rest/agile/latest/board/${boardNum}/sprint?maxResults=${maxResults}&startAt=${startAt}`;
         console.log("Fetching sprints:", url);
         try {
           const resp = await fetch(url, { credentials: "include" });
