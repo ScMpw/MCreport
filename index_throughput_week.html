@@ -246,14 +246,17 @@ function addTooltipListeners() {
             boardJql = (fd.jql || '').replace(/ORDER BY[\s\S]*$/i, '').trim();
           }
         }
-        const jql = `${boardJql ? '('+boardJql+') AND ' : ''}issuetype in (Story,Bug,Task) AND statusCategory = Done AND resolutiondate >= startOfWeek(-11)`;
+        const jql = `${boardJql ? '('+boardJql+') AND ' : ''}statusCategory = Done AND resolutiondate >= startOfWeek(-11)`;
         const enc = encodeURIComponent(jql);
         let startAt = 0;
         let issues = [];
         while (true) {
-          const url = `https://${jiraDomain}/rest/api/3/search?jql=${enc}&fields=key,resolution,resolutiondate&startAt=${startAt}&maxResults=100`;
+          const url = `https://${jiraDomain}/rest/api/3/search?jql=${enc}&fields=key,resolution,resolutiondate,issuetype&startAt=${startAt}&maxResults=100`;
           const resp = await fetch(url, { credentials: "include" });
-          if (!resp.ok) break;
+          if (!resp.ok) {
+            const message = await resp.text();
+            throw new Error(`search_failed:${resp.status}:${message}`);
+          }
           const data = await resp.json();
           issues = issues.concat(data.issues || []);
           startAt += 100;
@@ -269,6 +272,12 @@ function addTooltipListeners() {
           throughputWeekNums.push(isoWeekNumber(d));
         }
         for (const it of issues) {
+          const issueType = it.fields && it.fields.issuetype;
+          if (issueType) {
+            const typeName = (issueType.name || '').toLowerCase();
+            if (typeName === 'epic') continue;
+            if (issueType.subtask) continue;
+          }
           const resName = it.fields && it.fields.resolution && it.fields.resolution.name;
           if (!validResolution(resName)) continue;
           const dateStr = it.fields && it.fields.resolutiondate;
