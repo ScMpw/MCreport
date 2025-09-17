@@ -14,19 +14,12 @@ function weekStart(dt) {
 function calculateWeeklyThroughput(issues, current=new Date()) {
   logger.debug('calculateWeeklyThroughput start', { count: issues.length, current });
   const counts = new Array(12).fill(0);
-  const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-  const currentWeekStart = weekStart(current);
-  const lastCompletedWeekStart = new Date(currentWeekStart);
-  lastCompletedWeekStart.setDate(lastCompletedWeekStart.getDate() - 7);
-  logger.debug('calculateWeeklyThroughput reference week', {
-    currentWeekStart,
-    lastCompletedWeekStart
-  });
+  const currentWeek = weekStart(current);
   issues.forEach(it => {
     const dateStr = it.resolutiondate;
     if (!dateStr) return;
     const w = weekStart(dateStr);
-    const diff = Math.round((lastCompletedWeekStart - w) / WEEK_MS);
+    const diff = Math.floor((currentWeek - w) / (7*24*60*60*1000));
     if (diff >= 0 && diff < 12) counts[11 - diff]++;
   });
   logger.debug('calculateWeeklyThroughput result', counts);
