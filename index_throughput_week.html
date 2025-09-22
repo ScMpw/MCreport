@@ -166,6 +166,65 @@ document.getElementById('versionSelect').value = 'index_throughput_week.html';
 function switchVersion(page) {
   if (page !== 'index_throughput_week.html') location.href = page;
 }
+async function jiraSearch(jql, fields = [], options = {}) {
+  const searchUrl = `https://${jiraDomain}/rest/api/3/search`;
+  const maxResults = options.maxResults || 500;
+  let startAt = options.startAt || 0;
+  const collected = [];
+  const fieldList = Array.isArray(fields) ? fields.filter(Boolean) : (fields ? [fields] : []);
+  const expandList = Array.isArray(options.expand)
+    ? options.expand.filter(Boolean)
+    : (options.expand ? [options.expand] : []);
+
+  while (true) {
+    const payload = { jql, startAt, maxResults };
+    if (fieldList.length) payload.fields = fieldList;
+    if (expandList.length) payload.expand = expandList;
+
+    let resp;
+    try {
+      resp = await fetch(searchUrl, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-Atlassian-Token': 'no-check'
+        },
+        body: JSON.stringify(payload)
+      });
+    } catch (err) {
+      console.error('Jira search request failed', err);
+      throw err;
+    }
+
+    if (!resp.ok) {
+      const text = await resp.text();
+      console.error('Jira search failed', resp.status, text);
+      throw new Error(`Jira search failed (${resp.status})`);
+    }
+
+    const data = await resp.json();
+    const issues = Array.isArray(data.issues) ? data.issues : [];
+    collected.push(...issues);
+
+    const pageSize = data.maxResults || issues.length || maxResults;
+    const total = typeof data.total === 'number' ? data.total : null;
+    const nextStart = (data.startAt || 0) + pageSize;
+    const receivedAll = !issues.length || (total !== null && collected.length >= total) || issues.length < pageSize;
+
+    if (receivedAll) {
+      return { issues: collected, total: total !== null ? total : collected.length };
+    }
+
+    if (nextStart <= startAt) {
+      // Prevent potential infinite loops if the API stops advancing.
+      return { issues: collected, total: total !== null ? total : collected.length };
+    }
+
+    startAt = nextStart;
+  }
+}
 let epicAllocations = {}, epicBacklogs = {}, epicRequiredAlloc = {}, epicRequiredIssues = {},
     epicRequiredIssuesPrev = {};
 let epicForecastResults = {};
@@ -569,31 +628,49 @@ function addTooltipListeners() {
       baselineSprintId = baselineIdx >= 0 && closedSprintsSorted[baselineIdx]
         ? closedSprintsSorted[baselineIdx].id
         : '';
-      let jql = encodeURIComponent(`sprint = ${selectedSprintId} ORDER BY key`);
-      let url = `https://${jiraDomain}/rest/api/3/search?jql=${jql}&fields=summary,parent,customfield_10002,customfield_10005,customfield_12600,status,issuetype&maxResults=500`;
-      let epicKeysSet = new Set();
+      const sprintFields = [
+        'summary',
+        'parent',
+        'customfield_10002',
+        'customfield_10005',
+        'customfield_12600',
+        'status',
+        'issuetype'
+      ];
+      const epicKeysSet = new Set();
       try {
-        const resp = await fetch(url, { credentials: "include" });
-        const data = await resp.json();
-        if (data.issues && data.issues.length) {
-          for (let issue of data.issues) {
-            if (issue.fields.issuetype && issue.fields.issuetype.name === "Epic") continue;
-            let parent = issue.fields.parent;
-            if (parent && parent.fields && parent.fields.issuetype && parent.fields.issuetype.name === "Epic") {
-              epicKeysSet.add(parent.key);
-              allEpics[parent.key] = parent.fields.summary;
-            }
+        const { issues } = await jiraSearch(`sprint = ${selectedSprintId} ORDER BY key`, sprintFields);
+        (issues || []).forEach(issue => {
+          if (issue.fields && issue.fields.issuetype && issue.fields.issuetype.name === 'Epic') return;
+          const parent = issue.fields && issue.fields.parent;
+          if (parent && parent.fields && parent.fields.issuetype && parent.fields.issuetype.name === 'Epic') {
+            epicKeysSet.add(parent.key);
+            allEpics[parent.key] = parent.fields.summary;
           }
-        }
-      } catch (e) { alert("Error fetching stories for selected sprint"); hideLoading(); return; }
+        });
+      } catch (e) {
+        console.error('Error fetching stories for selected sprint', e);
+        alert('Error fetching stories for selected sprint. See console for details.');
+        hideLoading();
+        return;
+      }
+      const epicFields = [
+        'summary',
+        'status',
+        'resolution',
+        'assignee',
+        'customfield_10002',
+        'customfield_12600',
+        'created',
+        'resolutiondate',
+        'issuetype',
+        'customfield_10005'
+      ];
       epicStories = {};
       await Promise.all(Array.from(epicKeysSet).map(async epicKey => {
-        let eq = encodeURIComponent(`"Epic Link" = ${epicKey}`);
-        let urlEpic = `https://${jiraDomain}/rest/api/3/search?jql=${eq}&fields=summary,status,resolution,assignee,customfield_10002,customfield_12600,created,resolutiondate,issuetype,customfield_10005&maxResults=500`;
         try {
-          const resp = await fetch(urlEpic, { credentials: "include" });
-          const data = await resp.json();
-          epicStories[epicKey] = (data.issues || [])
+          const { issues } = await jiraSearch(`"Epic Link" = ${epicKey}`, epicFields);
+          epicStories[epicKey] = (issues || [])
             .filter(story => validResolution(story.fields.resolution && story.fields.resolution.name))
             .map(story => ({
             key: story.key,
@@ -608,16 +685,16 @@ function addTooltipListeners() {
             sprint: (story.fields.customfield_10005||[]).map(s=>s.name).join(', '),
             issuetype: story.fields.issuetype && story.fields.issuetype.name,
           }));
-        } catch (e) { epicStories[epicKey] = []; }
+        } catch (e) {
+          console.error(`Failed to fetch stories for epic ${epicKey}`, e);
+          epicStories[epicKey] = [];
+        }
       }));
       epicStoriesBaseline = {};
       await Promise.all(Array.from(epicKeysSet).map(async epicKey => {
-        let eq = encodeURIComponent(`"Epic Link" = ${epicKey}`);
-        let urlEpic = `https://${jiraDomain}/rest/api/3/search?jql=${eq}&fields=summary,status,resolution,assignee,customfield_10002,customfield_12600,created,resolutiondate,issuetype,customfield_10005&maxResults=500`;
         try {
-          const resp = await fetch(urlEpic, { credentials: "include" });
-          const data = await resp.json();
-          epicStoriesBaseline[epicKey] = (data.issues || [])
+          const { issues } = await jiraSearch(`"Epic Link" = ${epicKey}`, epicFields);
+          epicStoriesBaseline[epicKey] = (issues || [])
             .filter(story => {
               let created = new Date(story.fields.created);
               let resolved = story.fields.resolutiondate ? new Date(story.fields.resolutiondate) : null;
@@ -638,7 +715,10 @@ function addTooltipListeners() {
             sprint: (story.fields.customfield_10005||[]).map(s=>s.name).join(', '),
             issuetype: story.fields.issuetype && story.fields.issuetype.name,
           }));
-        } catch (e) { epicStoriesBaseline[epicKey] = []; }
+        } catch (e) {
+          console.error(`Failed to fetch baseline stories for epic ${epicKey}`, e);
+          epicStoriesBaseline[epicKey] = [];
+        }
       }));
       let allTeams = new Set();
       Object.values(epicStories).forEach(arr => {
