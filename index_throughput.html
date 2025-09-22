@@ -216,37 +216,169 @@ function addTooltipListeners() {
     renderFilterOptions();
     addTooltipListeners();
 
-    // --- NEW: FETCH JIRA THROUGHPUT DATA (completed issues per sprint) ---
-    async function fetchThroughputFromReport(jiraDomain, boardNum) {
-      const url = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/velocity?rapidViewId=${boardNum}`;
-      const resp = await fetch(url, { credentials: "include" });
-      if (!resp.ok) {
-        alert("Failed to fetch throughput report. Are you logged in to Jira?");
-        return [];
-      }
-      const data = await resp.json();
-      let closed = (data.sprints || []).filter(s => s.state === "CLOSED");
-      closed.sort((a, b) => {
+    const DISPLAY_SPRINT_COUNT = 6;
+    const BF_BOARDS = new Set(['6347', '6390']);
+
+    function filterRecentSprints(allSprints = [], desiredCount = DISPLAY_SPRINT_COUNT) {
+      const sorted = allSprints.slice().sort((a, b) => {
         const ad = a.endDate || a.completeDate || a.startDate || '';
         const bd = b.endDate || b.completeDate || b.startDate || '';
         return ad && bd ? new Date(bd) - new Date(ad) : 0;
       });
-      closed = closed.slice(0, 6);
-      throughputSprintNames = closed.map(s => s.name);
-      throughputIssues = [];
-      const throughputs = await Promise.all(closed.map(async s => {
-        const surl = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/sprintreport?rapidViewId=${boardNum}&sprintId=${s.id}`;
+      return sorted.slice(0, desiredCount);
+    }
+
+    async function runBatches(items, batchSize, handler) {
+      for (let i = 0; i < items.length; i += batchSize) {
+        const batch = items.slice(i, i + batchSize);
+        await Promise.all(batch.map(handler));
+      }
+    }
+
+    async function fetchSprintCompletionData(jiraDomain, boardNum, desiredCount) {
+      const results = [];
+      const boardId = String(boardNum || '').trim();
+      if (!jiraDomain || !boardId) return results;
+
+      const velocityUrl = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/velocity?rapidViewId=${boardId}`;
+      let closed = [];
+      try {
+        const resp = await fetch(velocityUrl, { credentials: 'include' });
+        if (resp.ok) {
+          const data = await resp.json();
+          closed = (data.sprints || []).filter(
+            s => s.state === 'CLOSED' && s.startDate && String(s.originBoardId) === boardId
+          );
+        } else {
+          console.warn('Velocity report unavailable, falling back to sprint list', resp.status);
+        }
+      } catch (e) {
+        console.warn('Velocity report request failed, falling back to sprint list', e);
+      }
+
+      if (!closed.length) {
+        let allSprints = [];
+        let startAt = 0;
+        const maxResults = 50;
+        let loops = 0;
+        while (true) {
+          const sUrl = `https://${jiraDomain}/rest/agile/1.0/board/${boardId}/sprint?state=closed&maxResults=${maxResults}&startAt=${startAt}`;
+          try {
+            const sResp = await fetch(sUrl, { credentials: 'include' });
+            if (!sResp.ok) break;
+            const sData = await sResp.json();
+            const values = sData.values || [];
+            allSprints = allSprints.concat(values);
+            startAt += values.length;
+            loops++;
+            if (sData.isLast || values.length < maxResults || loops > 100) break;
+          } catch (err) {
+            console.error('Failed to fetch sprint list', err);
+            break;
+          }
+        }
+        closed = allSprints.filter(
+          s => (s.state || '').toUpperCase() === 'CLOSED' && s.startDate && String(s.originBoardId) === boardId
+        );
+      }
+
+      closed = filterRecentSprints(closed, desiredCount);
+      const isBfBoard = BF_BOARDS.has(boardId);
+      const byIndex = closed.map(s => ({ sprint: s, completed: [] }));
+
+      for (let i = 0; i < closed.length; i++) {
+        const sprint = closed[i];
+        const surl = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/sprintreport?rapidViewId=${boardId}&sprintId=${sprint.id}`;
         try {
-          const r = await fetch(surl, { credentials: "include" });
-          if (!r.ok) { throughputIssues.push([]); return 0; }
+          const r = await fetch(surl, { credentials: 'include' });
+          if (!r.ok) continue;
           const d = await r.json();
-          const issues = (d.contents?.completedIssues || []).map(it => it.key);
-          throughputIssues.push(issues);
-          return issues.length;
-        } catch (e) { throughputIssues.push([]); return 0; }
-      }));
-      console.log('Most recent 6 sprint throughputs:', throughputs, closed.map(s=>s.name));
-      return throughputs;
+          let events = [];
+          const collect = (arr, completed = false) => {
+            (arr || []).forEach(it => {
+              if (!it || !it.key) return;
+              events.push({ key: it.key, completed, movedOut: false });
+            });
+          };
+          collect(d.contents?.completedIssues, true);
+          collect(d.contents?.issuesNotCompletedInCurrentSprint, false);
+          collect(d.contents?.puntedIssues, false);
+          (d.contents?.issueKeysRemovedFromSprint || []).forEach(k => {
+            if (!k) return;
+            const existing = events.find(ev => ev.key === k);
+            if (existing) {
+              existing.movedOut = true;
+              existing.completed = false;
+            } else {
+              events.push({ key: k, completed: false, movedOut: true });
+            }
+          });
+          if (isBfBoard) {
+            events = events.filter(ev => ev.key && ev.key.startsWith('BF-'));
+          }
+          byIndex[i].completed = events
+            .filter(ev => ev.completed && !ev.movedOut)
+            .map(ev => ({ key: ev.key }));
+        } catch (err) {
+          console.error('Failed to fetch sprint report', err);
+          byIndex[i].completed = [];
+        }
+      }
+
+      const uniqueKeys = Array.from(new Set(
+        byIndex.flatMap(entry => entry.completed.map(ev => ev.key)).filter(Boolean)
+      ));
+      if (uniqueKeys.length) {
+        const issueCache = new Map();
+        await runBatches(uniqueKeys, 8, async key => {
+          try {
+            const issueUrl = `https://${jiraDomain}/rest/api/3/issue/${key}?fields=resolution,resolutiondate`;
+            const issueResp = await fetch(issueUrl, { credentials: 'include' });
+            if (!issueResp.ok) return;
+            const issueData = await issueResp.json();
+            issueCache.set(key, {
+              resolutionDate: issueData.fields?.resolutiondate || null,
+              resolutionName: issueData.fields?.resolution?.name || ''
+            });
+          } catch (err) {
+            console.error('Failed to fetch issue details', key, err);
+          }
+        });
+        byIndex.forEach(entry => {
+          entry.completed.forEach(ev => {
+            const info = issueCache.get(ev.key);
+            if (info) {
+              ev.completedDate = info.resolutionDate;
+              ev.resolutionName = info.resolutionName;
+            }
+          });
+        });
+      }
+
+      return byIndex;
+    }
+
+    async function fetchThroughputFromReport(jiraDomain, boardNum) {
+      try {
+        const completions = await fetchSprintCompletionData(jiraDomain, boardNum, DISPLAY_SPRINT_COUNT);
+        if (!completions.length) {
+          alert('Failed to fetch throughput report. Are you logged in to Jira?');
+          throughputSprintNames = [];
+          throughputIssues = [];
+          return [];
+        }
+        throughputSprintNames = completions.map(entry => entry.sprint?.name || '');
+        throughputIssues = completions.map(entry => entry.completed.map(ev => ev.key));
+        const throughputs = completions.map(entry => entry.completed.length);
+        console.log('Most recent sprint throughputs:', throughputs, throughputSprintNames);
+        return throughputs;
+      } catch (e) {
+        console.error('Failed to fetch throughput report', e);
+        alert('Failed to fetch throughput report. Are you logged in to Jira?');
+        throughputSprintNames = [];
+        throughputIssues = [];
+        return [];
+      }
     }
 
     async function fetchBoardTeam() {
