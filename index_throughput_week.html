@@ -158,6 +158,7 @@ let allEpics = {}, epicStories = {}, epicStoriesBaseline = {};
 let throughputArr = [];
 let throughputIssues = [];
 let throughputWeekNums = [];
+let throughputWeekLabels = [];
 let avgThroughput = 0;
 let selectedSprintId = '', selectedSprintName = '', targetWeeks = 4;
 let baselineSprintId = '';
@@ -232,6 +233,12 @@ function addTooltipListeners() {
         const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
         return Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
       }
+      function isoWeekYear(dt) {
+        const d = new Date(Date.UTC(dt.getFullYear(), dt.getMonth(), dt.getDate()));
+        const day = d.getUTCDay() || 7;
+        d.setUTCDate(d.getUTCDate() + 4 - day);
+        return d.getUTCFullYear();
+      }
       try {
         const cfgUrl = `https://${jiraDomain}/rest/agile/1.0/board/${boardNum}/configuration`;
         const cfgResp = await fetch(cfgUrl, { credentials: "include" });
@@ -248,12 +255,12 @@ function addTooltipListeners() {
         }
         const jql = `${boardJql ? '('+boardJql+') AND ' : ''}` +
           `issuetype in (Story,Bug,Task) AND statusCategory = Done ` +
-          `AND resolutiondate >= startOfWeek(-11)`;
+          `AND resolutiondate >= startOfWeek(-12)`;
         const enc = encodeURIComponent(jql);
         let startAt = 0;
         let issues = [];
         while (true) {
-          const url = `https://${jiraDomain}/rest/api/3/search?jql=${enc}&fields=key,resolution,resolutiondate&startAt=${startAt}&maxResults=100`;
+          const url = `https://${jiraDomain}/rest/api/3/search?jql=${enc}&fields=key,resolution,resolutiondate,issuetype&startAt=${startAt}&maxResults=100`;
           const resp = await fetch(url, { credentials: "include" });
           if (!resp.ok) break;
           const data = await resp.json();
@@ -267,10 +274,14 @@ function addTooltipListeners() {
         const lastCompletedWeekStart = new Date(currentWeekStart);
         lastCompletedWeekStart.setDate(lastCompletedWeekStart.getDate() - 7);
         throughputWeekNums = [];
+        throughputWeekLabels = [];
         for (let i=0;i<12;i++) {
           const d = new Date(lastCompletedWeekStart);
           d.setDate(d.getDate() - (11-i)*7);
-          throughputWeekNums.push(isoWeekNumber(d));
+          const weekNum = isoWeekNumber(d);
+          const weekYear = isoWeekYear(d);
+          throughputWeekNums.push(weekNum);
+          throughputWeekLabels.push(`KW ${String(weekNum).padStart(2,'0')} (${weekYear})`);
         }
         for (const it of issues) {
           const issueType = it.fields && it.fields.issuetype;
@@ -289,10 +300,13 @@ function addTooltipListeners() {
         }
         throughputIssues = weeks;
         const counts = weeks.map(w=>w.length);
-        console.log('Weekly throughput:', counts);
+        console.log('Weekly throughput:', counts.map((c, idx) => `${throughputWeekLabels[idx]}: ${c}`).join(', '));
         return counts;
       } catch (e) {
         console.error('Failed to fetch weekly throughput', e);
+        throughputWeekNums = [];
+        throughputWeekLabels = [];
+        throughputIssues = [];
         alert('Failed to fetch throughput report. Are you logged in to Jira?');
         return [];
       }
@@ -526,9 +540,8 @@ function addTooltipListeners() {
     function renderThroughputInputs() {
       let vhtml = throughputArr.map((v, i) => {
         const issues = (throughputIssues[i] || []).join(', ');
-        const wk = throughputWeekNums[i] || '';
-        const name = wk ? `KW ${wk}` : `Week ${i+1}`;
-        return `<span style="white-space:nowrap;">${name}: <input class="editarr" type="number" min="0" value="${v}" onchange="editThroughput(this,${i})"><span class="info-icon" data-tip="${issues}" title="${issues}">&#9432;<span class="tooltip"></span></span></span>`;
+        const label = throughputWeekLabels[i] || (throughputWeekNums[i] ? `KW ${String(throughputWeekNums[i]).padStart(2,'0')}` : `Week ${i+1}`);
+        return `<span style="white-space:nowrap;">${label}: <input class="editarr" type="number" min="0" value="${v}" onchange="editThroughput(this,${i})"><span class="info-icon" data-tip="${issues}" title="${issues}">&#9432;<span class="tooltip"></span></span></span>`;
       }).join(', ');
       document.getElementById('throughputWrap').innerHTML = vhtml;
       addTooltipListeners();
