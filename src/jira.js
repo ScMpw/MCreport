@@ -136,7 +136,7 @@
         expand: ['changelog']
       };
       const data = await fetchWithDedup(`search:${jiraDomain}:${batch.join(',')}`, async () => {
-        const searchUrl = `https://${jiraDomain}/rest/api/3/search`;
+        const searchUrl = `https://${jiraDomain}/rest/api/3/search/jql`;
         const fieldList = payload.fields.filter(Boolean);
         const expandList = payload.expand.filter(Boolean);
         let useGet = true;
