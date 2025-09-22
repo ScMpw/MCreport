@@ -128,11 +128,27 @@
     for (let i = 0; i < keysToFetch.length; i += BATCH_SIZE) {
       const batch = keysToFetch.slice(i, i + BATCH_SIZE);
       const jql = `key in (${batch.join(',')})`;
-      const url = `https://${jiraDomain}/rest/api/3/search?jql=${encodeURIComponent(jql)}&expand=changelog&fields=*all&maxResults=${BATCH_SIZE}`;
+      const payload = {
+        jql,
+        maxResults: BATCH_SIZE,
+        startAt: 0,
+        fields: ['*all'],
+        expand: ['changelog']
+      };
       const data = await fetchWithDedup(`search:${jiraDomain}:${batch.join(',')}`, async () => {
-        const resp = await fetch(url, { credentials: 'include' });
+        const resp = await fetch(`https://${jiraDomain}/rest/api/3/search`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-Atlassian-Token': 'no-check'
+          },
+          body: JSON.stringify(payload)
+        });
         if (!resp.ok) {
-          throw new Error(`Failed to fetch ${url} ${resp.status}`);
+          const text = await resp.text();
+          throw new Error(`Failed to fetch search results ${resp.status} ${text}`);
         }
         return resp.json();
       });
