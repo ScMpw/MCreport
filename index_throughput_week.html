@@ -217,13 +217,155 @@ function addTooltipListeners() {
     renderFilterOptions();
     addTooltipListeners();
 
-    // --- NEW: FETCH JIRA THROUGHPUT DATA (completed issues per week) ---
+    const WEEKLY_SPRINT_LOOKBACK = 20;
+    const BF_BOARDS = new Set(['6347', '6390']);
+
+    function filterRecentSprints(allSprints = [], desiredCount = WEEKLY_SPRINT_LOOKBACK) {
+      const sorted = allSprints.slice().sort((a, b) => {
+        const ad = a.endDate || a.completeDate || a.startDate || '';
+        const bd = b.endDate || b.completeDate || b.startDate || '';
+        return ad && bd ? new Date(bd) - new Date(ad) : 0;
+      });
+      return sorted.slice(0, desiredCount);
+    }
+
+    async function runBatches(items, batchSize, handler) {
+      for (let i = 0; i < items.length; i += batchSize) {
+        const batch = items.slice(i, i + batchSize);
+        await Promise.all(batch.map(handler));
+      }
+    }
+
+    async function fetchSprintCompletionData(jiraDomain, boardNum, desiredCount) {
+      const results = [];
+      const boardId = String(boardNum || '').trim();
+      if (!jiraDomain || !boardId) return results;
+
+      const velocityUrl = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/velocity?rapidViewId=${boardId}`;
+      let closed = [];
+      try {
+        const resp = await fetch(velocityUrl, { credentials: 'include' });
+        if (resp.ok) {
+          const data = await resp.json();
+          closed = (data.sprints || []).filter(
+            s => s.state === 'CLOSED' && s.startDate && String(s.originBoardId) === boardId
+          );
+        } else {
+          console.warn('Velocity report unavailable, falling back to sprint list', resp.status);
+        }
+      } catch (e) {
+        console.warn('Velocity report request failed, falling back to sprint list', e);
+      }
+
+      if (!closed.length) {
+        let allSprints = [];
+        let startAt = 0;
+        const maxResults = 50;
+        let loops = 0;
+        while (true) {
+          const sUrl = `https://${jiraDomain}/rest/agile/1.0/board/${boardId}/sprint?state=closed&maxResults=${maxResults}&startAt=${startAt}`;
+          try {
+            const sResp = await fetch(sUrl, { credentials: 'include' });
+            if (!sResp.ok) break;
+            const sData = await sResp.json();
+            const values = sData.values || [];
+            allSprints = allSprints.concat(values);
+            startAt += values.length;
+            loops++;
+            if (sData.isLast || values.length < maxResults || loops > 100) break;
+          } catch (err) {
+            console.error('Failed to fetch sprint list', err);
+            break;
+          }
+        }
+        closed = allSprints.filter(
+          s => (s.state || '').toUpperCase() === 'CLOSED' && s.startDate && String(s.originBoardId) === boardId
+        );
+      }
+
+      closed = filterRecentSprints(closed, desiredCount);
+      const isBfBoard = BF_BOARDS.has(boardId);
+      const byIndex = closed.map(s => ({ sprint: s, completed: [] }));
+
+      for (let i = 0; i < closed.length; i++) {
+        const sprint = closed[i];
+        const surl = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/sprintreport?rapidViewId=${boardId}&sprintId=${sprint.id}`;
+        try {
+          const r = await fetch(surl, { credentials: 'include' });
+          if (!r.ok) continue;
+          const d = await r.json();
+          let events = [];
+          const collect = (arr, completed = false) => {
+            (arr || []).forEach(it => {
+              if (!it || !it.key) return;
+              events.push({ key: it.key, completed, movedOut: false });
+            });
+          };
+          collect(d.contents?.completedIssues, true);
+          collect(d.contents?.issuesNotCompletedInCurrentSprint, false);
+          collect(d.contents?.puntedIssues, false);
+          (d.contents?.issueKeysRemovedFromSprint || []).forEach(k => {
+            if (!k) return;
+            const existing = events.find(ev => ev.key === k);
+            if (existing) {
+              existing.movedOut = true;
+              existing.completed = false;
+            } else {
+              events.push({ key: k, completed: false, movedOut: true });
+            }
+          });
+          if (isBfBoard) {
+            events = events.filter(ev => ev.key && ev.key.startsWith('BF-'));
+          }
+          byIndex[i].completed = events
+            .filter(ev => ev.completed && !ev.movedOut)
+            .map(ev => ({ key: ev.key }));
+        } catch (err) {
+          console.error('Failed to fetch sprint report', err);
+          byIndex[i].completed = [];
+        }
+      }
+
+      const uniqueKeys = Array.from(new Set(
+        byIndex.flatMap(entry => entry.completed.map(ev => ev.key)).filter(Boolean)
+      ));
+      if (uniqueKeys.length) {
+        const issueCache = new Map();
+        await runBatches(uniqueKeys, 8, async key => {
+          try {
+            const issueUrl = `https://${jiraDomain}/rest/api/3/issue/${key}?fields=resolution,resolutiondate`;
+            const issueResp = await fetch(issueUrl, { credentials: 'include' });
+            if (!issueResp.ok) return;
+            const issueData = await issueResp.json();
+            issueCache.set(key, {
+              resolutionDate: issueData.fields?.resolutiondate || null,
+              resolutionName: issueData.fields?.resolution?.name || ''
+            });
+          } catch (err) {
+            console.error('Failed to fetch issue details', key, err);
+          }
+        });
+        byIndex.forEach(entry => {
+          entry.completed.forEach(ev => {
+            const info = issueCache.get(ev.key);
+            if (info) {
+              ev.completedDate = info.resolutionDate;
+              ev.resolutionName = info.resolutionName;
+            }
+          });
+        });
+      }
+
+      return byIndex;
+    }
+
     async function fetchThroughputFromReport(jiraDomain, boardNum) {
       function weekStart(dt) {
         const d = new Date(dt);
         const day = d.getDay();
         const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-        d.setDate(diff); d.setHours(0,0,0,0);
+        d.setDate(diff);
+        d.setHours(0, 0, 0, 0);
         return d;
       }
       function isoWeekNumber(dt) {
@@ -239,67 +381,45 @@ function addTooltipListeners() {
         d.setUTCDate(d.getUTCDate() + 4 - day);
         return d.getUTCFullYear();
       }
+
       try {
-        const cfgUrl = `https://${jiraDomain}/rest/agile/1.0/board/${boardNum}/configuration`;
-        const cfgResp = await fetch(cfgUrl, { credentials: "include" });
-        if (!cfgResp.ok) throw new Error('cfg');
-        const cfg = await cfgResp.json();
-        const filterId = cfg.filter && cfg.filter.id;
-        let boardJql = '';
-        if (filterId) {
-          const fResp = await fetch(`https://${jiraDomain}/rest/api/3/filter/${filterId}`, { credentials: "include" });
-          if (fResp.ok) {
-            const fd = await fResp.json();
-            boardJql = (fd.jql || '').replace(/ORDER BY[\s\S]*$/i, '').trim();
-          }
-        }
-        const jql = `${boardJql ? '('+boardJql+') AND ' : ''}` +
-          `issuetype in (Story,Bug,Task) AND statusCategory = Done ` +
-          `AND resolutiondate >= startOfWeek(-12)`;
-        const enc = encodeURIComponent(jql);
-        let startAt = 0;
-        let issues = [];
-        while (true) {
-          const url = `https://${jiraDomain}/rest/api/3/search?jql=${enc}&fields=key,resolution,resolutiondate,issuetype&startAt=${startAt}&maxResults=100`;
-          const resp = await fetch(url, { credentials: "include" });
-          if (!resp.ok) break;
-          const data = await resp.json();
-          issues = issues.concat(data.issues || []);
-          startAt += 100;
-          if (startAt >= (data.total || 0)) break;
-        }
-        const weeks = new Array(12).fill(0).map(()=>[]);
-        const WEEK_MS = 7*24*60*60*1000;
+        const completions = await fetchSprintCompletionData(jiraDomain, boardNum, WEEKLY_SPRINT_LOOKBACK);
+        if (!completions.length) throw new Error('no-throughput-data');
+
+        const WEEK_COUNT = 12;
+        const weeks = new Array(WEEK_COUNT).fill(0).map(() => []);
+        const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
         const currentWeekStart = weekStart(new Date());
         const lastCompletedWeekStart = new Date(currentWeekStart);
         lastCompletedWeekStart.setDate(lastCompletedWeekStart.getDate() - 7);
+
         throughputWeekNums = [];
         throughputWeekLabels = [];
-        for (let i=0;i<12;i++) {
+        for (let i = 0; i < WEEK_COUNT; i++) {
           const d = new Date(lastCompletedWeekStart);
-          d.setDate(d.getDate() - (11-i)*7);
+          d.setDate(d.getDate() - (WEEK_COUNT - 1 - i) * 7);
           const weekNum = isoWeekNumber(d);
           const weekYear = isoWeekYear(d);
           throughputWeekNums.push(weekNum);
-          throughputWeekLabels.push(`KW ${String(weekNum).padStart(2,'0')} (${weekYear})`);
+          throughputWeekLabels.push(`KW ${String(weekNum).padStart(2, '0')} (${weekYear})`);
         }
-        for (const it of issues) {
-          const issueType = it.fields && it.fields.issuetype;
-          if (issueType) {
-            const typeName = (issueType.name || '').toLowerCase();
-            if (typeName === 'epic') continue;
-            if (issueType.subtask) continue;
-          }
-          const resName = it.fields && it.fields.resolution && it.fields.resolution.name;
-          if (!validResolution(resName)) continue;
-          const dateStr = it.fields && it.fields.resolutiondate;
-          if (!dateStr) continue;
-          const w = weekStart(dateStr);
-          const diff = Math.round((lastCompletedWeekStart - w) / WEEK_MS);
-          if (diff >=0 && diff < 12) weeks[11-diff].push(it.key);
-        }
+
+        completions.forEach(entry => {
+          (entry.completed || []).forEach(ev => {
+            if (!ev.completedDate) return;
+            if (!validResolution(ev.resolutionName)) return;
+            const w = weekStart(ev.completedDate);
+            const diff = Math.round((lastCompletedWeekStart - w) / WEEK_MS);
+            if (diff >= 0 && diff < WEEK_COUNT) {
+              const idx = WEEK_COUNT - 1 - diff;
+              const bucket = weeks[idx];
+              if (!bucket.includes(ev.key)) bucket.push(ev.key);
+            }
+          });
+        });
+
         throughputIssues = weeks;
-        const counts = weeks.map(w=>w.length);
+        const counts = weeks.map(w => w.length);
         console.log('Weekly throughput:', counts.map((c, idx) => `${throughputWeekLabels[idx]}: ${c}`).join(', '));
         return counts;
       } catch (e) {
