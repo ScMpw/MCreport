@@ -1322,6 +1322,10 @@ function addTooltipListeners() {
       const restoreExternalStyles = temporarilyRemoveExternalStylesheets();
       const margin = 20;
       try {
+        const svg2pdfFn = window.svg2pdf;
+        if (typeof svg2pdfFn !== 'function') {
+          throw new Error('svg2pdf library not loaded');
+        }
         for (let i=0; i<blocks.length; i++) {
           const svgText = await htmlToImage.toSvg(blocks[i], { skipFonts: true });
           const svgEl = new DOMParser().parseFromString(svgText, 'image/svg+xml').documentElement;
@@ -1334,7 +1338,7 @@ function addTooltipListeners() {
           if (!origH || !isFinite(origH)) origH = rect.height || blocks[i].offsetHeight || 1;
           const height = origH * width / origW;
           if (i>0) pdf.addPage();
-          svg2pdf(svgEl, pdf, { x: margin, y: margin, width, height });
+          svg2pdfFn(svgEl, pdf, { x: margin, y: margin, width, height });
         }
         const dateStr = new Date().toISOString().split('T')[0];
         pdf.save(`Stakeholder_StatusReport_WeeklyThroughput_${dateStr}.pdf`);
