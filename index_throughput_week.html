@@ -658,12 +658,15 @@ function addTooltipListeners() {
       if (!boardTeams.length) await fetchBoardTeam();
       let currSprintObj = sprints.find(s => String(s.id) === String(selectedSprintId));
       let currIdx = closedSprintsSorted.findIndex(s => String(s.id) === String(selectedSprintId));
-      let baselineIdx = (currIdx >= 0 && currIdx + 1 < closedSprintsSorted.length)
-        ? currIdx + 1
-        : -1;
-      baselineSprintId = baselineIdx >= 0 && closedSprintsSorted[baselineIdx]
-        ? closedSprintsSorted[baselineIdx].id
-        : '';
+      let baselineSprint = null;
+      if (currIdx >= 0) {
+        if (currIdx + 1 < closedSprintsSorted.length) {
+          baselineSprint = closedSprintsSorted[currIdx + 1];
+        }
+      } else if (closedSprintsSorted.length) {
+        baselineSprint = closedSprintsSorted[0];
+      }
+      baselineSprintId = baselineSprint ? baselineSprint.id : '';
       const sprintFields = [
         'summary',
         'parent',
