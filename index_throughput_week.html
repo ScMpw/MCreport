@@ -705,22 +705,49 @@ function addTooltipListeners() {
       epicStories = {};
       await Promise.all(Array.from(epicKeysSet).map(async epicKey => {
         try {
-          const { issues } = await jiraSearch(`"Epic Link" = ${epicKey}`, epicFields);
+          const { issues } = await jiraSearch(`"Epic Link" = ${epicKey}`, epicFields, { expand: ['changelog'] });
           epicStories[epicKey] = (issues || [])
             .filter(story => validResolution(story.fields.resolution && story.fields.resolution.name))
-            .map(story => ({
-            key: story.key,
-            summary: story.fields.summary,
-            status: story.fields.status && story.fields.status.name,
-            resolution: story.fields.resolution && story.fields.resolution.name,
-            assignee: story.fields.assignee && story.fields.assignee.displayName,
-            points: Number(story.fields.customfield_10002) || 0,
-            team: (story.fields.customfield_12600 || []).join(', '),
-            created: story.fields.created,
-            resolved: story.fields.resolutiondate,
-            sprint: (story.fields.customfield_10005||[]).map(s=>s.name).join(', '),
-            issuetype: story.fields.issuetype && story.fields.issuetype.name,
-          }));
+            .map(story => {
+              const created = story.fields.created;
+              const resolved = story.fields.resolutiondate;
+              const createdMs = Date.parse(created || '');
+              const resolvedMs = Date.parse(resolved || '');
+              const statusHistory = [];
+              const histories = story.changelog && Array.isArray(story.changelog.histories)
+                ? story.changelog.histories
+                : [];
+              histories.forEach(history => {
+                const histMs = Date.parse((history && history.created) || '');
+                if (!Number.isFinite(histMs)) return;
+                (history.items || []).forEach(item => {
+                  if ((item.field || '').toLowerCase() === 'status') {
+                    statusHistory.push({
+                      date: histMs,
+                      from: item.fromString || item.from || '',
+                      to: item.toString || item.to || ''
+                    });
+                  }
+                });
+              });
+              statusHistory.sort((a, b) => a.date - b.date);
+              return {
+                key: story.key,
+                summary: story.fields.summary,
+                status: story.fields.status && story.fields.status.name,
+                resolution: story.fields.resolution && story.fields.resolution.name,
+                assignee: story.fields.assignee && story.fields.assignee.displayName,
+                points: Number(story.fields.customfield_10002) || 0,
+                team: (story.fields.customfield_12600 || []).join(', '),
+                created,
+                resolved,
+                createdTs: Number.isFinite(createdMs) ? createdMs : null,
+                resolvedTs: Number.isFinite(resolvedMs) ? resolvedMs : null,
+                sprint: (story.fields.customfield_10005||[]).map(s=>s.name).join(', '),
+                issuetype: story.fields.issuetype && story.fields.issuetype.name,
+                statusHistory
+              };
+            });
         } catch (e) {
           console.error(`Failed to fetch stories for epic ${epicKey}`, e);
           epicStories[epicKey] = [];
@@ -862,6 +889,10 @@ function addTooltipListeners() {
 
       function updateEpicStatusCounts() {
         const currSprintObj = sprints.find(s => String(s.id) === String(selectedSprintId));
+        const sprintEndRaw = currSprintObj && currSprintObj.endDate ? Date.parse(currSprintObj.endDate) : NaN;
+        const snapshotTime = (currSprintObj && (currSprintObj.state||'').toLowerCase() === 'closed' && Number.isFinite(sprintEndRaw))
+          ? sprintEndRaw
+          : null;
         Object.keys(epicStories).forEach(epicKey => {
           let done=0, prog=0, open=0, blocked=0;
           let ptsDone=0, ptsProg=0, ptsOpen=0, ptsBlocked=0;
@@ -872,17 +903,14 @@ function addTooltipListeners() {
             else if (cls==='story-status-previous' && !storyFilters.previous) show=false;
             else if (cls==='story-status-new' && !storyFilters.new) show=false;
             else if ((cls==='story-status-open' || cls==='story-status-inprogress' || cls==='story-status-blocked' || cls==='story-status-other') && !storyFilters.open) show=false;
-            if (show) {
-              let teams=(story.team||'').split(',').map(t=>t.trim()).filter(Boolean);
-              if (!teams.length || !teams.some(t=>teamFilters[t])) show=false;
-            }
             if (!show) return;
-            let grp=statusGroup(story.status);
+            if (!storyIncludedAtTime(story, snapshotTime)) return;
+            const grp = statusGroupAtTime(story, snapshotTime);
             if (grp==='Done') { done++; ptsDone+=story.points; }
             else if (grp==='In Progress') { prog++; ptsProg+=story.points; }
             else if (grp==='Open') { open++; ptsOpen+=story.points; }
             else if (grp==='Blocked') { blocked++; ptsBlocked+=story.points; }
-            
+
           });
           const block=document.getElementById(`storyMap_${epicKey.replace(/[^a-zA-Z0-9]/g,'')}`);
           if (!block) return;
@@ -919,17 +947,36 @@ function addTooltipListeners() {
       avgThroughput = throughput.reduce((a,b)=>a+b,0)/throughput.length;
       const baselineSprintObj = closedSprintsSorted.find(s=>s.id==baselineSprintId);
       const baselineEnd = baselineSprintObj ? new Date(baselineSprintObj.endDate) : null;
+      const baselineEndMs = baselineEnd ? baselineEnd.getTime() : NaN;
+      const baselineEndTime = Number.isFinite(baselineEndMs) ? baselineEndMs : null;
+      const currSprintObj = sprints.find(s => String(s.id) === String(selectedSprintId));
+      const sprintStartRaw = currSprintObj && currSprintObj.startDate ? Date.parse(currSprintObj.startDate) : NaN;
+      const sprintEndRaw = currSprintObj && currSprintObj.endDate ? Date.parse(currSprintObj.endDate) : NaN;
+      const sprintStartTime = Number.isFinite(sprintStartRaw) ? sprintStartRaw : null;
+      const sprintEndTime = Number.isFinite(sprintEndRaw) ? sprintEndRaw : null;
+      const nowTime = Date.now();
+      const snapshotTime = (currSprintObj && (currSprintObj.state||'').toLowerCase() === 'closed' && sprintEndTime != null)
+        ? sprintEndTime
+        : null;
+      const comparisonEndTime = snapshotTime != null
+        ? snapshotTime
+        : (sprintEndTime != null ? Math.min(nowTime, sprintEndTime) : nowTime);
+      const effectiveEndTime = Number.isFinite(comparisonEndTime) ? comparisonEndTime : null;
+      const changeStartTime = baselineEndTime != null
+        ? baselineEndTime
+        : (sprintStartTime != null ? sprintStartTime : null);
       epicBacklogs = {};
       let totalBacklog = 0;
       Object.keys(epicStories).forEach(epicKey => {
         let stories = epicStories[epicKey]||[];
-        let backlog = stories.filter(st => {
-          if (isDone(st.status)) return false;
-          if (!validResolution(st.resolution)) return false;
-          let teams = (st.team||'').split(',').map(t=>t.trim()).filter(Boolean);
-          if (!teams.length || !teams.some(t=>teamFilters[t])) return false;
-          return true;
-        }).length;
+        let backlog = 0;
+        stories.forEach(st => {
+          if (!validResolution(st.resolution)) return;
+          if (!storyIncludedAtTime(st, snapshotTime)) return;
+          const grp = statusGroupAtTime(st, snapshotTime);
+          if (grp === 'Done') return;
+          backlog++;
+        });
         epicBacklogs[epicKey] = backlog;
         totalBacklog += backlog;
       });
@@ -1056,18 +1103,17 @@ function addTooltipListeners() {
       Object.keys(epicStories).forEach((epicKey, idx) => {
         let stories = epicStories[epicKey];
         if (!stories || !stories.length) return;
+        const relevantStories = stories.filter(story => storyIncludedAtTime(story, snapshotTime));
         let statusCounts = {done:0,prog:0,open:0,blocked:0};
         let ptsDone=0, ptsProg=0, ptsOpen=0, ptsBlocked=0;
         let unestimated = 0;
-        stories.forEach(story => {
-          let teams = (story.team||'').split(',').map(t=>t.trim()).filter(Boolean);
-          if (!teams.length || !teams.some(t=>teamFilters[t])) return;
-          let sgrp = statusGroup(story.status);
+        relevantStories.forEach(story => {
+          const sgrp = statusGroupAtTime(story, snapshotTime);
           if (sgrp==='Done') { statusCounts.done++; ptsDone+=story.points; }
           else if (sgrp==='In Progress') { statusCounts.prog++; ptsProg+=story.points; }
           else if (sgrp==='Open') { statusCounts.open++; ptsOpen+=story.points; }
           else if (sgrp==='Blocked') { statusCounts.blocked++; ptsBlocked+=story.points; }
-          
+
           if (!story.points && sgrp!=='Done') unestimated++;
         });
         let totalEstimate = ptsDone+ptsProg+ptsOpen+ptsBlocked;
@@ -1077,33 +1123,23 @@ function addTooltipListeners() {
         let mc = epicForecastResults[epicKey];
         let probRows = [[50,mc[Math.floor(0.5*mc.length)]],[75,mc[Math.floor(0.75*mc.length)]],[95,mc[Math.floor(0.95*mc.length)]]];
 
-        let baseStories = (epicStoriesBaseline[epicKey]||[]).filter(st => {
-          let teams = (st.team||'').split(',').map(t=>t.trim()).filter(Boolean);
-          return teams.length ? teams.some(t=>teamFilters[t]) : false;
-        });
-        let baseKeys = new Set(baseStories.map(s=>s.key));
-        let currStories = stories.filter(s => {
-          let teams = (s.team||'').split(',').map(t=>t.trim()).filter(Boolean);
-          return teams.length ? teams.some(t=>teamFilters[t]) : false;
-        });
+        let baseStories = (epicStoriesBaseline[epicKey]||[]).filter(st => storyMatchesTeamFilters(st));
+        const currStories = relevantStories;
         let currKeys = new Set(currStories.map(s=>s.key));
-        const currSprintObj = sprints.find(s => String(s.id) === String(selectedSprintId));
-        const sprintStart = currSprintObj && currSprintObj.startDate ? new Date(currSprintObj.startDate) : null;
-        const sprintEnd = currSprintObj && currSprintObj.endDate ? new Date(currSprintObj.endDate) : null;
         let newStories = currStories.filter(s => {
-          if (!s.created) return false;
-          const created = new Date(s.created);
-          return sprintStart && sprintEnd && created >= sprintStart && created < sprintEnd;
+          if (!Number.isFinite(sprintStartTime) || effectiveEndTime == null) return false;
+          const createdTime = typeof s.createdTs === 'number'
+            ? s.createdTs
+            : (s.created ? Date.parse(s.created) : NaN);
+          if (!Number.isFinite(createdTime)) return false;
+          return createdTime >= sprintStartTime && createdTime < effectiveEndTime;
         });
         let removedStories = baseStories.filter(s=>!currKeys.has(s.key));
-
-        let baseDone = (epicStories[epicKey]||[]).filter(s=>{
-          let teams = (s.team||'').split(',').map(t=>t.trim()).filter(Boolean);
-          if (!teams.length || !teams.some(t=>teamFilters[t])) return false;
-          let res = s.resolved ? new Date(s.resolved) : null;
-          return baselineEnd && res && res <= baselineEnd;
-        }).map(s=>s.points).reduce((a,b)=>a+b,0);
-        let doneSince = ptsDone - baseDone;
+        let doneSince = effectiveEndTime == null
+          ? 0
+          : relevantStories
+            .filter(s => storyResolvedBetween(s, changeStartTime, effectiveEndTime))
+            .reduce((a,b)=>a + b.points, 0);
         let estimateBaseline = baseStories.map(s=>s.points).reduce((a,b)=>a+b,0);
 
         let deltaEstimate = backlog - estimateBaseline;
@@ -1190,10 +1226,10 @@ function addTooltipListeners() {
               ${(() => {
                 const newSet = new Set(newStories.map(s=>s.key));
                 const lanes = [
-                  ['Done', currStories.filter(s=>statusGroup(s.status)==='Done')],
-                  ['In Progress', currStories.filter(s=>statusGroup(s.status)==='In Progress')],
-                  ['Open', currStories.filter(s=>statusGroup(s.status)==='Open')],
-                  ['Blocked', currStories.filter(s=>statusGroup(s.status)==='Blocked')]
+                  ['Done', currStories.filter(s=>statusGroupAtTime(s, snapshotTime)==='Done')],
+                  ['In Progress', currStories.filter(s=>statusGroupAtTime(s, snapshotTime)==='In Progress')],
+                  ['Open', currStories.filter(s=>statusGroupAtTime(s, snapshotTime)==='Open')],
+                  ['Blocked', currStories.filter(s=>statusGroupAtTime(s, snapshotTime)==='Blocked')]
                 ];
                 return lanes.map(l => `
                   <div class="story-lane">
@@ -1277,6 +1313,53 @@ function addTooltipListeners() {
       if (s.includes("block")) return "Blocked";
       if (s.includes("progress") || s.includes("development")) return "In Progress";
       return "Open";
+    }
+
+    function getStatusAtTime(story, targetTime) {
+      if (!Number.isFinite(targetTime) || !story) return story ? story.status : '';
+      let status = story.status || '';
+      const history = Array.isArray(story.statusHistory) ? story.statusHistory : [];
+      for (let i = history.length - 1; i >= 0; i--) {
+        const change = history[i];
+        if (!change) continue;
+        const changeTime = typeof change.date === 'number' ? change.date : NaN;
+        if (!Number.isFinite(changeTime)) continue;
+        if (changeTime > targetTime) {
+          status = change.from || status;
+        } else {
+          break;
+        }
+      }
+      return status;
+    }
+
+    function statusGroupAtTime(story, targetTime) {
+      const statusStr = Number.isFinite(targetTime) ? getStatusAtTime(story, targetTime) : (story ? story.status : '');
+      return statusGroup(statusStr);
+    }
+
+    function storyMatchesTeamFilters(story) {
+      const teams = (story.team||'').split(',').map(t=>t.trim()).filter(Boolean);
+      if (!teams.length) return false;
+      return teams.some(t=>teamFilters[t]);
+    }
+
+    function storyIncludedAtTime(story, targetTime) {
+      if (!storyMatchesTeamFilters(story)) return false;
+      if (Number.isFinite(targetTime)) {
+        const createdTime = typeof story.createdTs === 'number'
+          ? story.createdTs
+          : (story.created ? Date.parse(story.created) : NaN);
+        if (Number.isFinite(createdTime) && createdTime > targetTime) return false;
+      }
+      return true;
+    }
+
+    function storyResolvedBetween(story, startTime, endTime) {
+      if (!story || typeof story.resolvedTs !== 'number') return false;
+      if (Number.isFinite(endTime) && story.resolvedTs > endTime) return false;
+      if (Number.isFinite(startTime) && story.resolvedTs <= startTime) return false;
+      return true;
     }
 
     function hexToRgb(hex) {
