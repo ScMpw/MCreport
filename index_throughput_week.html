@@ -5,7 +5,6 @@
   <title>Stakeholder PI Status Report – MCW with Allocation</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html-to-image/1.11.11/html-to-image.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/svg2pdf.js@2.2.3/dist/svg2pdf.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet" data-pdf-ignore="true">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css" data-pdf-ignore="true" />
   <link rel="stylesheet" href="public/tailwind.css">
@@ -1322,23 +1321,28 @@ function addTooltipListeners() {
       const restoreExternalStyles = temporarilyRemoveExternalStylesheets();
       const margin = 20;
       try {
-        const svg2pdfFn = window.svg2pdf;
-        if (typeof svg2pdfFn !== 'function') {
-          throw new Error('svg2pdf library not loaded');
-        }
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+        const maxWidth = pageWidth - margin * 2;
+        const maxHeight = pageHeight - margin * 2;
+        // KPI_Report.html can export charts directly because Chart.js already paints
+        // everything onto <canvas> elements. The weekly throughput report renders
+        // complex HTML cards instead, so we rasterise each block with html-to-image
+        // before embedding it into the PDF.
         for (let i=0; i<blocks.length; i++) {
-          const svgText = await htmlToImage.toSvg(blocks[i], { skipFonts: true });
-          const svgEl = new DOMParser().parseFromString(svgText, 'image/svg+xml').documentElement;
-          const width = pdf.internal.pageSize.getWidth() - margin*2;
-          const vb = svgEl.viewBox && svgEl.viewBox.baseVal ? svgEl.viewBox.baseVal : null;
-          const rect = blocks[i].getBoundingClientRect();
-          let origW = vb && vb.width ? vb.width : parseFloat(svgEl.getAttribute('width'));
-          let origH = vb && vb.height ? vb.height : parseFloat(svgEl.getAttribute('height'));
-          if (!origW || !isFinite(origW)) origW = rect.width || blocks[i].offsetWidth || 1;
-          if (!origH || !isFinite(origH)) origH = rect.height || blocks[i].offsetHeight || 1;
-          const height = origH * width / origW;
           if (i>0) pdf.addPage();
-          svg2pdfFn(svgEl, pdf, { x: margin, y: margin, width, height });
+          const dataUrl = await htmlToImage.toPng(blocks[i], {
+            pixelRatio: 2,
+            skipFonts: true,
+            cacheBust: true
+          });
+          const imgProps = pdf.getImageProperties(dataUrl);
+          const ratio = Math.min(maxWidth / imgProps.width, maxHeight / imgProps.height, 1);
+          const renderWidth = imgProps.width * ratio;
+          const renderHeight = imgProps.height * ratio;
+          const x = margin + (maxWidth - renderWidth) / 2;
+          const y = margin;
+          pdf.addImage(dataUrl, 'PNG', x, y, renderWidth, renderHeight, undefined, 'FAST');
         }
         const dateStr = new Date().toISOString().split('T')[0];
         pdf.save(`Stakeholder_StatusReport_WeeklyThroughput_${dateStr}.pdf`);
