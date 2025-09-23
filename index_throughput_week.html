@@ -6,8 +6,8 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html-to-image/1.11.11/html-to-image.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/svg2pdf.js@2.2.3/dist/svg2pdf.min.js"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet" data-pdf-ignore="true">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css" data-pdf-ignore="true" />
   <link rel="stylesheet" href="public/tailwind.css">
   <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
   <style>
@@ -1289,6 +1289,28 @@ function addTooltipListeners() {
       } : {r:0,g:0,b:0};
     }
 
+    function temporarilyRemoveExternalStylesheets() {
+      const removed = [];
+      document.querySelectorAll('link[rel="stylesheet"][data-pdf-ignore="true"]').forEach(link => {
+        removed.push({
+          parent: link.parentNode,
+          nextSibling: link.nextSibling,
+          element: link
+        });
+        if (link.parentNode) link.parentNode.removeChild(link);
+      });
+      return () => {
+        removed.forEach(({ parent, element, nextSibling }) => {
+          if (!parent) return;
+          if (nextSibling && nextSibling.parentNode === parent) {
+            parent.insertBefore(element, nextSibling);
+          } else if (!element.parentNode) {
+            parent.appendChild(element);
+          }
+        });
+      };
+    }
+
     // --- PDF EXPORT (CLEAN SUMMARY ONLY) ---
     async function exportPDF() {
       const { jsPDF } = window.jspdf;
@@ -1296,20 +1318,32 @@ function addTooltipListeners() {
       const blocks = Array.from(document.querySelectorAll('.epic-summary-block'))
         .filter(b => b.querySelector('.epic-select-checkbox')?.checked);
       if (!blocks.length) return alert('Select at least one epic for PDF');
+
+      const restoreExternalStyles = temporarilyRemoveExternalStylesheets();
       const margin = 20;
-      for (let i=0; i<blocks.length; i++) {
-        const svgText = await htmlToImage.toSvg(blocks[i]);
-        const svgEl = new DOMParser().parseFromString(svgText, 'image/svg+xml').documentElement;
-        const width = pdf.internal.pageSize.getWidth() - margin*2;
-        const vb = svgEl.viewBox.baseVal;
-        const origW = vb && vb.width ? vb.width : parseFloat(svgEl.getAttribute('width'));
-        const origH = vb && vb.height ? vb.height : parseFloat(svgEl.getAttribute('height'));
-        const height = origH * width / origW;
-        if (i>0) pdf.addPage();
-        svg2pdf(svgEl, pdf, { x: margin, y: margin, width, height });
+      try {
+        for (let i=0; i<blocks.length; i++) {
+          const svgText = await htmlToImage.toSvg(blocks[i], { skipFonts: true });
+          const svgEl = new DOMParser().parseFromString(svgText, 'image/svg+xml').documentElement;
+          const width = pdf.internal.pageSize.getWidth() - margin*2;
+          const vb = svgEl.viewBox && svgEl.viewBox.baseVal ? svgEl.viewBox.baseVal : null;
+          const rect = blocks[i].getBoundingClientRect();
+          let origW = vb && vb.width ? vb.width : parseFloat(svgEl.getAttribute('width'));
+          let origH = vb && vb.height ? vb.height : parseFloat(svgEl.getAttribute('height'));
+          if (!origW || !isFinite(origW)) origW = rect.width || blocks[i].offsetWidth || 1;
+          if (!origH || !isFinite(origH)) origH = rect.height || blocks[i].offsetHeight || 1;
+          const height = origH * width / origW;
+          if (i>0) pdf.addPage();
+          svg2pdf(svgEl, pdf, { x: margin, y: margin, width, height });
+        }
+        const dateStr = new Date().toISOString().split('T')[0];
+        pdf.save(`Stakeholder_StatusReport_WeeklyThroughput_${dateStr}.pdf`);
+      } catch (err) {
+        console.error('PDF export failed', err);
+        alert('Unable to generate the PDF report. Please try again.');
+      } finally {
+        restoreExternalStyles();
       }
-      const dateStr = new Date().toISOString().split('T')[0];
-      pdf.save(`Stakeholder_StatusReport_WeeklyThroughput_${dateStr}.pdf`);
     }
   </script>
 </body>
