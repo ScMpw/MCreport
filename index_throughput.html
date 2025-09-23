@@ -330,6 +330,33 @@ function addTooltipListeners() {
       }
     }
 
+    function dedupeCompletedIssues(entries) {
+      (entries || []).forEach(entry => {
+        const completed = entry.completed || [];
+        if (!completed.length) return;
+        const deduped = new Map();
+        let hasDuplicates = false;
+        completed.forEach(ev => {
+          if (!ev || !ev.key) return;
+          if (deduped.has(ev.key)) {
+            hasDuplicates = true;
+            const existing = deduped.get(ev.key);
+            if (!existing.completedDate && ev.completedDate) {
+              existing.completedDate = ev.completedDate;
+            }
+            if (!existing.resolutionName && ev.resolutionName) {
+              existing.resolutionName = ev.resolutionName;
+            }
+          } else {
+            deduped.set(ev.key, { ...ev });
+          }
+        });
+        if (hasDuplicates) {
+          entry.completed = Array.from(deduped.values());
+        }
+      });
+    }
+
     async function fetchSprintCompletionData(jiraDomain, boardNum, desiredCount) {
       const results = [];
       const boardId = String(boardNum || '').trim();
@@ -419,6 +446,8 @@ function addTooltipListeners() {
           byIndex[i].completed = [];
         }
       }
+
+      dedupeCompletedIssues(byIndex);
 
       const uniqueKeys = Array.from(new Set(
         byIndex.flatMap(entry => entry.completed.map(ev => ev.key)).filter(Boolean)
