@@ -161,6 +161,42 @@ let throughputWeekLabels = [];
 let avgThroughput = 0;
 let selectedSprintId = '', selectedSprintName = '', targetWeeks = 4;
 let baselineSprintId = '';
+
+function deduplicateStoriesByKey(stories) {
+  const seen = new Set();
+  return (stories || []).filter(story => {
+    if (!story || !story.key) return true;
+    if (seen.has(story.key)) return false;
+    seen.add(story.key);
+    return true;
+  });
+}
+
+function parseTeamString(teamStr = '') {
+  const seen = new Set();
+  return teamStr
+    .split(',')
+    .map(t => t.trim())
+    .filter(t => {
+      if (!t || seen.has(t)) return false;
+      seen.add(t);
+      return true;
+    });
+}
+
+function getStoryTeams(story) {
+  return parseTeamString(story && story.team ? story.team : '');
+}
+
+function matchesTeamFilters(teams, filters = teamFilters) {
+  if (!Array.isArray(teams) || !teams.length) return false;
+  if (!filters || !Object.keys(filters).length) return false;
+  return teams.some(t => filters[t]);
+}
+
+function storyMatchesTeamFilters(story, filters = teamFilters) {
+  return matchesTeamFilters(getStoryTeams(story), filters);
+}
 document.getElementById('versionSelect').value = 'index_throughput_week.html';
 function switchVersion(page) {
   if (page !== 'index_throughput_week.html') location.href = page;
@@ -738,7 +774,7 @@ function addTooltipListeners() {
       await Promise.all(Array.from(epicKeysSet).map(async epicKey => {
         try {
           const { issues } = await jiraSearch(`"Epic Link" = ${epicKey}`, epicFields, { expand: ['changelog'] });
-          epicStories[epicKey] = (issues || [])
+          epicStories[epicKey] = deduplicateStoriesByKey((issues || [])
             .filter(story => validResolution(story.fields.resolution && story.fields.resolution.name))
             .map(story => {
               const created = story.fields.created;
@@ -779,7 +815,7 @@ function addTooltipListeners() {
                 issuetype: story.fields.issuetype && story.fields.issuetype.name,
                 statusHistory
               };
-            });
+            }));
         } catch (e) {
           console.error(`Failed to fetch stories for epic ${epicKey}`, e);
           epicStories[epicKey] = [];
@@ -789,7 +825,7 @@ function addTooltipListeners() {
       await Promise.all(Array.from(epicKeysSet).map(async epicKey => {
         try {
           const { issues } = await jiraSearch(`"Epic Link" = ${epicKey}`, epicFields);
-          epicStoriesBaseline[epicKey] = (issues || [])
+          epicStoriesBaseline[epicKey] = deduplicateStoriesByKey((issues || [])
             .filter(story => {
               let created = new Date(story.fields.created);
               let resolved = story.fields.resolutiondate ? new Date(story.fields.resolutiondate) : null;
@@ -809,7 +845,7 @@ function addTooltipListeners() {
             resolved: story.fields.resolutiondate,
             sprint: (story.fields.customfield_10005||[]).map(s=>s.name).join(', '),
             issuetype: story.fields.issuetype && story.fields.issuetype.name,
-          }));
+          })));
         } catch (e) {
           console.error(`Failed to fetch baseline stories for epic ${epicKey}`, e);
           epicStoriesBaseline[epicKey] = [];
@@ -818,7 +854,7 @@ function addTooltipListeners() {
       let allTeams = new Set();
       Object.values(epicStories).forEach(arr => {
         arr.forEach(st => {
-          st.team.split(',').forEach(t => { t = t.trim(); if (t) allTeams.add(t); });
+          getStoryTeams(st).forEach(t => { if (t) allTeams.add(t); });
         });
       });
       teamFilters = {};
@@ -913,8 +949,8 @@ function addTooltipListeners() {
         document.querySelectorAll('.removed-lane').forEach(el=>el.style.display = storyFilters.removed? '':'none');
         document.querySelectorAll('.story-card').forEach(el=>{
           if (el.style.display==='none') return;
-          let teams = (el.dataset.teams||'').split(',').map(t=>t.trim()).filter(Boolean);
-          if (!teams.length || !teams.some(t=>teamFilters[t])) el.style.display='none';
+          const teams = parseTeamString(el.dataset.teams || '');
+          if (!matchesTeamFilters(teams)) el.style.display='none';
         });
         updateEpicStatusCounts();
       }
@@ -936,6 +972,7 @@ function addTooltipListeners() {
             else if (cls==='story-status-new' && !storyFilters.new) show=false;
             else if ((cls==='story-status-open' || cls==='story-status-inprogress' || cls==='story-status-blocked' || cls==='story-status-other') && !storyFilters.open) show=false;
             if (!show) return;
+            if (!storyMatchesTeamFilters(story)) return;
             if (!storyIncludedAtTime(story, snapshotTime)) return;
             const grp = statusGroupAtTime(story, snapshotTime);
             if (grp==='Done') { done++; ptsDone+=story.points; }
@@ -1004,6 +1041,7 @@ function addTooltipListeners() {
         let backlog = 0;
         stories.forEach(st => {
           if (!validResolution(st.resolution)) return;
+          if (!storyMatchesTeamFilters(st)) return;
           if (!storyIncludedAtTime(st, snapshotTime)) return;
           const grp = statusGroupAtTime(st, snapshotTime);
           if (grp === 'Done') return;
@@ -1065,17 +1103,16 @@ function addTooltipListeners() {
           if (allocNeeded["75"] && allocNeeded["95"]) break;
         }
         epicRequiredAlloc[epicKey] = allocNeeded;
-      epicRequiredIssues[epicKey] = {
-        "75": allocNeeded["75"] ? Math.ceil(avgThroughput * allocNeeded["75"] / 100) : null,
-        "95": allocNeeded["95"] ? Math.ceil(avgThroughput * allocNeeded["95"] / 100) : null
-      };
+        epicRequiredIssues[epicKey] = {
+          "75": allocNeeded["75"] ? Math.ceil(avgThroughput * allocNeeded["75"] / 100) : null,
+          "95": allocNeeded["95"] ? Math.ceil(avgThroughput * allocNeeded["95"] / 100) : null
+        };
     });
 
       Object.keys(epicStoriesBaseline).forEach(epicKey => {
         let stories = epicStoriesBaseline[epicKey] || [];
         let backlogPts = stories.filter(st => {
-          let teams = (st.team||'').split(',').map(t=>t.trim()).filter(Boolean);
-          if (!teams.length || !teams.some(t=>teamFilters[t])) return false;
+          if (!storyMatchesTeamFilters(st)) return false;
           if (!validResolution(st.resolution)) return false;
           let res = st.resolved ? new Date(st.resolved) : null;
           if (baselineEnd && res && res <= baselineEnd) return false;
@@ -1368,12 +1405,6 @@ function addTooltipListeners() {
     function statusGroupAtTime(story, targetTime) {
       const statusStr = Number.isFinite(targetTime) ? getStatusAtTime(story, targetTime) : (story ? story.status : '');
       return statusGroup(statusStr);
-    }
-
-    function storyMatchesTeamFilters(story) {
-      const teams = (story.team||'').split(',').map(t=>t.trim()).filter(Boolean);
-      if (!teams.length) return false;
-      return teams.some(t=>teamFilters[t]);
     }
 
     function storyIncludedAtTime(story, targetTime) {
