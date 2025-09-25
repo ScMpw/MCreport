@@ -799,6 +799,41 @@ function addTooltipListeners() {
                 });
               });
               statusHistory.sort((a, b) => a.date - b.date);
+              let doneMs = Number.isFinite(resolvedMs) ? resolvedMs : null;
+              let activeDoneMs = null;
+              statusHistory.forEach(change => {
+                if (!change || !Number.isFinite(change.date)) return;
+                const toStr = (change.to || '').toLowerCase();
+                const fromStr = (change.from || '').toLowerCase();
+                const toDone = toStr.includes('done') || toStr.includes('closed');
+                const fromDone = fromStr.includes('done') || fromStr.includes('closed');
+                if (toDone) {
+                  activeDoneMs = change.date;
+                }
+                if (fromDone && !toDone) {
+                  activeDoneMs = null;
+                }
+              });
+              const statusName = story.fields.status && story.fields.status.name;
+              const currentlyDone = isDone(statusName);
+              if (currentlyDone) {
+                if (activeDoneMs != null) {
+                  doneMs = activeDoneMs;
+                } else if (!Number.isFinite(doneMs)) {
+                  for (let i = statusHistory.length - 1; i >= 0; i--) {
+                    const change = statusHistory[i];
+                    if (!change || !Number.isFinite(change.date)) continue;
+                    const toStr = (change.to || '').toLowerCase();
+                    if (toStr.includes('done') || toStr.includes('closed')) {
+                      doneMs = change.date;
+                      break;
+                    }
+                  }
+                }
+              } else {
+                doneMs = null;
+              }
+              const resolvedDisplay = story.fields.resolutiondate || (Number.isFinite(doneMs) ? new Date(doneMs).toISOString() : null);
               return {
                 key: story.key,
                 summary: story.fields.summary,
@@ -808,9 +843,10 @@ function addTooltipListeners() {
                 points: Number(story.fields.customfield_10002) || 0,
                 team: (story.fields.customfield_12600 || []).join(', '),
                 created,
-                resolved,
+                resolved: resolvedDisplay,
                 createdTs: Number.isFinite(createdMs) ? createdMs : null,
-                resolvedTs: Number.isFinite(resolvedMs) ? resolvedMs : null,
+                resolvedTs: Number.isFinite(doneMs) ? doneMs : null,
+                doneTs: Number.isFinite(doneMs) ? doneMs : null,
                 sprint: (story.fields.customfield_10005||[]).map(s=>s.name).join(', '),
                 issuetype: story.fields.issuetype && story.fields.issuetype.name,
                 statusHistory
@@ -1424,9 +1460,13 @@ function addTooltipListeners() {
     }
 
     function storyResolvedBetween(story, startTime, endTime) {
-      if (!story || typeof story.resolvedTs !== 'number') return false;
-      if (Number.isFinite(endTime) && story.resolvedTs > endTime) return false;
-      if (Number.isFinite(startTime) && story.resolvedTs <= startTime) return false;
+      if (!story) return false;
+      let doneTime = typeof story.resolvedTs === 'number' ? story.resolvedTs : null;
+      if (doneTime == null && typeof story.doneTs === 'number') doneTime = story.doneTs;
+      if (doneTime == null) return false;
+      if (Number.isFinite(endTime) && doneTime > endTime) return false;
+      if (Number.isFinite(startTime) && doneTime <= startTime) return false;
+      if (Number.isFinite(endTime) && statusGroupAtTime(story, endTime) !== 'Done') return false;
       return true;
     }
 
