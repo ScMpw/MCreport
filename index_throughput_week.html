@@ -406,7 +406,10 @@ function addTooltipListeners() {
         if (resp.ok) {
           const data = await resp.json();
           closed = (data.sprints || []).filter(
-            s => s.state === 'CLOSED' && s.startDate && String(s.originBoardId) === boardId
+            s =>
+              (s.state === 'CLOSED' || s.state === 'ACTIVE') &&
+              s.startDate &&
+              String(s.originBoardId) === boardId
           );
         } else {
           console.warn('Velocity report unavailable, falling back to sprint list', resp.status);
@@ -436,9 +439,14 @@ function addTooltipListeners() {
             break;
           }
         }
-        closed = allSprints.filter(
-          s => (s.state || '').toUpperCase() === 'CLOSED' && s.startDate && String(s.originBoardId) === boardId
-        );
+        closed = allSprints.filter(s => {
+          const state = (s.state || '').toUpperCase();
+          return (
+            (state === 'CLOSED' || state === 'ACTIVE') &&
+            s.startDate &&
+            String(s.originBoardId) === boardId
+          );
+        });
       }
 
       closed = filterRecentSprints(closed, desiredCount);
