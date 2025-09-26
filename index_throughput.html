@@ -357,10 +357,13 @@ function addTooltipListeners() {
       });
     }
 
-    async function fetchSprintCompletionData(jiraDomain, boardNum, desiredCount) {
+    async function fetchSprintCompletionData(jiraDomain, boardNum, desiredCount, includeSprintId = '') {
       const results = [];
       const boardId = String(boardNum || '').trim();
       if (!jiraDomain || !boardId) return results;
+
+      const includeId = String(includeSprintId || '').trim();
+      let includeSprint = null;
 
       const velocityUrl = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/velocity?rapidViewId=${boardId}`;
       let closed = [];
@@ -369,8 +372,14 @@ function addTooltipListeners() {
         if (resp.ok) {
           const data = await resp.json();
           closed = (data.sprints || []).filter(
-            s => s.state === 'CLOSED' && s.startDate && String(s.originBoardId) === boardId
+            s =>
+              (s.state === 'CLOSED' || s.state === 'ACTIVE') &&
+              s.startDate &&
+              String(s.originBoardId) === boardId
           );
+          if (includeId) {
+            includeSprint = closed.find(s => String(s.id) === includeId) || null;
+          }
         } else {
           console.warn('Velocity report unavailable, falling back to sprint list', resp.status);
         }
@@ -384,7 +393,7 @@ function addTooltipListeners() {
         const maxResults = 50;
         let loops = 0;
         while (true) {
-          const sUrl = `https://${jiraDomain}/rest/agile/1.0/board/${boardId}/sprint?state=closed&maxResults=${maxResults}&startAt=${startAt}`;
+          const sUrl = `https://${jiraDomain}/rest/agile/1.0/board/${boardId}/sprint?maxResults=${maxResults}&startAt=${startAt}`;
           try {
             const sResp = await fetch(sUrl, { credentials: 'include' });
             if (!sResp.ok) break;
@@ -399,12 +408,43 @@ function addTooltipListeners() {
             break;
           }
         }
-        closed = allSprints.filter(
-          s => (s.state || '').toUpperCase() === 'CLOSED' && s.startDate && String(s.originBoardId) === boardId
-        );
+        closed = allSprints.filter(s => {
+          const state = (s.state || '').toUpperCase();
+          return (
+            (state === 'CLOSED' || state === 'ACTIVE') &&
+            s.startDate &&
+            String(s.originBoardId) === boardId
+          );
+        });
+        if (includeId) {
+          includeSprint = closed.find(s => String(s.id) === includeId) || null;
+        }
+      }
+
+      if (includeId && !includeSprint) {
+        try {
+          const sprintResp = await fetch(`https://${jiraDomain}/rest/agile/1.0/sprint/${includeId}`, { credentials: 'include' });
+          if (sprintResp.ok) {
+            const sprintData = await sprintResp.json();
+            if (
+              sprintData &&
+              sprintData.startDate &&
+              String(sprintData.originBoardId) === boardId
+            ) {
+              includeSprint = sprintData;
+              closed.push(sprintData);
+            }
+          }
+        } catch (err) {
+          console.warn('Failed to fetch include sprint details', err);
+        }
       }
 
       closed = filterRecentSprints(closed, desiredCount);
+      if (includeSprint && !closed.some(s => String(s.id) === includeId)) {
+        closed.push(includeSprint);
+        closed = filterRecentSprints(closed, desiredCount);
+      }
       const isBfBoard = BF_BOARDS.has(boardId);
       const byIndex = closed.map(s => ({ sprint: s, completed: [] }));
 
@@ -456,13 +496,69 @@ function addTooltipListeners() {
         const issueCache = new Map();
         await runBatches(uniqueKeys, 8, async key => {
           try {
-            const issueUrl = `https://${jiraDomain}/rest/api/3/issue/${key}?fields=resolution,resolutiondate`;
+            const issueUrl = `https://${jiraDomain}/rest/api/3/issue/${key}?fields=resolution,resolutiondate,status&expand=changelog`;
             const issueResp = await fetch(issueUrl, { credentials: 'include' });
             if (!issueResp.ok) return;
             const issueData = await issueResp.json();
+            const fields = issueData.fields || {};
+            const resolutionName = fields.resolution?.name || '';
+            const resolved = fields.resolutiondate || null;
+            const statusName = fields.status?.name || '';
+            const resolvedMs = Date.parse(resolved || '');
+            let doneMs = Number.isFinite(resolvedMs) ? resolvedMs : null;
+            let activeDoneMs = null;
+            const histories = Array.isArray(issueData.changelog?.histories)
+              ? issueData.changelog.histories
+              : [];
+            const statusHistory = [];
+            histories.forEach(history => {
+              const histMs = Date.parse((history && history.created) || '');
+              if (!Number.isFinite(histMs)) return;
+              (history.items || []).forEach(item => {
+                if ((item.field || '').toLowerCase() === 'status') {
+                  statusHistory.push({
+                    date: histMs,
+                    from: item.fromString || item.from || '',
+                    to: item.toString || item.to || ''
+                  });
+                }
+              });
+            });
+            statusHistory.sort((a, b) => a.date - b.date);
+            statusHistory.forEach(change => {
+              if (!change || !Number.isFinite(change.date)) return;
+              const toStr = (change.to || '').toLowerCase();
+              const fromStr = (change.from || '').toLowerCase();
+              const toDone = toStr.includes('done') || toStr.includes('closed');
+              const fromDone = fromStr.includes('done') || fromStr.includes('closed');
+              if (toDone) {
+                activeDoneMs = change.date;
+              }
+              if (fromDone && !toDone) {
+                activeDoneMs = null;
+              }
+            });
+            if (isDone(statusName)) {
+              if (activeDoneMs != null) {
+                doneMs = activeDoneMs;
+              } else if (!Number.isFinite(doneMs)) {
+                for (let i = statusHistory.length - 1; i >= 0; i--) {
+                  const change = statusHistory[i];
+                  if (!change || !Number.isFinite(change.date)) continue;
+                  const toStr = (change.to || '').toLowerCase();
+                  if (toStr.includes('done') || toStr.includes('closed')) {
+                    doneMs = change.date;
+                    break;
+                  }
+                }
+              }
+            } else {
+              doneMs = null;
+            }
+            const completedIso = Number.isFinite(doneMs) ? new Date(doneMs).toISOString() : (resolved || null);
             issueCache.set(key, {
-              resolutionDate: issueData.fields?.resolutiondate || null,
-              resolutionName: issueData.fields?.resolution?.name || ''
+              resolutionDate: completedIso,
+              resolutionName
             });
           } catch (err) {
             console.error('Failed to fetch issue details', key, err);
@@ -482,9 +578,9 @@ function addTooltipListeners() {
       return byIndex;
     }
 
-    async function fetchThroughputFromReport(jiraDomain, boardNum) {
+    async function fetchThroughputFromReport(jiraDomain, boardNum, includeSprintId = '') {
       try {
-        const completions = await fetchSprintCompletionData(jiraDomain, boardNum, DISPLAY_SPRINT_COUNT);
+        const completions = await fetchSprintCompletionData(jiraDomain, boardNum, DISPLAY_SPRINT_COUNT, includeSprintId);
         if (!completions.length) {
           alert('Failed to fetch throughput report. Are you logged in to Jira?');
           throughputSprintNames = [];
@@ -746,7 +842,7 @@ function addTooltipListeners() {
       teamFilters = {};
       allTeams.forEach(t => { teamFilters[t] = false; });
       // --- FETCH HISTORICAL THROUGHPUT FROM JIRA REPORT ---
-      throughputArr = await fetchThroughputFromReport(jiraDomain, boardNum);
+      throughputArr = await fetchThroughputFromReport(jiraDomain, boardNum, selectedSprintId);
       document.getElementById('configSection').style.display = '';
       renderThroughputInputs();
       renderEpicSummary();
