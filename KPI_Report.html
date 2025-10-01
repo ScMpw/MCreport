@@ -1242,7 +1242,11 @@ function renderCharts(displaySprints, allSprints) {
     svg.appendChild(rect);
 
     const image = document.createElementNS(svgNS, 'image');
-    image.setAttributeNS(xlinkNS, 'xlink:href', tempCanvas.toDataURL('image/png'));
+    const dataUrl = tempCanvas.toDataURL('image/png');
+    image.setAttributeNS(xlinkNS, 'xlink:href', dataUrl);
+    image.setAttribute('href', dataUrl);
+    image.setAttribute('x', '0');
+    image.setAttribute('y', '0');
     image.setAttribute('width', width);
     image.setAttribute('height', height);
     image.setAttribute('preserveAspectRatio', 'none');
