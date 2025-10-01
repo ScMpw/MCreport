@@ -345,6 +345,69 @@
       return promise;
     }
 
+    async function jiraSearch(domain, payload) {
+      const searchUrl = `https://${domain}/rest/api/3/search/jql`;
+      const fieldList = Array.isArray(payload.fields) ? payload.fields.filter(Boolean) : [];
+      const expandList = Array.isArray(payload.expand) ? payload.expand.filter(Boolean) : [];
+      let useGet = true;
+
+      const buildQuery = () => {
+        const params = new URLSearchParams();
+        params.set('jql', payload.jql);
+        params.set('startAt', String(payload.startAt || 0));
+        params.set('maxResults', String(payload.maxResults || 50));
+        if (fieldList.length) params.set('fields', fieldList.join(','));
+        if (expandList.length) params.set('expand', expandList.join(','));
+        return params.toString();
+      };
+
+      const buildBody = () => {
+        const body = {
+          jql: payload.jql,
+          startAt: payload.startAt || 0,
+          maxResults: payload.maxResults || 50,
+        };
+        if (fieldList.length) body.fields = fieldList;
+        if (expandList.length) body.expand = expandList;
+        return JSON.stringify(body);
+      };
+
+      while (true) {
+        try {
+          if (useGet) {
+            return await fetchWithRetry(`${searchUrl}?${buildQuery()}`, {
+              method: 'GET',
+              headers: {
+                'Accept': 'application/json',
+              },
+            }).then(r => r.json());
+          }
+          return await fetchWithRetry(searchUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'X-Atlassian-Token': 'no-check',
+            },
+            body: buildBody(),
+          }).then(r => r.json());
+        } catch (err) {
+          if (useGet) {
+            const status = err?.status;
+            if (status && [405, 413, 414].includes(status)) {
+              Logger.warn(`Jira search GET returned status ${status}, retrying with POST.`);
+              useGet = false;
+              continue;
+            }
+            Logger.warn('Jira search GET failed, retrying with POST', err);
+            useGet = false;
+            continue;
+          }
+          throw err;
+        }
+      }
+    }
+
     async function fetchIssues(domain, { sprintIds, responsibleField }) {
       const fields = [
         'key',
@@ -380,26 +443,15 @@
       const jql = jqlParts.join(' AND ');
 
       const pageSize = 100;
-      const url = `https://${domain}/rest/api/3/search`;
       let startAt = 0;
       const all = [];
       for (let page = 0; page < 100; page++) {
-        const body = JSON.stringify({
+        const data = await jiraSearch(domain, {
           jql,
           startAt,
           maxResults: pageSize,
           fields,
         });
-        const resp = await fetchWithRetry(url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'X-Atlassian-Token': 'no-check',
-          },
-          body,
-        });
-        const data = await resp.json();
         const issues = data.issues || [];
         issues.forEach(issue => all.push(issue));
         startAt += issues.length;
