@@ -10,6 +10,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/svg2pdf.js@2.2.3/dist/svg2pdf.min.js"></script>
   <style>
     body { background: #f7f8fa; font-family: 'Inter', Arial, sans-serif; margin:0; padding:0; }
     .main { max-width: 950px; margin: 30px auto; background:#fff; border-radius:18px; padding:36px 32px; box-shadow:0 2px 12px #d1d5db70; }
@@ -61,6 +62,7 @@
     <label style="margin-left:5px;"><input type="checkbox" id="includeRating" checked> Rating Zone Chart</label>
     <label style="margin-left:5px;"><input type="checkbox" id="includeThroughput" checked> Throughput Chart</label>
     <label style="margin-left:5px;"><input type="checkbox" id="includeCycle" checked> Cycle Time Chart</label>
+    <label style="margin-left:5px;"><input type="checkbox" id="useVectorGraphics"> Use vector graphics (SVG)</label>
   </div>
   <div id="sprintRow" style="margin-top:10px; display:none;">
     <span>Sprints:</span>
@@ -1207,87 +1209,127 @@ function renderCharts(displaySprints, allSprints) {
     Logger.info('Disruption report rendered');
   }
 
-  function canvasToHighResDataURL(canvas, scale = 4) {
-    const tmp = document.createElement('canvas');
-    tmp.width = canvas.width * scale;
-    tmp.height = canvas.height * scale;
-    const ctx = tmp.getContext('2d');
-    ctx.scale(scale, scale);
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(canvas, 0, 0);
-    return tmp.toDataURL('image/png');
+  function canvasToOptimizedDataURL(canvas) {
+    // Use native canvas resolution with better compression
+    return canvas.toDataURL('image/jpeg', 0.85);
   }
 
-  function exportPDF() {
+  function canvasToSVG(canvas) {
+    // Convert canvas to SVG using a more reliable method
+    const ctx = canvas.getContext('2d');
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+    const svgNS = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(svgNS, "svg");
+    svg.setAttribute("width", canvas.width);
+    svg.setAttribute("height", canvas.height);
+    svg.setAttribute("viewBox", `0 0 ${canvas.width} ${canvas.height}`);
+
+    // Create a foreignObject to embed the canvas as an image
+    const foreignObject = document.createElementNS(svgNS, "foreignObject");
+    foreignObject.setAttribute("width", canvas.width);
+    foreignObject.setAttribute("height", canvas.height);
+
+    const img = document.createElement("img");
+    img.src = canvas.toDataURL('image/png');
+    img.width = canvas.width;
+    img.height = canvas.height;
+
+    foreignObject.appendChild(img);
+    svg.appendChild(foreignObject);
+
+    const serializer = new XMLSerializer();
+    return serializer.serializeToString(svg);
+  }
+
+  async function exportPDF() {
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
+    const useVector = document.getElementById('useVectorGraphics')?.checked;
     const charts = [...chartInstances];
-    charts.forEach(ch => {
-      if (!ch) return;
-      const legend = ch.options.plugins?.legend || (ch.options.plugins.legend = {});
-      const labels = legend.labels || (legend.labels = {});
-      ch._origLegendFilter = labels.filter;
-      labels.filter = item => item.text && !item.hidden;
-      if (ch.options.plugins?.datalabels) {
-        ch.options.plugins.datalabels.display = true;
-      }
-      ch.update();
-    });
-    const includePi = document.getElementById('includePi')?.checked;
-    const includeDisruption = document.getElementById('includeDisruption')?.checked;
-    const includeRating = document.getElementById('includeRating')?.checked;
-    const includeThroughput = document.getElementById('includeThroughput')?.checked;
-    const includeCycle = document.getElementById('includeCycle')?.checked;
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
-    const margin = 20;
-    let y = margin;
-    const section = document.getElementById('chartSection');
-    const children = section ? Array.from(section.children) : [];
-    for (let i = 0; i < children.length; i += 2) {
-      const boardTitleEl = children[i];
-      const wrapper = children[i + 1];
-      const boardTitle = boardTitleEl?.textContent?.trim() || '';
-      const elems = Array.from(wrapper.children);
-      for (let j = 0; j < elems.length; j += 2) {
-        const chartTitleEl = elems[j];
-        const canvas = elems[j + 1];
-        const type = canvas.dataset.type;
-        if ((type === 'pi' && !includePi) ||
-            (type === 'disruption' && !includeDisruption) ||
-            (type === 'rating' && !includeRating) ||
-            (type === 'throughput' && !includeThroughput) ||
-            (type === 'cycle' && !includeCycle)) {
-          continue;
+    try {
+      charts.forEach(ch => {
+        if (!ch) return;
+        const legend = ch.options.plugins?.legend || (ch.options.plugins.legend = {});
+        const labels = legend.labels || (legend.labels = {});
+        ch._origLegendFilter = labels.filter;
+        labels.filter = item => item.text && !item.hidden;
+        if (ch.options.plugins?.datalabels) {
+          ch.options.plugins.datalabels.display = true;
         }
-        const width = pageWidth - margin * 2;
-        const height = canvas.height * width / canvas.width;
-        if (y + 14 + height > pageHeight - margin) {
-          pdf.addPage();
-          y = margin;
+        ch.update();
+      });
+      const includePi = document.getElementById('includePi')?.checked;
+      const includeDisruption = document.getElementById('includeDisruption')?.checked;
+      const includeRating = document.getElementById('includeRating')?.checked;
+      const includeThroughput = document.getElementById('includeThroughput')?.checked;
+      const includeCycle = document.getElementById('includeCycle')?.checked;
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 20;
+      let y = margin;
+      const section = document.getElementById('chartSection');
+      const children = section ? Array.from(section.children) : [];
+      for (let i = 0; i < children.length; i += 2) {
+        const boardTitleEl = children[i];
+        const wrapper = children[i + 1];
+        const boardTitle = boardTitleEl?.textContent?.trim() || '';
+        const elems = Array.from(wrapper.children);
+        for (let j = 0; j < elems.length; j += 2) {
+          const chartTitleEl = elems[j];
+          const canvas = elems[j + 1];
+          const type = canvas.dataset.type;
+          if ((type === 'pi' && !includePi) ||
+              (type === 'disruption' && !includeDisruption) ||
+              (type === 'rating' && !includeRating) ||
+              (type === 'throughput' && !includeThroughput) ||
+              (type === 'cycle' && !includeCycle)) {
+            continue;
+          }
+          const width = pageWidth - margin * 2;
+          const height = canvas.height * width / canvas.width;
+          if (y + 14 + height > pageHeight - margin) {
+            pdf.addPage();
+            y = margin;
+          }
+          pdf.setFontSize(12);
+          pdf.text(`${boardTitle} - ${chartTitleEl.textContent.trim()}`, margin, y);
+          y += 14;
+          let rendered = false;
+          if (useVector && window.svg2pdf) {
+            try {
+              const svgString = canvasToSVG(canvas);
+              const parser = new DOMParser();
+              const svgDoc = parser.parseFromString(svgString, 'image/svg+xml');
+              const svgElement = svgDoc.documentElement;
+              await window.svg2pdf(svgElement, pdf, { x: margin, y, width, height });
+              rendered = true;
+            } catch (err) {
+              console.error('SVG conversion failed, falling back to JPEG', err);
+            }
+          }
+          if (!rendered) {
+            pdf.addImage(canvasToOptimizedDataURL(canvas), 'JPEG', margin, y, width, height);
+          }
+          y += height + 10;
         }
-        pdf.setFontSize(12);
-        pdf.text(`${boardTitle} - ${chartTitleEl.textContent.trim()}`, margin, y);
-        y += 14;
-        pdf.addImage(canvasToHighResDataURL(canvas), 'PNG', margin, y, width, height);
-        y += height + 10;
       }
+      const dateStr = new Date().toISOString().split('T')[0];
+      pdf.save(`KPI_Report_${dateStr}.pdf`);
+    } finally {
+      charts.forEach(ch => {
+        if (!ch) return;
+        const legendLabels = ch.options.plugins?.legend?.labels;
+        if (legendLabels) {
+          legendLabels.filter = ch._origLegendFilter;
+          delete ch._origLegendFilter;
+        }
+        if (ch.options.plugins?.datalabels) {
+          ch.options.plugins.datalabels.display = false;
+        }
+        ch.update();
+      });
     }
-    const dateStr = new Date().toISOString().split('T')[0];
-    pdf.save(`KPI_Report_${dateStr}.pdf`);
-    charts.forEach(ch => {
-      if (!ch) return;
-      const legendLabels = ch.options.plugins?.legend?.labels;
-      if (legendLabels) {
-        legendLabels.filter = ch._origLegendFilter;
-        delete ch._origLegendFilter;
-      }
-      if (ch.options.plugins?.datalabels) {
-        ch.options.plugins.datalabels.display = false;
-      }
-      ch.update();
-    });
   }
 
   document.getElementById('versionSelect').value = 'KPI_Report.html';
