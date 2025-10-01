@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>PI & Target-Release Dashboard</title>
+  <title>PI & Target Version Planning Dashboard</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css" />
   <link rel="stylesheet" href="public/tailwind.css">
@@ -59,7 +59,7 @@
 </head>
 <body>
   <div class="main" id="pdfContent">
-    <h1>PI & Target-Release Dashboard</h1>
+    <h1>PI & Target Version Planning Dashboard</h1>
     <div style="margin-bottom:14px;">
       <label>Version:
         <select id="versionSelect">
@@ -68,7 +68,7 @@
           <option value="index_throughput_week.html">Weekly Throughput</option>
           <option value="index_disruption.html">Disruption</option>
           <option value="KPI_Report.html">KPI Report</option>
-          <option value="target_release_dashboard.html">PI &amp; Target-Release Dashboard</option>
+          <option value="target_release_dashboard.html">PI &amp; Target Version Planning Dashboard</option>
         </select>
       </label>
     </div>
@@ -79,8 +79,7 @@
       <label style="flex:1; min-width:220px;">Boards
         <select id="boardSelect" multiple></select>
       </label>
-      <button class="btn" id="loadSprintsBtn">Load Sprints</button>
-      <button class="btn" id="loadDataBtn">Load Data</button>
+      <button class="btn" id="loadDataBtn">Load Planning Data</button>
       <button class="btn secondary" id="exportBtn">Export as PDF</button>
     </div>
     <div id="loadingMessage" class="loading" style="display:none;"></div>
@@ -90,9 +89,9 @@
       <div class="section-title">Filters</div>
       <div class="filters">
         <div class="filter-block">
-          <label for="sprintSelect">Sprints</label>
-          <select id="sprintSelect" multiple></select>
-          <div style="font-size:0.78em; color:#6b7280; margin-top:6px;">Default selects last 12 sprints across chosen boards.</div>
+          <label for="targetVersionSelect">Target Versions</label>
+          <select id="targetVersionSelect" multiple></select>
+          <div style="font-size:0.78em; color:#6b7280; margin-top:6px;">Defaults to all target versions from open epics.</div>
         </div>
         <div class="filter-block">
           <label for="piSelect">Product Increments</label>
@@ -122,15 +121,15 @@
           <div class="kpi-value" id="kpiTotal">0</div>
         </div>
         <div class="kpi-card">
-          <div class="kpi-label">With Target-Release</div>
+          <div class="kpi-label">With Target Version</div>
           <div class="kpi-value" id="kpiWith">0</div>
         </div>
         <div class="kpi-card">
-          <div class="kpi-label">Without Target-Release</div>
+          <div class="kpi-label">Without Target Version</div>
           <div class="kpi-value" id="kpiWithout">0</div>
         </div>
         <div class="kpi-card">
-          <div class="kpi-label">% With Target-Release</div>
+          <div class="kpi-label">% With Target Version</div>
           <div class="kpi-value" id="kpiPct">0%</div>
         </div>
       </div>
@@ -163,15 +162,42 @@
       <div id="releasesEmpty" class="empty-state" style="display:none;">No upcoming releases were found for the selected boards.</div>
     </div>
 
+    <div id="epicSection" style="display:none;">
+      <div class="section-title">Open Epics</div>
+      <div class="table-controls">
+        <div style="font-size:0.85em; color:#6b7280;">Epics grouped by target version for the selected boards.</div>
+        <input id="epicSearch" placeholder="Search by epic, summary, target version...">
+      </div>
+      <div class="table-wrap" style="overflow-x:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>Epic</th>
+              <th>Summary</th>
+              <th>Target Version</th>
+              <th>Responsible Team</th>
+              <th>Product Increments</th>
+              <th>Child Items</th>
+              <th>With Target</th>
+              <th>Coverage</th>
+              <th>Boards</th>
+            </tr>
+          </thead>
+          <tbody id="epicTableBody"></tbody>
+        </table>
+      </div>
+      <div id="epicEmpty" class="empty-state" style="display:none;">No epics match the current filters.</div>
+    </div>
+
     <div id="chartsSection" style="display:none;">
-      <div class="section-title">Target-Release Coverage</div>
+      <div class="section-title">Target Version Coverage</div>
       <div class="chart-section">
         <div class="chart-toolbar">
           <div class="toggle-group">
-            <label><input type="radio" name="stackedDimension" value="sprint" checked> By Sprint</label>
+            <label><input type="radio" name="stackedDimension" value="targetVersion" checked> By Target Version</label>
             <label><input type="radio" name="stackedDimension" value="pi"> By Product Increment</label>
           </div>
-          <div style="font-size:0.85em; color:#6b7280;">Stacks display with/without target-release per responsible team.</div>
+          <div style="font-size:0.85em; color:#6b7280;">Stacks display with/without target version per responsible team.</div>
         </div>
         <div class="chart-wrapper">
           <canvas id="stackedChart" height="360"></canvas>
@@ -184,10 +210,11 @@
             <label for="distributionMode">Distribution View:</label>
             <select id="distributionMode">
               <option value="team">By Team</option>
+              <option value="targetVersion">By Target Version</option>
               <option value="pi">By Product Increment</option>
             </select>
           </div>
-          <div style="font-size:0.85em; color:#6b7280;">Shows ratio of issues with/without target-release.</div>
+          <div style="font-size:0.85em; color:#6b7280;">Shows ratio of issues with/without target versions.</div>
         </div>
         <div class="chart-wrapper">
           <canvas id="distributionChart" height="360"></canvas>
@@ -195,11 +222,11 @@
       </div>
     </div>
 
-    <div id="missingSection" style="display:none; margin-top:40px;">
-      <div class="section-title">Items without Target-Release</div>
+    <div id="childSection" style="display:none; margin-top:40px;">
+      <div class="section-title">Child Items</div>
       <div class="table-controls">
-        <div style="font-size:0.85em; color:#6b7280;">Displaying issues missing the planning field. Use search to refine.</div>
-        <input id="missingSearch" placeholder="Search by key, summary, parent, team...">
+        <div style="font-size:0.85em; color:#6b7280;">Displaying child issues for the filtered epics. Use search to refine.</div>
+        <input id="childSearch" placeholder="Search by key, summary, epic, team...">
       </div>
       <div class="table-wrap" style="overflow-x:auto;">
         <table>
@@ -207,22 +234,22 @@
             <tr>
               <th>Key</th>
               <th>Summary</th>
-              <th>Parent</th>
+              <th>Epic</th>
               <th>Type</th>
               <th>Status</th>
               <th>Responsible Team</th>
-              <th>Sprint</th>
-              <th>Product Increment</th>
-              <th>Board</th>
+              <th>Epic Target Version</th>
+              <th>Issue Target Version</th>
+              <th>Boards</th>
               <th>Assignee</th>
               <th>Updated</th>
               <th></th>
             </tr>
           </thead>
-          <tbody id="missingTableBody"></tbody>
+          <tbody id="childTableBody"></tbody>
         </table>
       </div>
-      <div id="missingEmpty" class="empty-state" style="display:none;">All selected issues have a target-release assigned. Great job!</div>
+      <div id="childEmpty" class="empty-state" style="display:none;">No child items match the current filters.</div>
     </div>
   </div>
 
@@ -235,25 +262,25 @@
       domain: '',
       boards: [],
       boardsMap: new Map(),
-      allSprints: [],
       normalizedIssues: [],
       responsibleFieldKey: 'responsible-team',
       filteredIssues: [],
       aggregated: null,
-      loadedSprintIds: new Set(),
-      needsReload: false,
       releases: [],
       releaseIndex: new Map(),
+      epics: [],
+      epicMap: new Map(),
+      filteredEpics: [],
     };
 
-    let boardChoices, sprintChoices, piChoices, teamChoices, boardFilterChoices;
+    let boardChoices, targetVersionChoices, piChoices, teamChoices, boardFilterChoices;
     let stackedChart, distributionChart;
     const teamColorMap = new Map();
     const palette = ['#6366f1', '#ec4899', '#10b981', '#f97316', '#14b8a6', '#8b5cf6', '#f59e0b', '#ef4444', '#3b82f6', '#22c55e'];
 
     function initChoices() {
       boardChoices = new Choices('#boardSelect', { removeItemButton: true, shouldSort: false });
-      sprintChoices = new Choices('#sprintSelect', { removeItemButton: true, shouldSort: false });
+      targetVersionChoices = new Choices('#targetVersionSelect', { removeItemButton: true, shouldSort: true, placeholder: true, placeholderValue: 'All target versions' });
       piChoices = new Choices('#piSelect', { removeItemButton: true, shouldSort: true, placeholder: true, placeholderValue: 'Select Product Increments' });
       teamChoices = new Choices('#teamSelect', { removeItemButton: true, shouldSort: true, placeholder: true, placeholderValue: 'All teams' });
       boardFilterChoices = new Choices('#boardFilterSelect', { removeItemButton: true, shouldSort: false });
@@ -311,40 +338,26 @@
       }
     }
 
-    const sprintCache = new Map();
     const releaseCache = new Map();
     const projectCache = new Map();
-    async function fetchSprintsForBoard(domain, boardId) {
-      const cacheKey = `${domain}:${boardId}`;
-      if (sprintCache.has(cacheKey)) return sprintCache.get(cacheKey);
+    const boardConfigCache = new Map();
+
+    async function fetchBoardConfiguration(domain, boardId) {
+      const cacheKey = `${domain}:board-config:${boardId}`;
+      if (boardConfigCache.has(cacheKey)) return boardConfigCache.get(cacheKey);
 
       const promise = (async () => {
-        const results = [];
-        let startAt = 0;
-        const maxResults = 50;
-        for (let loop = 0; loop < 40; loop++) {
-          const url = `https://${domain}/rest/agile/1.0/board/${boardId}/sprint?state=active,closed,future&startAt=${startAt}&maxResults=${maxResults}`;
-          const resp = await fetchWithRetry(url);
-          const data = await resp.json();
-          const values = data.values || [];
-          values.forEach(v => {
-            const normalized = {
-              id: v.id,
-              name: v.name,
-              state: v.state,
-              startDate: v.startDate,
-              endDate: v.endDate || v.completeDate,
-              boardId: boardId,
-            };
-            results.push(normalized);
-          });
-          startAt += values.length;
-          if (data.isLast || !values.length) break;
-        }
-        return results;
+        const url = `https://${domain}/rest/agile/1.0/board/${boardId}/configuration`;
+        const resp = await fetchWithRetry(url);
+        const data = await resp.json();
+        return {
+          id: Number(boardId),
+          name: data?.name,
+          filterQuery: data?.filter?.query || '',
+        };
       })();
 
-      sprintCache.set(cacheKey, promise);
+      boardConfigCache.set(cacheKey, promise);
       return promise;
     }
 
@@ -501,7 +514,7 @@
       }
     }
 
-    async function fetchIssues(domain, { sprintIds, responsibleField }) {
+    async function fetchEpicsForBoard(domain, boardConfig, responsibleField) {
       const fields = [
         'key',
         'summary',
@@ -511,11 +524,8 @@
         'labels',
         'fixVersions',
         'target-release',
-        'sprint',
-        'parent',
         'project',
         'updated',
-        'components',
       ];
       if (responsibleField && responsibleField !== 'responsible-team') {
         fields.push(responsibleField);
@@ -523,79 +533,136 @@
         fields.push('responsible-team');
       }
 
-      const jqlParts = [];
-      if (sprintIds && sprintIds.length) {
-        const unique = Array.from(new Set(sprintIds.map(id => Number(id)).filter(Boolean)));
-        if (unique.length) {
-          jqlParts.push(`Sprint in (${unique.join(',')})`);
-        }
-      }
-      if (!jqlParts.length) {
-        jqlParts.push('updated >= -365d');
-      }
-      jqlParts.push('issueType != Epic');
-      const jql = jqlParts.join(' AND ');
+      const baseJql = boardConfig.filterQuery ? `(${boardConfig.filterQuery}) AND ` : '';
+      const jql = `${baseJql}issuetype = Epic AND statusCategory != Done`;
 
-      const pageSize = 100;
+      const results = [];
       let startAt = 0;
-      const all = [];
-      for (let page = 0; page < 100; page++) {
+      const maxResults = 100;
+      for (let page = 0; page < 200; page++) {
         const data = await jiraSearch(domain, {
           jql,
           startAt,
-          maxResults: pageSize,
+          maxResults,
           fields,
         });
         const issues = data.issues || [];
-        issues.forEach(issue => all.push(issue));
+        issues.forEach(issue => results.push({ issue, boardId: boardConfig.id }));
         startAt += issues.length;
         if (startAt >= (data.total || 0) || !issues.length) break;
-        await sleep(120);
       }
-      return all;
+      return results;
     }
 
-    async function fetchParentDetails(domain, issues) {
-      const parentKeys = Array.from(new Set(issues
-        .map(issue => issue.fields?.parent?.key)
-        .filter(key => typeof key === 'string' && key.trim().length)));
-      if (!parentKeys.length) return new Map();
+    async function fetchChildIssuesForBoard(domain, boardConfig, epicKeys, responsibleField) {
+      if (!epicKeys.length) return [];
+      const fields = [
+        'key',
+        'summary',
+        'issuetype',
+        'status',
+        'assignee',
+        'labels',
+        'fixVersions',
+        'target-release',
+        'project',
+        'updated',
+        'customfield_10014',
+        'parent',
+      ];
+      if (responsibleField && responsibleField !== 'responsible-team') {
+        fields.push(responsibleField);
+      } else {
+        fields.push('responsible-team');
+      }
 
-      const parents = new Map();
-      const chunkSize = 50;
-      for (let i = 0; i < parentKeys.length; i += chunkSize) {
-        const chunk = parentKeys.slice(i, i + chunkSize);
-        const jql = `issuekey in (${chunk.join(',')})`;
-        const data = await jiraSearch(domain, {
-          jql,
-          startAt: 0,
-          maxResults: chunk.length,
-          fields: ['key', 'summary', 'labels'],
-        });
-        (data.issues || []).forEach(parent => {
-          const parentFields = parent.fields || {};
-          const labels = Array.isArray(parentFields.labels) ? parentFields.labels.slice() : [];
-          parents.set(parent.key, {
-            key: parent.key,
-            summary: parentFields.summary || '',
-            labels,
+      const baseJql = boardConfig.filterQuery ? `(${boardConfig.filterQuery}) AND ` : '';
+      const chunkSize = 40;
+      const results = [];
+      for (let i = 0; i < epicKeys.length; i += chunkSize) {
+        const chunk = epicKeys.slice(i, i + chunkSize);
+        const formattedKeys = chunk.map(key => `'${String(key).replace(/'/g, "\\'")}'`).join(',');
+        const jql = `${baseJql}"Epic Link" in (${formattedKeys})`;
+        let startAt = 0;
+        const maxResults = 100;
+        for (let page = 0; page < 200; page++) {
+          const data = await jiraSearch(domain, {
+            jql,
+            startAt,
+            maxResults,
+            fields,
           });
-        });
+          const issues = data.issues || [];
+          issues.forEach(issue => results.push({ issue, boardId: boardConfig.id }));
+          startAt += issues.length;
+          if (startAt >= (data.total || 0) || !issues.length) break;
+        }
       }
-      return parents;
+      return results;
     }
 
-    const PRODUCT_INCREMENT_REGEX = /\b(20\d{2})_PI([1-4])(?:_(committed|spillover|planned))?\b/i;
+    // Planning helpers will be defined below.
+
+    function parseTargetReleaseValue(raw) {
+      if (!raw) return undefined;
+      if (typeof raw === 'string') return raw;
+      if (Array.isArray(raw)) {
+        const first = raw[0];
+        if (!first) return undefined;
+        if (typeof first === 'string') return first;
+        if (typeof first === 'object') return first.name || first.value || undefined;
+      }
+      if (typeof raw === 'object') return raw.name || raw.value || undefined;
+      return undefined;
+    }
+
+    function parseFixVersions(raw) {
+      if (!Array.isArray(raw) || !raw.length) return [];
+      const seen = new Set();
+      const versions = [];
+      raw.forEach(version => {
+        if (!version) return;
+        const id = version.id ? String(version.id) : undefined;
+        const name = version.name ? String(version.name) : undefined;
+        const key = id || (name ? `name:${name}` : undefined);
+        if (!key || seen.has(key)) return;
+        seen.add(key);
+        versions.push({
+          id,
+          key,
+          name: name || 'Unnamed Release',
+          released: Boolean(version.released),
+          releaseDate: version.releaseDate || version.userReleaseDate || undefined,
+          startDate: version.startDate || version.userStartDate || undefined,
+        });
+      });
+      return versions;
+    }
+
+    function extractResponsibleTeam(fields, responsibleFieldKey) {
+      const responsibleValue = fields?.[responsibleFieldKey] ?? fields?.['responsible-team'];
+      if (!responsibleValue) return undefined;
+      if (typeof responsibleValue === 'string') return responsibleValue;
+      if (Array.isArray(responsibleValue)) {
+        return responsibleValue.find(val => typeof val === 'string');
+      }
+      if (typeof responsibleValue === 'object') {
+        return responsibleValue.value || responsibleValue.name || responsibleValue.title || undefined;
+      }
+      return undefined;
+    }
 
     function extractPis(labels) {
+      if (!Array.isArray(labels) || !labels.length) return [];
       const matches = [];
       const seen = new Set();
-      (labels || []).forEach(label => {
+      labels.forEach(label => {
         if (typeof label !== 'string') return;
-        const match = label.match(PRODUCT_INCREMENT_REGEX);
+        const trimmed = label.trim();
+        const match = trimmed.match(/^(pi\d{2})(?:[_-](committed|planned|spillover))?$/i);
         if (!match) return;
-        const base = `${match[1]}_PI${match[2]}`;
-        const suffix = match[3] ? match[3].toLowerCase() : null;
+        const base = match[1].toLowerCase();
+        const suffix = match[2] ? match[2].toLowerCase() : null;
         const key = suffix ? `${base}_${suffix}` : base;
         if (seen.has(key)) return;
         seen.add(key);
@@ -604,112 +671,87 @@
       return matches;
     }
 
-    function parseSprintField(raw) {
-      if (!raw) return [];
-      const values = Array.isArray(raw) ? raw : [raw];
-      const seen = new Set();
-      const result = [];
-      values.forEach(value => {
-        let sprint = null;
-        if (typeof value === 'string') {
-          const idMatch = value.match(/id=(\d+)/i);
-          const nameMatch = value.match(/name=([^,\]]+)/i);
-          const stateMatch = value.match(/state=([^,\]]+)/i);
-          if (idMatch && nameMatch) {
-            sprint = { id: Number(idMatch[1]), name: nameMatch[1], state: stateMatch ? stateMatch[1] : undefined };
-          }
-        } else if (typeof value === 'object') {
-          const id = value.id ?? value.sprintId;
-          const name = value.name ?? value.sprintName;
-          if (id !== undefined && name) {
-            sprint = { id: Number(id), name: String(name), state: value.state ? String(value.state) : undefined };
-          }
-        }
-        if (sprint && !seen.has(sprint.id)) {
-          seen.add(sprint.id);
-          result.push(sprint);
-        }
-      });
-      return result;
+    function determineTargetVersion(fixVersions, targetRelease) {
+      if (Array.isArray(fixVersions) && fixVersions.length) {
+        const version = fixVersions[0];
+        const key = version.key || (version.name ? `name:${version.name}` : undefined) || '__none__';
+        const label = version.name || 'Unnamed Release';
+        return { key, label, hasValue: true, source: 'fixVersion' };
+      }
+      if (targetRelease) {
+        return { key: `target:${targetRelease}`, label: targetRelease, hasValue: true, source: 'target-release' };
+      }
+      return { key: '__none__', label: 'No Target Version', hasValue: false, source: 'none' };
     }
 
-    function normalizeIssue(issue, responsibleFieldKey, parentMap) {
+    function normalizeEpic(issue, boardId, responsibleFieldKey) {
       const fields = issue.fields || {};
       const labels = Array.isArray(fields.labels) ? fields.labels.slice() : [];
-      const parentKey = fields.parent?.key ? String(fields.parent.key) : undefined;
-      const parentInfo = parentKey ? parentMap?.get(parentKey) : undefined;
-      const parentFieldLabels = Array.isArray(fields.parent?.fields?.labels) ? fields.parent.fields.labels : [];
-      const combinedParentLabels = [
-        ...(parentInfo?.labels || []),
-        ...parentFieldLabels,
-      ];
-      combinedParentLabels.forEach(label => {
-        if (typeof label === 'string' && !labels.includes(label)) {
-          labels.push(label);
-        }
-      });
       const pis = extractPis(labels);
-      const sprintField = fields.sprint || fields.sprints || fields.customfield_10020 || [];
-      const sprints = parseSprintField(sprintField);
-      const boardIds = new Set();
-      const rawSprintValues = Array.isArray(sprintField) ? sprintField : [sprintField];
-      rawSprintValues.forEach(raw => {
-        if (!raw) return;
-        let boardId = null;
-        if (typeof raw === 'string') {
-          const match = raw.match(/boardId=(\d+)/i);
-          if (match) boardId = Number(match[1]);
-        } else if (typeof raw === 'object') {
-          if (raw.originBoardId) boardId = Number(raw.originBoardId);
-          else if (raw.boardId) boardId = Number(raw.boardId);
-        }
-        if (typeof boardId === 'number' && !Number.isNaN(boardId)) {
-          boardIds.add(boardId);
-        }
-      });
+      const fixVersions = parseFixVersions(fields.fixVersions);
+      const targetRelease = parseTargetReleaseValue(fields['target-release']);
+      const targetInfo = determineTargetVersion(fixVersions, targetRelease);
+      const responsibleTeam = extractResponsibleTeam(fields, responsibleFieldKey);
 
-      let responsibleTeam;
-      const responsibleValue = fields[responsibleFieldKey] ?? fields['responsible-team'];
-      if (responsibleValue) {
-        if (typeof responsibleValue === 'string') {
-          responsibleTeam = responsibleValue;
-        } else if (Array.isArray(responsibleValue)) {
-          responsibleTeam = responsibleValue.find(val => typeof val === 'string');
-        } else if (typeof responsibleValue === 'object') {
-          responsibleTeam = responsibleValue.value || responsibleValue.name || responsibleValue.title;
+      return {
+        id: String(issue.id || issue.key || ''),
+        key: String(issue.key || ''),
+        summary: String(fields.summary || ''),
+        status: fields.status?.name ? String(fields.status.name) : 'Unknown',
+        assignee: fields.assignee?.displayName ? String(fields.assignee.displayName) : undefined,
+        responsibleTeam: responsibleTeam || undefined,
+        boardIds: new Set([Number(boardId)]),
+        fixVersions,
+        targetRelease: targetRelease || undefined,
+        targetVersion: targetInfo.label,
+        targetVersionKey: targetInfo.key,
+        hasTargetVersion: targetInfo.hasValue,
+        targetSource: targetInfo.source,
+        pis,
+        labels,
+        updated: fields.updated ? String(fields.updated) : undefined,
+        project: fields.project?.name ? String(fields.project.name) : undefined,
+        childTotal: 0,
+        childWithTarget: 0,
+        childWithoutTarget: 0,
+        coveragePct: 0,
+      };
+    }
+
+    function extractEpicLink(fields) {
+      if (!fields) return undefined;
+      if (typeof fields.epicLink === 'string') return fields.epicLink;
+      if (typeof fields['Epic Link'] === 'string') return fields['Epic Link'];
+      if (fields.customfield_10014) {
+        if (typeof fields.customfield_10014 === 'string') return fields.customfield_10014;
+        if (typeof fields.customfield_10014 === 'object' && fields.customfield_10014.key) {
+          return String(fields.customfield_10014.key);
         }
       }
-
-      let targetRelease;
-      const rawTarget = fields['target-release'];
-      if (rawTarget) {
-        if (typeof rawTarget === 'string') targetRelease = rawTarget;
-        else if (Array.isArray(rawTarget)) {
-          if (rawTarget.length) {
-            const first = rawTarget[0];
-            if (typeof first === 'string') targetRelease = first;
-            else if (typeof first === 'object') targetRelease = first.name || first.value;
-          }
-        } else if (typeof rawTarget === 'object') {
-          targetRelease = rawTarget.name || rawTarget.value;
-        }
+      if (fields.parent?.key && fields.parent?.fields?.issuetype?.name === 'Epic') {
+        return String(fields.parent.key);
       }
+      return undefined;
+    }
 
-      const fixVersions = Array.isArray(fields.fixVersions)
-        ? fields.fixVersions.map(version => {
-            const id = version.id ? String(version.id) : undefined;
-            const name = version.name ? String(version.name) : undefined;
-            const key = id || (name ? `name:${name}` : undefined);
-            return {
-              id,
-              key,
-              name: name || 'Unnamed Release',
-              released: Boolean(version.released),
-              releaseDate: version.releaseDate || version.userReleaseDate || undefined,
-              startDate: version.startDate || version.userStartDate || undefined,
-            };
-          }).filter(v => v.key)
-        : [];
+    function normalizeChildIssue(issue, boardId, responsibleFieldKey, epicMap) {
+      const fields = issue.fields || {};
+      const epicKey = extractEpicLink(fields);
+      const parent = epicKey ? epicMap.get(epicKey) : undefined;
+      if (!epicKey) {
+        Logger.warn('Skipping issue without epic link', issue.key);
+      }
+      const labels = Array.isArray(fields.labels) ? fields.labels.slice() : [];
+      if (parent?.labels) {
+        parent.labels.forEach(label => {
+          if (typeof label === 'string' && !labels.includes(label)) labels.push(label);
+        });
+      }
+      const pis = extractPis(labels);
+      const fixVersions = parseFixVersions(fields.fixVersions);
+      const targetRelease = parseTargetReleaseValue(fields['target-release']);
+      const targetInfo = determineTargetVersion(fixVersions, targetRelease);
+      const responsibleTeam = parent?.responsibleTeam || extractResponsibleTeam(fields, responsibleFieldKey);
 
       return {
         id: String(issue.id || issue.key || ''),
@@ -718,18 +760,43 @@
         type: fields.issuetype?.name ? String(fields.issuetype.name) : 'Unknown',
         status: fields.status?.name ? String(fields.status.name) : 'Unknown',
         assignee: fields.assignee?.displayName ? String(fields.assignee.displayName) : undefined,
-        sprints,
-        pis,
-        parent: parentKey ? { key: parentKey, summary: parentInfo?.summary || fields.parent?.fields?.summary || '' } : undefined,
-        parentKey,
         responsibleTeam: responsibleTeam || undefined,
-        boardIds: Array.from(boardIds.values()),
-        hasTargetRelease: Boolean(targetRelease),
-        targetRelease: targetRelease || undefined,
-        updated: fields.updated ? String(fields.updated) : undefined,
-        project: fields.project?.name ? String(fields.project.name) : undefined,
+        boardIds: new Set([Number(boardId)]),
         fixVersions,
+        targetRelease: targetRelease || undefined,
+        targetVersion: targetInfo.label,
+        targetVersionKey: targetInfo.key,
+        hasTargetVersion: targetInfo.hasValue,
+        targetSource: targetInfo.source,
+        parentKey: epicKey || parent?.key,
+        parentSummary: parent?.summary,
+        parentTargetVersion: parent?.targetVersion || 'No Target Version',
+        parentTargetVersionKey: parent?.targetVersionKey || '__none__',
+        parentPis: parent?.pis?.length ? parent.pis.slice() : (pis.length ? pis : []),
+        pis,
+        project: fields.project?.name ? String(fields.project.name) : undefined,
+        updated: fields.updated ? String(fields.updated) : undefined,
       };
+    }
+
+    function computeEpicCoverage(epics, issues) {
+      const map = new Map(epics.map(epic => [epic.key, epic]));
+      epics.forEach(epic => {
+        epic.childTotal = 0;
+        epic.childWithTarget = 0;
+        epic.childWithoutTarget = 0;
+        epic.coveragePct = 0;
+      });
+      issues.forEach(issue => {
+        if (!issue.parentKey) return;
+        const epic = map.get(issue.parentKey);
+        if (!epic) return;
+        epic.childTotal += 1;
+        if (issue.hasTargetVersion) epic.childWithTarget += 1; else epic.childWithoutTarget += 1;
+      });
+      epics.forEach(epic => {
+        epic.coveragePct = computePct(epic.childWithTarget, epic.childTotal);
+      });
     }
 
     function computePct(withTarget, total) {
@@ -738,7 +805,7 @@
     }
 
     function aggregateIssues(issues) {
-      const fallbackSprint = { key: 'unassigned', label: 'Unassigned Sprint' };
+      const fallbackVersion = { key: '__none__', label: 'No Target Version' };
       const fallbackPi = { key: 'no-pi', label: 'No Product Increment' };
       const fallbackTeam = 'Unassigned Team';
 
@@ -766,10 +833,10 @@
 
       function addIssue(bucket, issue, teamName) {
         bucket.total += 1;
-        if (issue.hasTargetRelease) bucket.withTarget += 1; else bucket.withoutTarget += 1;
+        if (issue.hasTargetVersion) bucket.withTarget += 1; else bucket.withoutTarget += 1;
         const teamAgg = ensureTeam(bucket, teamName);
         teamAgg.total += 1;
-        if (issue.hasTargetRelease) teamAgg.withTarget += 1; else teamAgg.withoutTarget += 1;
+        if (issue.hasTargetVersion) teamAgg.withTarget += 1; else teamAgg.withoutTarget += 1;
       }
 
       function finalizeBucket(bucket) {
@@ -779,53 +846,57 @@
         });
       }
 
-      function aggregateBy(key) {
-        const buckets = new Map();
-        let total = 0, withTarget = 0, withoutTarget = 0;
-        issues.forEach(issue => {
-          const teamName = issue.responsibleTeam || fallbackTeam;
-          let dimensions;
-          if (key === 'sprint') {
-            dimensions = issue.sprints.length ? issue.sprints.map(s => ({ key: String(s.id), label: s.name })) : [fallbackSprint];
-          } else {
-            dimensions = issue.pis.length ? issue.pis.map(pi => ({ key: pi.label, label: pi.label })) : [fallbackPi];
-          }
-          const unique = new Map();
-          dimensions.forEach(dim => {
-            if (dim && dim.key && !unique.has(dim.key)) unique.set(dim.key, dim);
-          });
-          unique.forEach(dim => {
-            const bucket = ensureBucket(buckets, dim.key, dim.label);
-            addIssue(bucket, issue, teamName);
-          });
-          total += 1;
-          if (issue.hasTargetRelease) withTarget += 1; else withoutTarget += 1;
-        });
-        const finalBuckets = Array.from(buckets.values()).sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
-        finalBuckets.forEach(finalizeBucket);
-        return { total, withTarget, withoutTarget, pctWith: computePct(withTarget, total), buckets: finalBuckets };
-      }
+      const versionBuckets = new Map();
+      const piBuckets = new Map();
+      const teamBuckets = new Map();
+      let total = 0;
+      let withTarget = 0;
 
-      function aggregateByTeam() {
-        const map = new Map();
-        issues.forEach(issue => {
-          const team = issue.responsibleTeam || fallbackTeam;
-          if (!map.has(team)) {
-            map.set(team, { team, total: 0, withTarget: 0, withoutTarget: 0, pctWith: 0 });
-          }
-          const agg = map.get(team);
-          agg.total += 1;
-          if (issue.hasTargetRelease) agg.withTarget += 1; else agg.withoutTarget += 1;
+      issues.forEach(issue => {
+        const teamName = issue.responsibleTeam || fallbackTeam;
+        const versionKey = issue.parentTargetVersionKey || fallbackVersion.key;
+        const versionLabel = issue.parentTargetVersion || fallbackVersion.label;
+        const versionBucket = ensureBucket(versionBuckets, versionKey, versionLabel);
+        addIssue(versionBucket, issue, teamName);
+
+        const piValues = issue.parentPis && issue.parentPis.length ? issue.parentPis : [fallbackPi];
+        const seenPi = new Set();
+        piValues.forEach(pi => {
+          const value = pi && pi.label ? pi.label : fallbackPi.label;
+          if (seenPi.has(value)) return;
+          seenPi.add(value);
+          const bucket = ensureBucket(piBuckets, value, value);
+          addIssue(bucket, issue, teamName);
         });
-        const arr = Array.from(map.values()).sort((a, b) => a.team.localeCompare(b.team));
-        arr.forEach(agg => { agg.pctWith = computePct(agg.withTarget, agg.total); });
-        return arr;
-      }
+
+        if (!teamBuckets.has(teamName)) {
+          teamBuckets.set(teamName, { team: teamName, total: 0, withTarget: 0, withoutTarget: 0, pctWith: 0 });
+        }
+        const teamBucket = teamBuckets.get(teamName);
+        teamBucket.total += 1;
+        if (issue.hasTargetVersion) teamBucket.withTarget += 1; else teamBucket.withoutTarget += 1;
+
+        total += 1;
+        if (issue.hasTargetVersion) withTarget += 1;
+      });
+
+      const byTargetVersion = Array.from(versionBuckets.values()).sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
+      byTargetVersion.forEach(finalizeBucket);
+
+      const byPi = Array.from(piBuckets.values()).sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
+      byPi.forEach(finalizeBucket);
+
+      const byTeam = Array.from(teamBuckets.values()).sort((a, b) => a.team.localeCompare(b.team));
+      byTeam.forEach(team => { team.pctWith = computePct(team.withTarget, team.total); });
 
       return {
-        bySprint: aggregateBy('sprint'),
-        byPi: aggregateBy('pi'),
-        byTeam: aggregateByTeam(),
+        total,
+        withTarget,
+        withoutTarget: total - withTarget,
+        pctWith: computePct(withTarget, total),
+        byTargetVersion,
+        byPi,
+        byTeam,
       };
     }
 
@@ -863,64 +934,79 @@
     }
 
     function applyFilters() {
-      if (!state.normalizedIssues.length) return;
+      if (!state.epics.length) {
+        state.filteredEpics = [];
+        state.filteredIssues = [];
+        state.aggregated = aggregateIssues([]);
+        renderKpis();
+        renderEpicTable();
+        renderChildTable();
+        renderReleasesTable();
+        setLoading('No epics found for the selected boards.');
+        return;
+      }
+      const selectedVersions = new Set(targetVersionChoices.getValue(true));
       const selectedPiBases = new Set(piChoices.getValue(true));
       const allowCommitted = document.getElementById('suffixCommitted').checked;
       const allowPlanned = document.getElementById('suffixPlanned').checked;
       const allowSpillover = document.getElementById('suffixSpillover').checked;
       const selectedTeams = new Set(teamChoices.getValue(true));
       const selectedBoardFilters = new Set(boardFilterChoices.getValue(true));
-      const selectedSprintIds = new Set(sprintChoices.getValue(true).map(String));
 
-      const filtered = state.normalizedIssues.filter(issue => {
+      const filteredEpics = state.epics.filter(epic => {
+        if (selectedVersions.size) {
+          const versionKey = epic.targetVersionKey || '__none__';
+          if (!selectedVersions.has(versionKey)) return false;
+        }
+
         if (selectedPiBases.size) {
           let piMatch = false;
-          issue.pis.forEach(pi => {
-            if (selectedPiBases.has('__none__') && (!issue.pis.length || !pi)) {
-              piMatch = true;
-              return;
-            }
-            if (!pi) return;
+          if (!epic.pis.length && selectedPiBases.has('__none__')) {
+            piMatch = true;
+          }
+          epic.pis.forEach(pi => {
+            if (!pi || !pi.base) return;
             if (!selectedPiBases.has(pi.base)) return;
             if (pi.suffix === 'committed' && !allowCommitted) return;
             if (pi.suffix === 'planned' && !allowPlanned) return;
             if (pi.suffix === 'spillover' && !allowSpillover) return;
             piMatch = true;
           });
-          if (!issue.pis.length && selectedPiBases.has('__none__')) {
-            piMatch = true;
-          }
           if (!piMatch) return false;
         }
 
         if (selectedTeams.size) {
-          const team = issue.responsibleTeam || 'Unassigned Team';
+          const team = epic.responsibleTeam || 'Unassigned Team';
           if (!selectedTeams.has(team)) return false;
         }
 
         if (selectedBoardFilters.size) {
-          const boards = issue.boardIds.length ? issue.boardIds.map(String) : ['__unassigned__'];
+          const boards = epic.boardIds && epic.boardIds.size
+            ? Array.from(epic.boardIds).map(String)
+            : ['__unassigned__'];
           if (!boards.some(id => selectedBoardFilters.has(id))) return false;
-        }
-
-        if (selectedSprintIds.size) {
-          const sprintIds = issue.sprints.length ? issue.sprints.map(s => String(s.id)) : ['__none__'];
-          if (!sprintIds.some(id => selectedSprintIds.has(id))) return false;
         }
 
         return true;
       });
 
-      state.filteredIssues = filtered;
-      state.aggregated = aggregateIssues(filtered);
+      const filteredEpicKeys = new Set(filteredEpics.map(epic => epic.key));
+      const filteredIssues = state.normalizedIssues.filter(issue => filteredEpicKeys.has(issue.parentKey));
+
+      state.filteredEpics = filteredEpics;
+      state.filteredIssues = filteredIssues;
+      state.aggregated = aggregateIssues(filteredIssues);
+      computeEpicCoverage(filteredEpics, filteredIssues);
       renderKpis();
       updateCharts();
-      renderMissingTable();
+      renderEpicTable();
+      renderChildTable();
       renderReleasesTable();
-      if (state.needsReload) {
-        setLoading('Some selected sprints were not part of the last fetch. Reload data to include them.');
-      } else if (!filtered.length) {
-        setLoading('No issues match the current filter selection.');
+
+      if (!filteredEpics.length) {
+        setLoading('No epics match the current filter selection.');
+      } else if (!filteredIssues.length) {
+        setLoading('Filtered epics do not have matching child items.');
       } else {
         setLoading('');
       }
@@ -949,6 +1035,16 @@
       const releases = getUpcomingReleases();
       const search = document.getElementById('releaseSearch').value.trim().toLowerCase();
 
+      if (!releases.length) {
+        tbody.innerHTML = '';
+        document.getElementById('releasesSection').style.display = 'none';
+        document.getElementById('releasesEmpty').style.display = '';
+        return;
+      }
+
+      document.getElementById('releasesSection').style.display = '';
+      document.getElementById('releasesEmpty').style.display = 'none';
+
       const statsMap = new Map();
       releases.forEach(rel => {
         statsMap.set(rel.uniqueKey, {
@@ -965,7 +1061,7 @@
           const stats = statsMap.get(version.key);
           if (!stats) return;
           stats.total += 1;
-          if (issue.hasTargetRelease) stats.withTarget += 1;
+          if (issue.hasTargetVersion) stats.withTarget += 1;
         });
       });
 
@@ -1017,12 +1113,11 @@
         tbody.appendChild(tr);
       });
 
-      document.getElementById('releasesSection').style.display = '';
     }
 
     function renderKpis() {
       const total = state.filteredIssues.length;
-      const withTarget = state.filteredIssues.filter(i => i.hasTargetRelease).length;
+      const withTarget = state.filteredIssues.filter(i => i.hasTargetVersion).length;
       const withoutTarget = total - withTarget;
       const pct = total ? ((withTarget / total) * 100).toFixed(1) : '0.0';
       document.getElementById('kpiTotal').textContent = total;
@@ -1031,14 +1126,15 @@
       document.getElementById('kpiPct').textContent = `${pct}%`;
       document.getElementById('kpiSection').style.display = '';
       document.getElementById('chartsSection').style.display = state.filteredIssues.length ? '' : 'none';
-      document.getElementById('missingSection').style.display = '';
+      document.getElementById('epicSection').style.display = '';
+      document.getElementById('childSection').style.display = '';
     }
 
     function buildStackedData(dimension) {
-      const distribution = dimension === 'pi' ? state.aggregated.byPi : state.aggregated.bySprint;
-      const labels = distribution.buckets.map(b => b.label);
+      const buckets = dimension === 'pi' ? state.aggregated.byPi : state.aggregated.byTargetVersion;
+      const labels = buckets.map(b => b.label);
       const teamNames = new Set();
-      distribution.buckets.forEach(bucket => {
+      buckets.forEach(bucket => {
         Object.keys(bucket.teams).forEach(team => teamNames.add(team));
       });
       const datasets = [];
@@ -1046,14 +1142,14 @@
         const color = teamColor(team);
         datasets.push({
           label: `${team} – With Target`,
-          data: distribution.buckets.map(bucket => (bucket.teams[team]?.withTarget || 0)),
+          data: buckets.map(bucket => (bucket.teams[team]?.withTarget || 0)),
           backgroundColor: colorWithAlpha(color, 0.85),
           stack: team,
           borderRadius: 4,
         });
         datasets.push({
           label: `${team} – Without Target`,
-          data: distribution.buckets.map(bucket => (bucket.teams[team]?.withoutTarget || 0)),
+          data: buckets.map(bucket => (bucket.teams[team]?.withoutTarget || 0)),
           backgroundColor: colorWithAlpha(color, 0.45),
           stack: team,
           borderRadius: 4,
@@ -1085,20 +1181,21 @@
           ]
         };
       }
-      const labels = state.aggregated.byPi.buckets.map(b => b.label);
+      const source = mode === 'targetVersion' ? state.aggregated.byTargetVersion : state.aggregated.byPi;
+      const labels = source.map(b => b.label);
       return {
         labels,
         datasets: [
           {
             label: 'With Target',
-            data: state.aggregated.byPi.buckets.map(b => b.withTarget),
+            data: source.map(b => b.withTarget),
             backgroundColor: '#3b82f6',
             stack: 'total',
             borderRadius: 4,
           },
           {
             label: 'Without Target',
-            data: state.aggregated.byPi.buckets.map(b => b.withoutTarget),
+            data: source.map(b => b.withoutTarget),
             backgroundColor: '#ef4444',
             stack: 'total',
             borderRadius: 4,
@@ -1162,10 +1259,11 @@
       }
     }
 
-    function renderMissingTable() {
-      const tbody = document.getElementById('missingTableBody');
-      const search = document.getElementById('missingSearch').value.trim().toLowerCase();
-      const rows = state.filteredIssues.filter(issue => !issue.hasTargetRelease).filter(issue => {
+    function renderChildTable() {
+      const tbody = document.getElementById('childTableBody');
+      const searchInput = document.getElementById('childSearch');
+      const search = searchInput ? searchInput.value.trim().toLowerCase() : '';
+      const rows = state.filteredIssues.filter(issue => {
         if (!search) return true;
         const values = [
           issue.key,
@@ -1173,25 +1271,34 @@
           issue.responsibleTeam,
           issue.type,
           issue.status,
-          issue.parent?.key || '',
-          issue.parent?.summary || ''
+          issue.parentKey || '',
+          issue.parentSummary || '',
+          issue.targetVersion || '',
+          issue.parentTargetVersion || ''
         ].join(' ').toLowerCase();
         return values.includes(search);
       });
       tbody.innerHTML = '';
       if (!rows.length) {
-        document.getElementById('missingEmpty').style.display = '';
+        document.getElementById('childEmpty').style.display = '';
         return;
       }
-      document.getElementById('missingEmpty').style.display = 'none';
+      document.getElementById('childEmpty').style.display = 'none';
       const domain = state.domain;
       rows.slice(0, 1500).forEach(issue => {
-        const sprintNames = issue.sprints.length ? issue.sprints.map(s => s.name).join(', ') : '—';
-        const piLabels = issue.pis.length ? issue.pis.map(p => p.label).join(', ') : '—';
-        const boards = issue.boardIds.length ? issue.boardIds.map(id => state.boardsMap.get(Number(id))?.name || `Board ${id}`).join(', ') : '—';
+        const boards = issue.boardIds && issue.boardIds.size
+          ? Array.from(issue.boardIds).map(id => state.boardsMap.get(Number(id))?.name || `Board ${id}`).join(', ')
+          : '—';
         const team = issue.responsibleTeam || 'Unassigned Team';
-        const parentDisplay = issue.parent ? `<a href="https://${domain}/browse/${issue.parent.key}" target="_blank" rel="noopener">${issue.parent.key}</a>${issue.parent.summary ? ` – ${issue.parent.summary}` : ''}` : '—';
+        const parentDisplay = issue.parentKey
+          ? `<a href="https://${domain}/browse/${issue.parentKey}" target="_blank" rel="noopener">${issue.parentKey}</a>${issue.parentSummary ? ` – ${issue.parentSummary}` : ''}`
+          : '—';
+        const targetDisplay = issue.hasTargetVersion ? issue.targetVersion : '—';
+        const parentTarget = issue.parentTargetVersion || 'No Target Version';
         const row = document.createElement('tr');
+        if (!issue.hasTargetVersion) {
+          row.style.background = '#fff7ed';
+        }
         row.innerHTML = `
           <td><a href="https://${domain}/browse/${issue.key}" target="_blank" rel="noopener">${issue.key}</a></td>
           <td>${issue.summary || '—'}</td>
@@ -1199,8 +1306,8 @@
           <td><span class="badge">${issue.type}</span></td>
           <td><span class="status-pill ${getStatusClass(issue.status)}">${issue.status}</span></td>
           <td>${team}</td>
-          <td>${sprintNames}</td>
-          <td>${piLabels}</td>
+          <td>${parentTarget}</td>
+          <td>${targetDisplay}</td>
           <td>${boards}</td>
           <td>${issue.assignee || '—'}</td>
           <td>${formatDate(issue.updated)}</td>
@@ -1210,28 +1317,89 @@
       });
     }
 
+    function renderEpicTable() {
+      const tbody = document.getElementById('epicTableBody');
+      const searchInput = document.getElementById('epicSearch');
+      const search = searchInput ? searchInput.value.trim().toLowerCase() : '';
+      const rows = state.filteredEpics.filter(epic => {
+        if (!search) return true;
+        const values = [
+          epic.key,
+          epic.summary,
+          epic.responsibleTeam,
+          epic.targetVersion,
+          epic.pis.map(pi => pi.label).join(' '),
+        ].join(' ').toLowerCase();
+        return values.includes(search);
+      });
+      tbody.innerHTML = '';
+      if (!rows.length) {
+        document.getElementById('epicEmpty').style.display = '';
+        return;
+      }
+      document.getElementById('epicEmpty').style.display = 'none';
+      const domain = state.domain;
+      rows.slice(0, 500).forEach(epic => {
+        const boards = epic.boardIds && epic.boardIds.size
+          ? Array.from(epic.boardIds).map(id => state.boardsMap.get(Number(id))?.name || `Board ${id}`).join(', ')
+          : '—';
+        const team = epic.responsibleTeam || 'Unassigned Team';
+        const piLabels = epic.pis.length ? epic.pis.map(pi => pi.label).join(', ') : '—';
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td><a href="https://${domain}/browse/${epic.key}" target="_blank" rel="noopener">${epic.key}</a></td>
+          <td>${epic.summary || '—'}</td>
+          <td>${epic.targetVersion || 'No Target Version'}</td>
+          <td>${team}</td>
+          <td>${piLabels}</td>
+          <td>${epic.childTotal || 0}</td>
+          <td>${epic.childWithTarget || 0}</td>
+          <td>${epic.childTotal ? `${epic.coveragePct}%` : '—'}</td>
+          <td>${boards}</td>
+        `;
+        tbody.appendChild(row);
+      });
+    }
+
     function updateFilterOptions() {
       const allPis = new Map();
       const teams = new Set();
       const boardOptions = new Map();
+      const versions = new Map();
 
-      state.normalizedIssues.forEach(issue => {
-        if (!issue.pis.length) {
+      state.epics.forEach(epic => {
+        const versionKey = epic.targetVersionKey || '__none__';
+        const versionLabel = epic.targetVersion || 'No Target Version';
+        if (!versions.has(versionKey)) {
+          versions.set(versionKey, { value: versionKey, label: versionLabel });
+        }
+
+        if (!epic.pis.length) {
           if (!allPis.has('__none__')) allPis.set('__none__', { value: '__none__', label: 'No Product Increment' });
         }
-        issue.pis.forEach(pi => {
+        epic.pis.forEach(pi => {
           if (!allPis.has(pi.base)) {
             allPis.set(pi.base, { value: pi.base, label: pi.base });
           }
         });
-        const team = issue.responsibleTeam || 'Unassigned Team';
+
+        const team = epic.responsibleTeam || 'Unassigned Team';
         teams.add(team);
-        issue.boardIds.forEach(id => {
-          if (!boardOptions.has(String(id))) {
-            boardOptions.set(String(id), { value: String(id), label: state.boardsMap.get(Number(id))?.name || `Board ${id}` });
-          }
-        });
+
+        if (epic.boardIds && epic.boardIds.size) {
+          epic.boardIds.forEach(id => {
+            const key = String(id);
+            if (!boardOptions.has(key)) {
+              boardOptions.set(key, { value: key, label: state.boardsMap.get(Number(id))?.name || `Board ${id}` });
+            }
+          });
+        }
       });
+
+      const versionChoices = Array.from(versions.values()).sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
+      if (!versionChoices.length) versionChoices.push({ value: '__none__', label: 'No Target Version' });
+      targetVersionChoices.clearChoices();
+      targetVersionChoices.setChoices(versionChoices, 'value', 'label', true);
 
       const piChoicesData = Array.from(allPis.values()).sort((a, b) => a.label.localeCompare(b.label));
       piChoices.clearChoices();
@@ -1247,16 +1415,7 @@
       boardFilterChoices.setChoices(boardValues, 'value', 'label', true);
     }
 
-    function defaultSprintSelection() {
-      const sorted = state.allSprints.slice().sort((a, b) => {
-        const dateA = a.endDate ? new Date(a.endDate).getTime() : (a.startDate ? new Date(a.startDate).getTime() : 0);
-        const dateB = b.endDate ? new Date(b.endDate).getTime() : (b.startDate ? new Date(b.startDate).getTime() : 0);
-        return dateB - dateA;
-      });
-      const defaultIds = sorted.slice(0, 12).map(s => String(s.id));
-      sprintChoices.removeActiveItems();
-      sprintChoices.setChoiceByValue(defaultIds);
-    }
+
 
     async function loadBoards() {
       const domain = document.getElementById('jiraDomain').value.trim();
@@ -1279,83 +1438,17 @@
       }
     }
 
-    async function loadSprints() {
-      const domain = document.getElementById('jiraDomain').value.trim();
-      const boardIds = boardChoices.getValue(true);
-      if (!domain || !boardIds.length) {
-        setError('Please select at least one board.');
-        return;
-      }
-      state.domain = domain;
-      setError('');
-      try {
-        setLoading('Loading sprints...');
-        const sprints = [];
-        const releases = [];
-        await Promise.all(boardIds.map(async boardId => {
-          try {
-            const values = await fetchSprintsForBoard(domain, boardId);
-            values.forEach(v => sprints.push(v));
-          } catch (err) {
-            Logger.error('Failed to load sprints for board', boardId, err);
-          }
-          try {
-            const releaseValues = await fetchReleasesForBoard(domain, boardId);
-            releaseValues.forEach(v => releases.push(v));
-          } catch (err) {
-            Logger.error('Failed to load releases for board', boardId, err);
-          }
-        }));
-        const unique = new Map();
-        sprints.forEach(s => {
-          if (!unique.has(s.id)) unique.set(s.id, s);
-        });
-        state.allSprints = Array.from(unique.values());
-        sprintChoices.clearChoices();
-        sprintChoices.setChoices(state.allSprints.map(s => ({ value: String(s.id), label: `${s.name} (${s.boardId})` })), 'value', 'label', true);
-        defaultSprintSelection();
-        const releaseUnique = new Map();
-        releases.forEach(rel => {
-          if (!releaseUnique.has(rel.uniqueKey)) releaseUnique.set(rel.uniqueKey, rel);
-        });
-        state.releases = Array.from(releaseUnique.values());
-        state.releaseIndex = new Map(state.releases.map(rel => [rel.uniqueKey, rel]));
-        if (state.releases.length) {
-          const projectIds = Array.from(new Set(state.releases.map(rel => rel.projectId).filter(Boolean)));
-          await Promise.all(projectIds.map(async projectId => {
-            const info = await fetchProjectDetails(domain, projectId);
-            state.releases.forEach(rel => {
-              if (rel.projectId === projectId && info) {
-                rel.projectKey = info.key;
-                rel.projectName = info.name;
-              }
-            });
-          }));
-          document.getElementById('releasesSection').style.display = '';
-          renderReleasesTable();
-        } else {
-          document.getElementById('releasesSection').style.display = 'none';
-          document.getElementById('releasesEmpty').style.display = '';
-        }
-        document.getElementById('filtersSection').style.display = '';
-        setLoading('Sprints loaded. Ready to fetch issues.');
-        setTimeout(() => setLoading(''), 2000);
-      } catch (err) {
-        Logger.error('Failed to load sprints', err);
-        setError('Could not load sprints.');
-        setLoading('');
-      }
-    }
+
 
     async function loadData() {
       const domain = document.getElementById('jiraDomain').value.trim();
-      const sprintIds = sprintChoices.getValue(true);
+      const boardIds = boardChoices.getValue(true);
       if (!domain) {
         setError('Jira domain is required.');
         return;
       }
-      if (!sprintIds.length) {
-        setError('Select at least one sprint to query.');
+      if (!boardIds.length) {
+        setError('Select at least one board to query.');
         return;
       }
       setError('');
@@ -1364,29 +1457,120 @@
         setLoading('Discovering fields...');
         const responsibleField = await discoverResponsibleField(domain);
         state.responsibleFieldKey = responsibleField;
-        setLoading('Fetching issues...');
-        const rawIssues = await fetchIssues(domain, { sprintIds, responsibleField });
-        setLoading(`Fetched ${rawIssues.length} issues. Loading parent details...`);
-        const parentMap = await fetchParentDetails(domain, rawIssues);
-        setLoading('Normalizing issues...');
         teamColorMap.clear();
-        state.normalizedIssues = rawIssues.map(issue => normalizeIssue(issue, responsibleField, parentMap));
-        state.loadedSprintIds = new Set(sprintIds.map(String));
-        state.needsReload = false;
+
+        setLoading('Loading board configurations...');
+        const boardConfigs = await Promise.all(boardIds.map(async id => {
+          const config = await fetchBoardConfiguration(domain, id);
+          return { ...config, name: state.boardsMap.get(Number(id))?.name || config.name || `Board ${id}` };
+        }));
+
+        setLoading('Fetching releases...');
+        const releaseList = [];
+        await Promise.all(boardConfigs.map(async config => {
+          try {
+            const values = await fetchReleasesForBoard(domain, config.id);
+            values.forEach(rel => releaseList.push(rel));
+          } catch (err) {
+            Logger.error('Failed to load releases for board', config.id, err);
+          }
+        }));
+        const releaseUnique = new Map();
+        releaseList.forEach(rel => {
+          if (!releaseUnique.has(rel.uniqueKey)) releaseUnique.set(rel.uniqueKey, rel);
+        });
+        state.releases = Array.from(releaseUnique.values());
+        state.releaseIndex = new Map(state.releases.map(rel => [rel.uniqueKey, rel]));
+        if (state.releases.length) {
+          const projectIds = Array.from(new Set(state.releases.map(rel => rel.projectId).filter(Boolean)));
+          await Promise.all(projectIds.map(async projectId => {
+            const info = await fetchProjectDetails(domain, projectId);
+            if (info) {
+              state.releases.forEach(rel => {
+                if (rel.projectId === projectId) {
+                  rel.projectKey = info.key;
+                  rel.projectName = info.name;
+                }
+              });
+            }
+          }));
+          document.getElementById('releasesSection').style.display = '';
+        } else {
+          document.getElementById('releasesSection').style.display = 'none';
+          document.getElementById('releasesEmpty').style.display = '';
+        }
+
+        setLoading('Fetching epics...');
+        const epicMap = new Map();
+        const epicsByBoard = new Map();
+        await Promise.all(boardConfigs.map(async config => {
+          try {
+            const items = await fetchEpicsForBoard(domain, config, responsibleField);
+            items.forEach(({ issue, boardId }) => {
+              const normalized = normalizeEpic(issue, boardId, responsibleField);
+              if (epicMap.has(normalized.key)) {
+                const existing = epicMap.get(normalized.key);
+                normalized.boardIds.forEach(id => existing.boardIds.add(id));
+              } else {
+                epicMap.set(normalized.key, normalized);
+              }
+              if (!epicsByBoard.has(boardId)) epicsByBoard.set(boardId, new Set());
+              epicsByBoard.get(boardId).add(normalized.key);
+            });
+          } catch (err) {
+            Logger.error('Failed to load epics for board', config.id, err);
+          }
+        }));
+
+        state.epics = Array.from(epicMap.values()).sort((a, b) => a.targetVersion.localeCompare(b.targetVersion, undefined, { numeric: true }));
+        state.epicMap = epicMap;
+
+        setLoading('Fetching child items...');
+        const childMap = new Map();
+        await Promise.all(boardConfigs.map(async config => {
+          const keys = epicsByBoard.get(config.id);
+          if (!keys || !keys.size) return;
+          try {
+            const children = await fetchChildIssuesForBoard(domain, config, Array.from(keys), responsibleField);
+            children.forEach(({ issue, boardId }) => {
+              const normalized = normalizeChildIssue(issue, boardId, responsibleField, epicMap);
+              if (!normalized.parentKey) return;
+              if (childMap.has(normalized.key)) {
+                const existing = childMap.get(normalized.key);
+                normalized.boardIds.forEach(id => existing.boardIds.add(id));
+                if (!existing.hasTargetVersion && normalized.hasTargetVersion) {
+                  existing.hasTargetVersion = true;
+                  existing.targetVersion = normalized.targetVersion;
+                  existing.targetVersionKey = normalized.targetVersionKey;
+                  existing.targetSource = normalized.targetSource;
+                }
+              } else {
+                childMap.set(normalized.key, normalized);
+              }
+            });
+          } catch (err) {
+            Logger.error('Failed to load child issues for board', config.id, err);
+          }
+        }));
+
+        state.normalizedIssues = Array.from(childMap.values());
+        computeEpicCoverage(state.epics, state.normalizedIssues);
         updateFilterOptions();
         document.getElementById('filtersSection').style.display = '';
         document.getElementById('kpiSection').style.display = '';
-        document.getElementById('chartsSection').style.display = '';
-        if (state.releases.length) {
-          document.getElementById('releasesSection').style.display = '';
-        }
-        document.getElementById('missingSection').style.display = '';
+        document.getElementById('chartsSection').style.display = state.normalizedIssues.length ? '' : 'none';
+        document.getElementById('epicSection').style.display = '';
+        document.getElementById('childSection').style.display = '';
+
         setLoading('Applying filters...');
+        state.filteredEpics = state.epics.slice();
+        state.filteredIssues = state.normalizedIssues.slice();
+        state.aggregated = aggregateIssues(state.normalizedIssues);
         applyFilters();
         setLoading('');
       } catch (err) {
-        Logger.error('Failed to load dashboard data', err);
-        setError('Could not fetch issues. Verify your Jira permissions and filters.');
+        Logger.error('Failed to load planning data', err);
+        setError('Could not fetch planning data. Verify your Jira permissions and filters.');
         setLoading('');
       }
     }
@@ -1403,7 +1587,7 @@
       const imgWidth = canvas.width * ratio;
       const imgHeight = canvas.height * ratio;
       pdf.addImage(imgData, 'PNG', (pageWidth - imgWidth) / 2, 20, imgWidth, imgHeight);
-      pdf.save('pi-target-release-dashboard.pdf');
+      pdf.save('pi-target-version-dashboard.pdf');
     }
 
     function switchVersion(page) {
@@ -1418,11 +1602,11 @@
       select.addEventListener('change', (event) => switchVersion(event.target.value));
     }
 
-    document.getElementById('loadSprintsBtn').addEventListener('click', loadSprints);
     document.getElementById('loadDataBtn').addEventListener('click', loadData);
     document.getElementById('exportBtn').addEventListener('click', exportPDF);
     document.getElementById('jiraDomain').addEventListener('change', loadBoards);
-    document.getElementById('missingSearch').addEventListener('input', () => renderMissingTable());
+    document.getElementById('epicSearch').addEventListener('input', () => renderEpicTable());
+    document.getElementById('childSearch').addEventListener('input', () => renderChildTable());
     document.getElementById('releaseSearch').addEventListener('input', () => renderReleasesTable());
     document.querySelectorAll('input[name="stackedDimension"]').forEach(input => input.addEventListener('change', updateCharts));
     document.getElementById('distributionMode').addEventListener('change', updateCharts);
@@ -1431,13 +1615,9 @@
     });
 
     function setupFilterReactivity() {
-      ['teamSelect', 'boardFilterSelect', 'piSelect', 'sprintSelect'].forEach(id => {
+      ['teamSelect', 'boardFilterSelect', 'piSelect', 'targetVersionSelect'].forEach(id => {
         const el = document.getElementById(id);
         el.addEventListener('change', () => {
-          if (id === 'sprintSelect') {
-            const values = sprintChoices.getValue(true).map(String);
-            state.needsReload = values.some(v => !state.loadedSprintIds.has(v));
-          }
           applyFilters();
         });
       });
