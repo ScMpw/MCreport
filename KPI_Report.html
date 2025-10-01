@@ -1214,47 +1214,41 @@ function renderCharts(displaySprints, allSprints) {
   }
 
   function canvasToSVG(canvas) {
-    // Create a new canvas with white background
+    const width = canvas.width;
+    const height = canvas.height;
+
+    // Create a new canvas with white background and render the chart onto it
     const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = canvas.width;
-    tempCanvas.height = canvas.height;
+    tempCanvas.width = width;
+    tempCanvas.height = height;
     const tempCtx = tempCanvas.getContext('2d');
-
-    // Fill with white background
     tempCtx.fillStyle = '#ffffff';
-    tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-
-    // Draw the original canvas on top
+    tempCtx.fillRect(0, 0, width, height);
     tempCtx.drawImage(canvas, 0, 0);
 
-    const svgNS = "http://www.w3.org/2000/svg";
-    const svg = document.createElementNS(svgNS, "svg");
-    svg.setAttribute("width", tempCanvas.width);
-    svg.setAttribute("height", tempCanvas.height);
-    svg.setAttribute("viewBox", `0 0 ${tempCanvas.width} ${tempCanvas.height}`);
+    const svgNS = 'http://www.w3.org/2000/svg';
+    const xlinkNS = 'http://www.w3.org/1999/xlink';
+    const svg = document.createElementNS(svgNS, 'svg');
+    svg.setAttribute('xmlns', svgNS);
+    svg.setAttribute('xmlns:xlink', xlinkNS);
+    svg.setAttribute('width', width);
+    svg.setAttribute('height', height);
+    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
 
-    // Add white background rectangle to SVG
-    const rect = document.createElementNS(svgNS, "rect");
-    rect.setAttribute("width", "100%");
-    rect.setAttribute("height", "100%");
-    rect.setAttribute("fill", "#ffffff");
+    const rect = document.createElementNS(svgNS, 'rect');
+    rect.setAttribute('width', '100%');
+    rect.setAttribute('height', '100%');
+    rect.setAttribute('fill', '#ffffff');
     svg.appendChild(rect);
 
-    // Create a foreignObject to embed the canvas as an image
-    const foreignObject = document.createElementNS(svgNS, "foreignObject");
-    foreignObject.setAttribute("width", tempCanvas.width);
-    foreignObject.setAttribute("height", tempCanvas.height);
+    const image = document.createElementNS(svgNS, 'image');
+    image.setAttributeNS(xlinkNS, 'xlink:href', tempCanvas.toDataURL('image/png'));
+    image.setAttribute('width', width);
+    image.setAttribute('height', height);
+    image.setAttribute('preserveAspectRatio', 'none');
+    svg.appendChild(image);
 
-    const img = document.createElement("img");
-    img.src = tempCanvas.toDataURL('image/png');
-    img.width = tempCanvas.width;
-    img.height = tempCanvas.height;
-
-    foreignObject.appendChild(img);
-    svg.appendChild(foreignObject);
-
-    const serializer = new XMLSerializer();
-    return serializer.serializeToString(svg);
+    return new XMLSerializer().serializeToString(svg);
   }
 
   async function exportPDF() {
