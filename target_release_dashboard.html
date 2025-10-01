@@ -136,6 +136,33 @@
       </div>
     </div>
 
+    <div id="releasesSection" style="display:none;">
+      <div class="section-title">Upcoming Releases</div>
+      <div class="table-controls">
+        <div style="font-size:0.85em; color:#6b7280;">Unreleased or future-dated versions from the selected boards.</div>
+        <input id="releaseSearch" placeholder="Search by release, board or project...">
+      </div>
+      <div class="table-wrap" style="overflow-x:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>Release</th>
+              <th>Board</th>
+              <th>Project</th>
+              <th>Status</th>
+              <th>Start</th>
+              <th>Release Date</th>
+              <th>Issues Planned</th>
+              <th>With Target</th>
+              <th>Coverage</th>
+            </tr>
+          </thead>
+          <tbody id="releasesTableBody"></tbody>
+        </table>
+      </div>
+      <div id="releasesEmpty" class="empty-state" style="display:none;">No upcoming releases were found for the selected boards.</div>
+    </div>
+
     <div id="chartsSection" style="display:none;">
       <div class="section-title">Target-Release Coverage</div>
       <div class="chart-section">
@@ -215,6 +242,8 @@
       aggregated: null,
       loadedSprintIds: new Set(),
       needsReload: false,
+      releases: [],
+      releaseIndex: new Map(),
     };
 
     let boardChoices, sprintChoices, piChoices, teamChoices, boardFilterChoices;
@@ -283,6 +312,8 @@
     }
 
     const sprintCache = new Map();
+    const releaseCache = new Map();
+    const projectCache = new Map();
     async function fetchSprintsForBoard(domain, boardId) {
       const cacheKey = `${domain}:${boardId}`;
       if (sprintCache.has(cacheKey)) return sprintCache.get(cacheKey);
@@ -314,6 +345,67 @@
       })();
 
       sprintCache.set(cacheKey, promise);
+      return promise;
+    }
+
+    async function fetchReleasesForBoard(domain, boardId) {
+      const cacheKey = `${domain}:releases:${boardId}`;
+      if (releaseCache.has(cacheKey)) return releaseCache.get(cacheKey);
+
+      const promise = (async () => {
+        const results = [];
+        let startAt = 0;
+        const maxResults = 50;
+        for (let loop = 0; loop < 40; loop++) {
+          const url = `https://${domain}/rest/agile/1.0/board/${boardId}/version?startAt=${startAt}&maxResults=${maxResults}`;
+          const resp = await fetchWithRetry(url);
+          const data = await resp.json();
+          const values = data.values || [];
+          values.forEach(v => {
+            const normalized = {
+              id: v.id ? String(v.id) : undefined,
+              uniqueKey: v.id ? String(v.id) : (v.name ? `name:${v.name}` : `board:${boardId}:${startAt}`),
+              name: v.name || 'Unnamed Release',
+              released: Boolean(v.released),
+              archived: Boolean(v.archived),
+              releaseDate: v.releaseDate || v.userReleaseDate || null,
+              startDate: v.startDate || v.userStartDate || null,
+              projectId: v.projectId !== undefined ? Number(v.projectId) : undefined,
+              boardId: Number(boardId),
+            };
+            results.push(normalized);
+          });
+          startAt += values.length;
+          if (data.isLast || !values.length) break;
+        }
+        return results;
+      })();
+
+      releaseCache.set(cacheKey, promise);
+      return promise;
+    }
+
+    async function fetchProjectDetails(domain, projectId) {
+      if (!projectId) return null;
+      const key = `${domain}:project:${projectId}`;
+      if (projectCache.has(key)) return projectCache.get(key);
+
+      const promise = (async () => {
+        const url = `https://${domain}/rest/api/3/project/${projectId}`;
+        try {
+          const resp = await fetchWithRetry(url);
+          const data = await resp.json();
+          return {
+            key: data.key || undefined,
+            name: data.name || undefined,
+          };
+        } catch (err) {
+          Logger.warn('Failed to fetch project details', projectId, err);
+          return null;
+        }
+      })();
+
+      projectCache.set(key, promise);
       return promise;
     }
 
@@ -603,6 +695,22 @@
         }
       }
 
+      const fixVersions = Array.isArray(fields.fixVersions)
+        ? fields.fixVersions.map(version => {
+            const id = version.id ? String(version.id) : undefined;
+            const name = version.name ? String(version.name) : undefined;
+            const key = id || (name ? `name:${name}` : undefined);
+            return {
+              id,
+              key,
+              name: name || 'Unnamed Release',
+              released: Boolean(version.released),
+              releaseDate: version.releaseDate || version.userReleaseDate || undefined,
+              startDate: version.startDate || version.userStartDate || undefined,
+            };
+          }).filter(v => v.key)
+        : [];
+
       return {
         id: String(issue.id || issue.key || ''),
         key: String(issue.key || ''),
@@ -620,6 +728,7 @@
         targetRelease: targetRelease || undefined,
         updated: fields.updated ? String(fields.updated) : undefined,
         project: fields.project?.name ? String(fields.project.name) : undefined,
+        fixVersions,
       };
     }
 
@@ -807,6 +916,7 @@
       renderKpis();
       updateCharts();
       renderMissingTable();
+      renderReleasesTable();
       if (state.needsReload) {
         setLoading('Some selected sprints were not part of the last fetch. Reload data to include them.');
       } else if (!filtered.length) {
@@ -814,6 +924,100 @@
       } else {
         setLoading('');
       }
+    }
+
+    function getUpcomingReleases() {
+      if (!state.releases.length) return [];
+      const nowTime = Date.now();
+      return state.releases.filter(rel => {
+        if (rel.archived) return false;
+        if (!rel.releaseDate) return !rel.released;
+        const date = new Date(rel.releaseDate);
+        if (Number.isNaN(date.getTime())) return !rel.released;
+        return !rel.released || date.getTime() >= nowTime;
+      }).sort((a, b) => {
+        const aTime = a.releaseDate ? new Date(a.releaseDate).getTime() : Number.MAX_SAFE_INTEGER;
+        const bTime = b.releaseDate ? new Date(b.releaseDate).getTime() : Number.MAX_SAFE_INTEGER;
+        if (aTime === bTime) return a.name.localeCompare(b.name, undefined, { numeric: true });
+        return aTime - bTime;
+      });
+    }
+
+    function renderReleasesTable() {
+      const tbody = document.getElementById('releasesTableBody');
+      if (!tbody) return;
+      const releases = getUpcomingReleases();
+      const search = document.getElementById('releaseSearch').value.trim().toLowerCase();
+
+      const statsMap = new Map();
+      releases.forEach(rel => {
+        statsMap.set(rel.uniqueKey, {
+          release: rel,
+          total: 0,
+          withTarget: 0,
+        });
+      });
+
+      state.filteredIssues.forEach(issue => {
+        if (!issue.fixVersions || !issue.fixVersions.length) return;
+        issue.fixVersions.forEach(version => {
+          if (!version.key) return;
+          const stats = statsMap.get(version.key);
+          if (!stats) return;
+          stats.total += 1;
+          if (issue.hasTargetRelease) stats.withTarget += 1;
+        });
+      });
+
+      const rows = Array.from(statsMap.values()).map(stats => {
+        const release = stats.release;
+        const boardName = state.boardsMap.get(Number(release.boardId))?.name || `Board ${release.boardId}`;
+        const projectName = release.projectName || '';
+        const projectKey = release.projectKey || '';
+        const displayProject = projectName || projectKey || '—';
+        const matchHaystack = [
+          release.name,
+          boardName,
+          projectName,
+          projectKey,
+        ].join(' ').toLowerCase();
+        if (search && !matchHaystack.includes(search)) return null;
+        const pct = stats.total ? Math.round((stats.withTarget / stats.total) * 100) : 0;
+        return {
+          release,
+          boardName,
+          displayProject,
+          status: release.released ? 'Released' : 'Unreleased',
+          total: stats.total,
+          withTarget: stats.withTarget,
+          pct,
+        };
+      }).filter(Boolean);
+
+      tbody.innerHTML = '';
+      if (!rows.length) {
+        document.getElementById('releasesEmpty').style.display = '';
+        return;
+      }
+      document.getElementById('releasesEmpty').style.display = 'none';
+
+      rows.forEach(row => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${row.release.name}</td>
+          <td>${row.boardName}</td>
+          <td>${row.displayProject}</td>
+          <td>${row.status}</td>
+          <td>${row.release.startDate ? formatDate(row.release.startDate) : '—'}</td>
+          <td>${row.release.releaseDate ? formatDate(row.release.releaseDate) : '—'}</td>
+          <td>${row.total}</td>
+          <td>${row.withTarget}</td>
+          <td>${row.pct}%</td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      document.getElementById('releasesSection').style.display = '';
     }
 
     function renderKpis() {
@@ -1087,12 +1291,19 @@
       try {
         setLoading('Loading sprints...');
         const sprints = [];
+        const releases = [];
         await Promise.all(boardIds.map(async boardId => {
           try {
             const values = await fetchSprintsForBoard(domain, boardId);
             values.forEach(v => sprints.push(v));
           } catch (err) {
             Logger.error('Failed to load sprints for board', boardId, err);
+          }
+          try {
+            const releaseValues = await fetchReleasesForBoard(domain, boardId);
+            releaseValues.forEach(v => releases.push(v));
+          } catch (err) {
+            Logger.error('Failed to load releases for board', boardId, err);
           }
         }));
         const unique = new Map();
@@ -1103,6 +1314,29 @@
         sprintChoices.clearChoices();
         sprintChoices.setChoices(state.allSprints.map(s => ({ value: String(s.id), label: `${s.name} (${s.boardId})` })), 'value', 'label', true);
         defaultSprintSelection();
+        const releaseUnique = new Map();
+        releases.forEach(rel => {
+          if (!releaseUnique.has(rel.uniqueKey)) releaseUnique.set(rel.uniqueKey, rel);
+        });
+        state.releases = Array.from(releaseUnique.values());
+        state.releaseIndex = new Map(state.releases.map(rel => [rel.uniqueKey, rel]));
+        if (state.releases.length) {
+          const projectIds = Array.from(new Set(state.releases.map(rel => rel.projectId).filter(Boolean)));
+          await Promise.all(projectIds.map(async projectId => {
+            const info = await fetchProjectDetails(domain, projectId);
+            state.releases.forEach(rel => {
+              if (rel.projectId === projectId && info) {
+                rel.projectKey = info.key;
+                rel.projectName = info.name;
+              }
+            });
+          }));
+          document.getElementById('releasesSection').style.display = '';
+          renderReleasesTable();
+        } else {
+          document.getElementById('releasesSection').style.display = 'none';
+          document.getElementById('releasesEmpty').style.display = '';
+        }
         document.getElementById('filtersSection').style.display = '';
         setLoading('Sprints loaded. Ready to fetch issues.');
         setTimeout(() => setLoading(''), 2000);
@@ -1143,6 +1377,9 @@
         document.getElementById('filtersSection').style.display = '';
         document.getElementById('kpiSection').style.display = '';
         document.getElementById('chartsSection').style.display = '';
+        if (state.releases.length) {
+          document.getElementById('releasesSection').style.display = '';
+        }
         document.getElementById('missingSection').style.display = '';
         setLoading('Applying filters...');
         applyFilters();
@@ -1186,6 +1423,7 @@
     document.getElementById('exportBtn').addEventListener('click', exportPDF);
     document.getElementById('jiraDomain').addEventListener('change', loadBoards);
     document.getElementById('missingSearch').addEventListener('input', () => renderMissingTable());
+    document.getElementById('releaseSearch').addEventListener('input', () => renderReleasesTable());
     document.querySelectorAll('input[name="stackedDimension"]').forEach(input => input.addEventListener('change', updateCharts));
     document.getElementById('distributionMode').addEventListener('change', updateCharts);
     ['suffixCommitted', 'suffixPlanned', 'suffixSpillover'].forEach(id => {
