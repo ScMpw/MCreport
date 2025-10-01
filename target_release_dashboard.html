@@ -95,7 +95,7 @@
           <div style="font-size:0.78em; color:#6b7280; margin-top:6px;">Default selects last 12 sprints across chosen boards.</div>
         </div>
         <div class="filter-block">
-          <label for="piSelect">Program Increments</label>
+          <label for="piSelect">Product Increments</label>
           <select id="piSelect" multiple></select>
           <div class="suffix-toggles">
             <label><input type="checkbox" id="suffixCommitted" checked> Committed</label>
@@ -142,7 +142,7 @@
         <div class="chart-toolbar">
           <div class="toggle-group">
             <label><input type="radio" name="stackedDimension" value="sprint" checked> By Sprint</label>
-            <label><input type="radio" name="stackedDimension" value="pi"> By PI</label>
+            <label><input type="radio" name="stackedDimension" value="pi"> By Product Increment</label>
           </div>
           <div style="font-size:0.85em; color:#6b7280;">Stacks display with/without target-release per responsible team.</div>
         </div>
@@ -157,7 +157,7 @@
             <label for="distributionMode">Distribution View:</label>
             <select id="distributionMode">
               <option value="team">By Team</option>
-              <option value="pi">By PI</option>
+              <option value="pi">By Product Increment</option>
             </select>
           </div>
           <div style="font-size:0.85em; color:#6b7280;">Shows ratio of issues with/without target-release.</div>
@@ -172,7 +172,7 @@
       <div class="section-title">Items without Target-Release</div>
       <div class="table-controls">
         <div style="font-size:0.85em; color:#6b7280;">Displaying issues missing the planning field. Use search to refine.</div>
-        <input id="missingSearch" placeholder="Search by key, summary, team...">
+        <input id="missingSearch" placeholder="Search by key, summary, parent, team...">
       </div>
       <div class="table-wrap" style="overflow-x:auto;">
         <table>
@@ -180,11 +180,12 @@
             <tr>
               <th>Key</th>
               <th>Summary</th>
+              <th>Parent</th>
               <th>Type</th>
               <th>Status</th>
               <th>Responsible Team</th>
               <th>Sprint</th>
-              <th>PI</th>
+              <th>Product Increment</th>
               <th>Board</th>
               <th>Assignee</th>
               <th>Updated</th>
@@ -224,7 +225,7 @@
     function initChoices() {
       boardChoices = new Choices('#boardSelect', { removeItemButton: true, shouldSort: false });
       sprintChoices = new Choices('#sprintSelect', { removeItemButton: true, shouldSort: false });
-      piChoices = new Choices('#piSelect', { removeItemButton: true, shouldSort: true, placeholder: true, placeholderValue: 'Select PIs' });
+      piChoices = new Choices('#piSelect', { removeItemButton: true, shouldSort: true, placeholder: true, placeholderValue: 'Select Product Increments' });
       teamChoices = new Choices('#teamSelect', { removeItemButton: true, shouldSort: true, placeholder: true, placeholderValue: 'All teams' });
       boardFilterChoices = new Choices('#boardFilterSelect', { removeItemButton: true, shouldSort: false });
     }
@@ -419,6 +420,7 @@
         'fixVersions',
         'target-release',
         'sprint',
+        'parent',
         'project',
         'updated',
         'components',
@@ -461,14 +463,44 @@
       return all;
     }
 
-    const PI_REGEX = /\b(20\d{2})_PI([1-4])(?:_(committed|spillover|planned))?\b/i;
+    async function fetchParentDetails(domain, issues) {
+      const parentKeys = Array.from(new Set(issues
+        .map(issue => issue.fields?.parent?.key)
+        .filter(key => typeof key === 'string' && key.trim().length)));
+      if (!parentKeys.length) return new Map();
+
+      const parents = new Map();
+      const chunkSize = 50;
+      for (let i = 0; i < parentKeys.length; i += chunkSize) {
+        const chunk = parentKeys.slice(i, i + chunkSize);
+        const jql = `issuekey in (${chunk.join(',')})`;
+        const data = await jiraSearch(domain, {
+          jql,
+          startAt: 0,
+          maxResults: chunk.length,
+          fields: ['key', 'summary', 'labels'],
+        });
+        (data.issues || []).forEach(parent => {
+          const parentFields = parent.fields || {};
+          const labels = Array.isArray(parentFields.labels) ? parentFields.labels.slice() : [];
+          parents.set(parent.key, {
+            key: parent.key,
+            summary: parentFields.summary || '',
+            labels,
+          });
+        });
+      }
+      return parents;
+    }
+
+    const PRODUCT_INCREMENT_REGEX = /\b(20\d{2})_PI([1-4])(?:_(committed|spillover|planned))?\b/i;
 
     function extractPis(labels) {
       const matches = [];
       const seen = new Set();
       (labels || []).forEach(label => {
         if (typeof label !== 'string') return;
-        const match = label.match(PI_REGEX);
+        const match = label.match(PRODUCT_INCREMENT_REGEX);
         if (!match) return;
         const base = `${match[1]}_PI${match[2]}`;
         const suffix = match[3] ? match[3].toLowerCase() : null;
@@ -509,9 +541,21 @@
       return result;
     }
 
-    function normalizeIssue(issue, responsibleFieldKey) {
+    function normalizeIssue(issue, responsibleFieldKey, parentMap) {
       const fields = issue.fields || {};
-      const labels = Array.isArray(fields.labels) ? fields.labels : [];
+      const labels = Array.isArray(fields.labels) ? fields.labels.slice() : [];
+      const parentKey = fields.parent?.key ? String(fields.parent.key) : undefined;
+      const parentInfo = parentKey ? parentMap?.get(parentKey) : undefined;
+      const parentFieldLabels = Array.isArray(fields.parent?.fields?.labels) ? fields.parent.fields.labels : [];
+      const combinedParentLabels = [
+        ...(parentInfo?.labels || []),
+        ...parentFieldLabels,
+      ];
+      combinedParentLabels.forEach(label => {
+        if (typeof label === 'string' && !labels.includes(label)) {
+          labels.push(label);
+        }
+      });
       const pis = extractPis(labels);
       const sprintField = fields.sprint || fields.sprints || fields.customfield_10020 || [];
       const sprints = parseSprintField(sprintField);
@@ -568,6 +612,8 @@
         assignee: fields.assignee?.displayName ? String(fields.assignee.displayName) : undefined,
         sprints,
         pis,
+        parent: parentKey ? { key: parentKey, summary: parentInfo?.summary || fields.parent?.fields?.summary || '' } : undefined,
+        parentKey,
         responsibleTeam: responsibleTeam || undefined,
         boardIds: Array.from(boardIds.values()),
         hasTargetRelease: Boolean(targetRelease),
@@ -584,7 +630,7 @@
 
     function aggregateIssues(issues) {
       const fallbackSprint = { key: 'unassigned', label: 'Unassigned Sprint' };
-      const fallbackPi = { key: 'no-pi', label: 'No PI' };
+      const fallbackPi = { key: 'no-pi', label: 'No Product Increment' };
       const fallbackTeam = 'Unassigned Team';
 
       function ensureBucket(map, key, label) {
@@ -917,7 +963,15 @@
       const search = document.getElementById('missingSearch').value.trim().toLowerCase();
       const rows = state.filteredIssues.filter(issue => !issue.hasTargetRelease).filter(issue => {
         if (!search) return true;
-        const values = [issue.key, issue.summary, issue.responsibleTeam, issue.type, issue.status].join(' ').toLowerCase();
+        const values = [
+          issue.key,
+          issue.summary,
+          issue.responsibleTeam,
+          issue.type,
+          issue.status,
+          issue.parent?.key || '',
+          issue.parent?.summary || ''
+        ].join(' ').toLowerCase();
         return values.includes(search);
       });
       tbody.innerHTML = '';
@@ -932,10 +986,12 @@
         const piLabels = issue.pis.length ? issue.pis.map(p => p.label).join(', ') : '—';
         const boards = issue.boardIds.length ? issue.boardIds.map(id => state.boardsMap.get(Number(id))?.name || `Board ${id}`).join(', ') : '—';
         const team = issue.responsibleTeam || 'Unassigned Team';
+        const parentDisplay = issue.parent ? `<a href="https://${domain}/browse/${issue.parent.key}" target="_blank" rel="noopener">${issue.parent.key}</a>${issue.parent.summary ? ` – ${issue.parent.summary}` : ''}` : '—';
         const row = document.createElement('tr');
         row.innerHTML = `
           <td><a href="https://${domain}/browse/${issue.key}" target="_blank" rel="noopener">${issue.key}</a></td>
           <td>${issue.summary || '—'}</td>
+          <td>${parentDisplay}</td>
           <td><span class="badge">${issue.type}</span></td>
           <td><span class="status-pill ${getStatusClass(issue.status)}">${issue.status}</span></td>
           <td>${team}</td>
@@ -957,7 +1013,7 @@
 
       state.normalizedIssues.forEach(issue => {
         if (!issue.pis.length) {
-          if (!allPis.has('__none__')) allPis.set('__none__', { value: '__none__', label: 'No PI' });
+          if (!allPis.has('__none__')) allPis.set('__none__', { value: '__none__', label: 'No Product Increment' });
         }
         issue.pis.forEach(pi => {
           if (!allPis.has(pi.base)) {
@@ -975,7 +1031,7 @@
 
       const piChoicesData = Array.from(allPis.values()).sort((a, b) => a.label.localeCompare(b.label));
       piChoices.clearChoices();
-      piChoices.setChoices(piChoicesData.length ? piChoicesData : [{ value: '__none__', label: 'No PI' }], 'value', 'label', true);
+      piChoices.setChoices(piChoicesData.length ? piChoicesData : [{ value: '__none__', label: 'No Product Increment' }], 'value', 'label', true);
 
       const teamChoicesData = Array.from(teams.values()).sort().map(team => ({ value: team, label: team }));
       teamChoices.clearChoices();
@@ -1076,9 +1132,11 @@
         state.responsibleFieldKey = responsibleField;
         setLoading('Fetching issues...');
         const rawIssues = await fetchIssues(domain, { sprintIds, responsibleField });
-        setLoading(`Fetched ${rawIssues.length} issues. Normalizing...`);
+        setLoading(`Fetched ${rawIssues.length} issues. Loading parent details...`);
+        const parentMap = await fetchParentDetails(domain, rawIssues);
+        setLoading('Normalizing issues...');
         teamColorMap.clear();
-        state.normalizedIssues = rawIssues.map(issue => normalizeIssue(issue, responsibleField));
+        state.normalizedIssues = rawIssues.map(issue => normalizeIssue(issue, responsibleField, parentMap));
         state.loadedSprintIds = new Set(sprintIds.map(String));
         state.needsReload = false;
         updateFilterOptions();
