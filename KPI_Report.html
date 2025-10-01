@@ -1214,25 +1214,41 @@ function renderCharts(displaySprints, allSprints) {
   }
 
   function canvasToSVG(canvas) {
-    // Convert canvas to SVG using a more reliable method
-    const ctx = canvas.getContext('2d');
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    // Create a new canvas with white background
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = canvas.width;
+    tempCanvas.height = canvas.height;
+    const tempCtx = tempCanvas.getContext('2d');
+
+    // Fill with white background
+    tempCtx.fillStyle = '#ffffff';
+    tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+
+    // Draw the original canvas on top
+    tempCtx.drawImage(canvas, 0, 0);
 
     const svgNS = "http://www.w3.org/2000/svg";
     const svg = document.createElementNS(svgNS, "svg");
-    svg.setAttribute("width", canvas.width);
-    svg.setAttribute("height", canvas.height);
-    svg.setAttribute("viewBox", `0 0 ${canvas.width} ${canvas.height}`);
+    svg.setAttribute("width", tempCanvas.width);
+    svg.setAttribute("height", tempCanvas.height);
+    svg.setAttribute("viewBox", `0 0 ${tempCanvas.width} ${tempCanvas.height}`);
+
+    // Add white background rectangle to SVG
+    const rect = document.createElementNS(svgNS, "rect");
+    rect.setAttribute("width", "100%");
+    rect.setAttribute("height", "100%");
+    rect.setAttribute("fill", "#ffffff");
+    svg.appendChild(rect);
 
     // Create a foreignObject to embed the canvas as an image
     const foreignObject = document.createElementNS(svgNS, "foreignObject");
-    foreignObject.setAttribute("width", canvas.width);
-    foreignObject.setAttribute("height", canvas.height);
+    foreignObject.setAttribute("width", tempCanvas.width);
+    foreignObject.setAttribute("height", tempCanvas.height);
 
     const img = document.createElement("img");
-    img.src = canvas.toDataURL('image/png');
-    img.width = canvas.width;
-    img.height = canvas.height;
+    img.src = tempCanvas.toDataURL('image/png');
+    img.width = tempCanvas.width;
+    img.height = tempCanvas.height;
 
     foreignObject.appendChild(img);
     svg.appendChild(foreignObject);
