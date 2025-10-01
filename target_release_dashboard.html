@@ -534,7 +534,8 @@
       }
 
       const baseJql = boardConfig.filterQuery ? `(${boardConfig.filterQuery}) AND ` : '';
-      const jql = `${baseJql}issuetype = Epic AND statusCategory != Done`;
+      const projectClause = '(project in (ANP, NPSCO, BF))';
+      const jql = `${baseJql}${projectClause} AND issuetype = Epic AND statusCategory != Done`;
 
       const results = [];
       let startAt = 0;
@@ -582,7 +583,8 @@
       for (let i = 0; i < epicKeys.length; i += chunkSize) {
         const chunk = epicKeys.slice(i, i + chunkSize);
         const formattedKeys = chunk.map(key => `'${String(key).replace(/'/g, "\\'")}'`).join(',');
-        const jql = `${baseJql}"Epic Link" in (${formattedKeys})`;
+        const projectClause = '(project in (ANP, NPSCO, BF))';
+        const jql = `${baseJql}${projectClause} AND "Epic Link" in (${formattedKeys})`;
         let startAt = 0;
         const maxResults = 100;
         for (let page = 0; page < 200; page++) {
