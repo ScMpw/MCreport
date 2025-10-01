@@ -985,14 +985,14 @@ function renderBoardCharts(displaySprints, allSprints, container) {
   const patternCanvas = document.createElement('canvas');
   patternCanvas.width = 6;
   patternCanvas.height = 6;
-  const pctx = patternCanvas.getContext('2d');
-  pctx.fillStyle = '#f59e0b';
-  pctx.fillRect(0, 0, 6, 6);
-  pctx.strokeStyle = '#ffffff';
-  pctx.beginPath();
-  pctx.moveTo(0, 6);
-  pctx.lineTo(6, 0);
-  pctx.stroke();
+  const patternCtx = patternCanvas.getContext('2d');
+  patternCtx.fillStyle = '#f59e0b';
+  patternCtx.fillRect(0, 0, 6, 6);
+  patternCtx.strokeStyle = '#ffffff';
+  patternCtx.beginPath();
+  patternCtx.moveTo(0, 6);
+  patternCtx.lineTo(6, 0);
+  patternCtx.stroke();
   const hatchPattern = dctx.createPattern(patternCanvas, 'repeat');
   const disruptionChart = new Chart(dctx, {
     type: 'bar',
