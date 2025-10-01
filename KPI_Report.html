@@ -24,7 +24,7 @@
     .story-table th, .story-table td { border: 1px solid #e5e7eb; padding: 4px 7px; font-size: 0.95em; text-align:left; }
     .story-table th { background:#e0e7ef; }
     .chart-section { margin-top: 30px; overflow-x: auto; }
-    .chart-section canvas { margin-top: 20px; }
+    .chart-section canvas { margin-top: 20px; background:#fff; }
     .chart-section h2 { margin-top: 20px; }
     .rating-zone-description { margin-top: 10px; font-size: 0.9em; }
     .rating-zone-description div { margin-top: 4px; }
@@ -62,7 +62,6 @@
     <label style="margin-left:5px;"><input type="checkbox" id="includeRating" checked> Rating Zone Chart</label>
     <label style="margin-left:5px;"><input type="checkbox" id="includeThroughput" checked> Throughput Chart</label>
     <label style="margin-left:5px;"><input type="checkbox" id="includeCycle" checked> Cycle Time Chart</label>
-    <label style="margin-left:5px;"><input type="checkbox" id="useVectorGraphics"> Use vector graphics (SVG)</label>
   </div>
   <div id="sprintRow" style="margin-top:10px; display:none;">
     <span>Sprints:</span>
@@ -1245,7 +1244,6 @@ function renderCharts(displaySprints, allSprints) {
   async function exportPDF() {
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
-    const useVector = document.getElementById('useVectorGraphics')?.checked;
     const charts = [...chartInstances];
     try {
       charts.forEach(ch => {
@@ -1296,7 +1294,7 @@ function renderCharts(displaySprints, allSprints) {
           pdf.text(`${boardTitle} - ${chartTitleEl.textContent.trim()}`, margin, y);
           y += 14;
           let rendered = false;
-          if (useVector && window.svg2pdf) {
+          if (window.svg2pdf) {
             try {
               const svgString = canvasToSVG(canvas);
               const parser = new DOMParser();
