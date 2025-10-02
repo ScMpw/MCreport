@@ -897,59 +897,48 @@
       return matches;
     }
 
-    function determineTargetVersions(fixVersions, targetReleases) {
+    function determineTargetVersions(fixVersions, targetReleases, options = {}) {
+      const { allowFixVersionFallback = true } = options;
       const targets = [];
       const seen = new Set();
 
-      const addTarget = (key, label, source, hasValue = true, priority = 0) => {
+      const addTarget = (key, label, source, hasValue = true) => {
         if (!key) return;
         const finalKey = key || '__none__';
-        if (seen.has(finalKey)) {
-          // Update existing target if new source has higher priority
-          const existing = targets.find(t => t.key === finalKey);
-          if (existing && priority > (existing.priority || 0)) {
-            existing.source = source;
-            existing.priority = priority;
-            existing.hasValue = hasValue;
-          }
-          return;
-        }
+        if (seen.has(finalKey)) return;
         seen.add(finalKey);
         targets.push({
           key: finalKey,
           label: label || 'No Target Version',
           hasValue,
           source,
-          priority,
         });
       };
 
-      // Priority: target-release field (3) > fixVersion (2) > none (1)
       if (Array.isArray(targetReleases) && targetReleases.length) {
         targetReleases.forEach(value => {
-          const label = value || 'No Target Version';
-          const key = value ? `target:${value}` : '__none__';
-          addTarget(key, label, value ? 'target-release' : 'none', Boolean(value), value ? 3 : 1);
+          if (!value) return;
+          const label = value;
+          const key = `target:${value}`;
+          addTarget(key, label, 'target-release', true);
         });
       }
 
-      if (Array.isArray(fixVersions) && fixVersions.length) {
+      if (allowFixVersionFallback && Array.isArray(fixVersions) && fixVersions.length) {
         fixVersions.forEach(version => {
           if (!version) return;
           const key = version.key || version.id || (version.name ? `name:${version.name}` : undefined) || '__none__';
           const label = version.name || 'Unnamed Release';
-          addTarget(key, label, 'fixVersion', key !== '__none__', 2);
+          addTarget(key, label, 'fixVersion', key !== '__none__');
         });
       }
 
       if (!targets.length) {
-        addTarget('__none__', 'No Target Version', 'none', false, 1);
+        addTarget('__none__', 'No Target Version', 'none', false);
       }
 
-      // Select primary: highest priority with value, or highest priority overall
-      const withValue = targets.filter(t => t.hasValue).sort((a, b) => (b.priority || 0) - (a.priority || 0));
-      const primary = withValue[0] || targets.sort((a, b) => (b.priority || 0) - (a.priority || 0))[0];
-      
+      const primary = targets.find(t => t.hasValue) || targets[0];
+
       return {
         primary,
         targets,
@@ -964,7 +953,7 @@
       const targetReleaseField = targetReleaseFieldKey || 'target-release';
       const targetReleaseValue = fields[targetReleaseField] ?? fields['target-release'];
       const targetReleases = parseTargetReleaseValues(targetReleaseValue);
-      const targetInfo = determineTargetVersions(fixVersions, targetReleases);
+      const targetInfo = determineTargetVersions(fixVersions, targetReleases, { allowFixVersionFallback: false });
       const targetPrimary = targetInfo.primary;
       const targetVersions = targetInfo.targets;
       const responsibleTeam = extractResponsibleTeam(fields, responsibleFieldKey);
