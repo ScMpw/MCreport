@@ -65,6 +65,7 @@
     .timeline-issue-meta .badge { background:#e0e7ff; color:#3730a3; }
     .timeline-issue-meta .badge.epic-badge { background:#fef3c7; color:#b45309; }
     .timeline-issue-meta .badge.missing-fix-version { background:#fee2e2; color:#b91c1c; border:1px solid #fecaca; }
+    .timeline-issue-meta .badge.inherited-parent { background:#ede9fe; color:#5b21b6; border:1px solid #ddd6fe; }
     .timeline-issue-meta .issue-team { background:#f1f5f9; border-radius:999px; padding:2px 8px; font-weight:600; }
     .timeline-issue-meta span.issue-epic { display:flex; align-items:center; gap:6px; }
     .timeline-issue-meta span.issue-epic a { color:#4338ca; text-decoration:none; font-weight:600; }
@@ -1651,6 +1652,9 @@
       const isClosedStory = !issue.isEpic && issueType === 'story' && statusClass === 'done' && !hasFixVersion;
       if (isClosedStory) {
         metaParts.push('<span class="badge missing-fix-version" title="Closed story without a fix version">No Fix Version</span>');
+      }
+      if (!issue.hasTargetVersion && timelineSource === 'inherited') {
+        metaParts.push('<span class="badge inherited-parent" title="Issue inherits its release from the parent">Parent Target</span>');
       }
       if (shouldShowTarget) {
         metaParts.push(`<span>Target: ${timelineTarget}${targetSuffix}</span>`);
