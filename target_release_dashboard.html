@@ -750,17 +750,34 @@
 
     // Planning helpers will be defined below.
 
-    function parseTargetReleaseValue(raw) {
-      if (!raw) return undefined;
-      if (typeof raw === 'string') return raw;
-      if (Array.isArray(raw)) {
-        const first = raw[0];
-        if (!first) return undefined;
-        if (typeof first === 'string') return first;
-        if (typeof first === 'object') return first.name || first.value || undefined;
+    function parseTargetReleaseValues(raw) {
+      if (!raw) return [];
+      const values = [];
+      const seen = new Set();
+      const addValue = (value) => {
+        if (!value) return;
+        const str = String(value).trim();
+        if (!str) return;
+        const key = str.toLowerCase();
+        if (seen.has(key)) return;
+        seen.add(key);
+        values.push(str);
+      };
+      if (typeof raw === 'string') {
+        addValue(raw);
+      } else if (Array.isArray(raw)) {
+        raw.forEach(item => {
+          if (!item) return;
+          if (typeof item === 'string') {
+            addValue(item);
+          } else if (typeof item === 'object') {
+            addValue(item.name || item.value || item.label);
+          }
+        });
+      } else if (typeof raw === 'object') {
+        addValue(raw.name || raw.value || raw.label);
       }
-      if (typeof raw === 'object') return raw.name || raw.value || undefined;
-      return undefined;
+      return values;
     }
 
     function parseFixVersions(raw) {
@@ -818,17 +835,49 @@
       return matches;
     }
 
-    function determineTargetVersion(fixVersions, targetRelease) {
+    function determineTargetVersions(fixVersions, targetReleases) {
+      const targets = [];
+      const seen = new Set();
+
+      const addTarget = (key, label, source, hasValue = true) => {
+        if (!key) return;
+        const finalKey = key || '__none__';
+        if (seen.has(finalKey)) return;
+        seen.add(finalKey);
+        targets.push({
+          key: finalKey,
+          label: label || 'No Target Version',
+          hasValue,
+          source,
+        });
+      };
+
       if (Array.isArray(fixVersions) && fixVersions.length) {
-        const version = fixVersions[0];
-        const key = version.key || (version.name ? `name:${version.name}` : undefined) || '__none__';
-        const label = version.name || 'Unnamed Release';
-        return { key, label, hasValue: true, source: 'fixVersion' };
+        fixVersions.forEach(version => {
+          if (!version) return;
+          const key = version.key || (version.name ? `name:${version.name}` : undefined) || '__none__';
+          const label = version.name || 'Unnamed Release';
+          addTarget(key, label, 'fixVersion', key !== '__none__');
+        });
       }
-      if (targetRelease) {
-        return { key: `target:${targetRelease}`, label: targetRelease, hasValue: true, source: 'target-release' };
+
+      if (Array.isArray(targetReleases) && targetReleases.length) {
+        targetReleases.forEach(value => {
+          const label = value || 'No Target Version';
+          const key = value ? `target:${value}` : '__none__';
+          addTarget(key, label, value ? 'target-release' : 'none', Boolean(value));
+        });
       }
-      return { key: '__none__', label: 'No Target Version', hasValue: false, source: 'none' };
+
+      if (!targets.length) {
+        addTarget('__none__', 'No Target Version', 'none', false);
+      }
+
+      const primary = targets.find(target => target.hasValue) || targets[0];
+      return {
+        primary,
+        targets,
+      };
     }
 
     function normalizeEpic(issue, boardId, responsibleFieldKey) {
@@ -836,8 +885,10 @@
       const labels = Array.isArray(fields.labels) ? fields.labels.slice() : [];
       const pis = extractPis(labels);
       const fixVersions = parseFixVersions(fields.fixVersions);
-      const targetRelease = parseTargetReleaseValue(fields['target-release']);
-      const targetInfo = determineTargetVersion(fixVersions, targetRelease);
+      const targetReleases = parseTargetReleaseValues(fields['target-release']);
+      const targetInfo = determineTargetVersions(fixVersions, targetReleases);
+      const targetPrimary = targetInfo.primary;
+      const targetVersions = targetInfo.targets;
       const responsibleTeam = extractResponsibleTeam(fields, responsibleFieldKey);
 
       return {
@@ -849,11 +900,13 @@
         responsibleTeam: responsibleTeam || undefined,
         boardIds: new Set([Number(boardId)]),
         fixVersions,
-        targetRelease: targetRelease || undefined,
-        targetVersion: targetInfo.label,
-        targetVersionKey: targetInfo.key,
-        hasTargetVersion: targetInfo.hasValue,
-        targetSource: targetInfo.source,
+        targetRelease: targetReleases[0] || undefined,
+        targetReleases,
+        targetVersion: targetPrimary.label,
+        targetVersionKey: targetPrimary.key,
+        hasTargetVersion: targetPrimary.hasValue,
+        targetSource: targetPrimary.source,
+        targetVersions,
         pis,
         labels,
         updated: fields.updated ? String(fields.updated) : undefined,
@@ -893,12 +946,17 @@
       }
       const pis = extractPis(labels);
       const fixVersions = parseFixVersions(fields.fixVersions);
-      const targetRelease = parseTargetReleaseValue(fields['target-release']);
-      const targetInfo = determineTargetVersion(fixVersions, targetRelease);
+      const targetReleases = parseTargetReleaseValues(fields['target-release']);
+      const targetInfo = determineTargetVersions(fixVersions, targetReleases);
+      const targetPrimary = targetInfo.primary;
+      const targetVersions = targetInfo.targets;
       const responsibleTeam = parent?.responsibleTeam || extractResponsibleTeam(fields, responsibleFieldKey);
 
-      const parentTargetVersion = parent?.targetVersion || targetInfo.label || 'No Target Version';
-      const parentTargetVersionKey = parent?.targetVersionKey || targetInfo.key || '__none__';
+      const parentTargetVersion = parent?.targetVersion || targetPrimary.label || 'No Target Version';
+      const parentTargetVersionKey = parent?.targetVersionKey || targetPrimary.key || '__none__';
+      const parentTargetVersions = parent?.targetVersions?.length
+        ? parent.targetVersions.map(target => ({ ...target }))
+        : targetVersions.map(target => ({ ...target }));
 
       return {
         id: String(issue.id || issue.key || ''),
@@ -910,15 +968,18 @@
         responsibleTeam: responsibleTeam || undefined,
         boardIds: new Set([Number(boardId)]),
         fixVersions,
-        targetRelease: targetRelease || undefined,
-        targetVersion: targetInfo.label,
-        targetVersionKey: targetInfo.key,
-        hasTargetVersion: targetInfo.hasValue,
-        targetSource: targetInfo.source,
+        targetRelease: targetReleases[0] || undefined,
+        targetReleases,
+        targetVersion: targetPrimary.label,
+        targetVersionKey: targetPrimary.key,
+        hasTargetVersion: targetPrimary.hasValue,
+        targetSource: targetPrimary.source,
+        targetVersions,
         parentKey: epicKey || parent?.key,
         parentSummary: parent?.summary,
         parentTargetVersion: parentTargetVersion,
         parentTargetVersionKey: parentTargetVersionKey,
+        parentTargetVersions,
         parentPis: parent?.pis?.length ? parent.pis.slice() : (pis.length ? pis : []),
         pis,
         project: fields.project?.name ? String(fields.project.name) : undefined,
@@ -949,6 +1010,145 @@
     function computePct(withTarget, total) {
       if (!total) return 0;
       return Number(((withTarget / total) * 100).toFixed(1));
+    }
+
+    function collectTargetVersionKeys(entity, includeParent = false) {
+      const keys = new Set();
+
+      const addTargets = targets => {
+        if (!Array.isArray(targets)) return;
+        targets.forEach(target => {
+          if (!target) return;
+          const key = target.key || '__none__';
+          keys.add(key);
+        });
+      };
+
+      if (entity?.targetVersions?.length) {
+        addTargets(entity.targetVersions);
+      } else if (entity?.targetVersionKey) {
+        keys.add(entity.targetVersionKey);
+      }
+
+      if (includeParent) {
+        if (entity?.parentTargetVersions?.length) {
+          addTargets(entity.parentTargetVersions);
+        } else if (entity?.parentTargetVersionKey) {
+          keys.add(entity.parentTargetVersionKey);
+        }
+      }
+
+      if (!keys.size) keys.add('__none__');
+      return Array.from(keys);
+    }
+
+    function getAllTargetVersionsForEntity(entity, includeParent = false) {
+      const map = new Map();
+      const addTarget = (target, overrideSource) => {
+        if (!target) return;
+        const key = target.key || '__none__';
+        const label = target.label || 'No Target Version';
+        if (map.has(key)) return;
+        map.set(key, {
+          key,
+          label,
+          hasValue: target.hasValue !== false && key !== '__none__',
+          source: overrideSource || target.source || 'none',
+        });
+      };
+
+      if (entity?.targetVersions?.length) {
+        entity.targetVersions.forEach(target => addTarget(target));
+      } else if (entity?.targetVersionKey) {
+        addTarget({
+          key: entity.targetVersionKey,
+          label: entity.targetVersion,
+          hasValue: entity.hasTargetVersion,
+          source: entity.targetSource,
+        });
+      }
+
+      if (includeParent) {
+        if (entity?.parentTargetVersions?.length) {
+          entity.parentTargetVersions.forEach(target => addTarget(target, 'inherited'));
+        } else if (entity?.parentTargetVersionKey) {
+          addTarget({
+            key: entity.parentTargetVersionKey,
+            label: entity.parentTargetVersion,
+            hasValue: entity.parentTargetVersionKey !== '__none__',
+            source: 'inherited',
+          });
+        }
+      }
+
+      if (!map.size) {
+        addTarget({ key: '__none__', label: 'No Target Version', hasValue: false, source: 'none' });
+      }
+
+      return Array.from(map.values());
+    }
+
+    function formatTargetVersionLabels(targets) {
+      if (!Array.isArray(targets) || !targets.length) return 'No Target Version';
+      const seen = new Set();
+      const labels = [];
+      targets.forEach(target => {
+        if (!target) return;
+        if (!target.hasValue || target.key === '__none__') return;
+        const label = target.label || 'No Target Version';
+        const key = label.toLowerCase();
+        if (seen.has(key)) return;
+        seen.add(key);
+        labels.push(label);
+      });
+      if (labels.length) return labels.join(', ');
+      return targets[0]?.label || 'No Target Version';
+    }
+
+    function resolveTimelineTargets(entity, includeParent = false) {
+      const directTargets = (entity?.targetVersions?.length
+        ? entity.targetVersions
+        : [{
+            key: entity?.targetVersionKey || '__none__',
+            label: entity?.targetVersion || 'No Target Version',
+            hasValue: entity?.hasTargetVersion,
+            source: entity?.targetSource || 'none',
+          }]
+      ).map(target => ({ ...target }));
+
+      const hasDirectValue = directTargets.some(target => target && target.hasValue && target.key !== '__none__');
+
+      if (hasDirectValue) {
+        return directTargets;
+      }
+
+      if (includeParent) {
+        const parentTargets = (entity?.parentTargetVersions?.length
+          ? entity.parentTargetVersions
+          : [{
+              key: entity?.parentTargetVersionKey || '__none__',
+              label: entity?.parentTargetVersion || 'No Target Version',
+              hasValue: entity?.parentTargetVersionKey && entity.parentTargetVersionKey !== '__none__',
+              source: 'inherited',
+            }]
+        ).map(target => ({ ...target, source: 'inherited' }));
+
+        const hasParentValue = parentTargets.some(target => target && target.hasValue && target.key !== '__none__');
+
+        if (hasParentValue) {
+          return parentTargets;
+        }
+
+        if (parentTargets.length) {
+          return parentTargets;
+        }
+      }
+
+      if (directTargets.length) {
+        return directTargets;
+      }
+
+      return [{ key: '__none__', label: 'No Target Version', hasValue: false, source: includeParent ? 'inherited' : 'none' }];
     }
 
     function aggregateIssues(issues) {
@@ -1091,8 +1291,8 @@
 
       const filteredEpics = state.epics.filter(epic => {
         if (selectedVersions.size) {
-          const versionKey = epic.targetVersionKey || '__none__';
-          if (!selectedVersions.has(versionKey)) return false;
+          const keys = collectTargetVersionKeys(epic);
+          if (!keys.some(key => selectedVersions.has(key))) return false;
         }
 
         if (selectedPiBases.size) {
@@ -1134,8 +1334,8 @@
         }
 
         if (selectedVersions.size) {
-          const versionKey = issue.targetVersionKey || '__none__';
-          if (!selectedVersions.has(versionKey)) return false;
+          const keys = collectTargetVersionKeys(issue, true);
+          if (!keys.some(key => selectedVersions.has(key))) return false;
         }
 
         if (selectedPiBases.size) {
@@ -1292,41 +1492,47 @@
       const timelineItems = [];
 
       state.filteredIssues.forEach(issue => {
-        const item = {
+        const baseItem = {
           ...issue,
           boardIds: issue.boardIds && issue.boardIds.size ? new Set(issue.boardIds) : new Set(),
           isEpic: false,
-          timelineTargetVersion: issue.targetVersion,
-          timelineTargetVersionKey: issue.targetVersionKey,
-          timelineTargetSource: issue.targetSource,
         };
-        const inheritsFromEpic = (!issue.hasTargetVersion || !issue.targetVersionKey || issue.targetVersionKey === '__none__')
-          && issue.parentTargetVersionKey
-          && issue.parentTargetVersionKey !== '__none__';
-        if (inheritsFromEpic) {
-          item.timelineTargetVersion = issue.parentTargetVersion;
-          item.timelineTargetVersionKey = issue.parentTargetVersionKey;
-          item.timelineTargetSource = 'inherited';
-        }
-        timelineItems.push(item);
+        const targets = resolveTimelineTargets(issue, true);
+        targets.forEach(target => {
+          const item = {
+            ...baseItem,
+            timelineTargetVersion: target.label,
+            timelineTargetVersionKey: target.key,
+            timelineTargetSource: target.source,
+            hasTargetVersion: target.hasValue,
+          };
+          timelineItems.push(item);
+        });
       });
 
       state.filteredEpics.forEach(epic => {
-        const item = {
+        const baseItem = {
           ...epic,
           type: 'Epic',
           isEpic: true,
           boardIds: epic.boardIds && epic.boardIds.size ? new Set(epic.boardIds) : new Set(),
-          timelineTargetVersion: epic.targetVersion,
-          timelineTargetVersionKey: epic.targetVersionKey,
-          timelineTargetSource: epic.targetSource,
           parentKey: undefined,
           parentSummary: undefined,
           parentTargetVersion: epic.targetVersion,
           parentTargetVersionKey: epic.targetVersionKey,
           parentPis: epic.pis,
         };
-        timelineItems.push(item);
+        const targets = resolveTimelineTargets(epic, false);
+        targets.forEach(target => {
+          const item = {
+            ...baseItem,
+            timelineTargetVersion: target.label,
+            timelineTargetVersionKey: target.key,
+            timelineTargetSource: target.source,
+            hasTargetVersion: target.hasValue,
+          };
+          timelineItems.push(item);
+        });
       });
 
       timelineItems.forEach(issue => {
@@ -1625,11 +1831,12 @@
       const search = searchInput ? searchInput.value.trim().toLowerCase() : '';
       const rows = state.filteredEpics.filter(epic => {
         if (!search) return true;
+        const targetLabel = formatTargetVersionLabels(epic.targetVersions);
         const values = [
           epic.key,
           epic.summary,
           epic.responsibleTeam,
-          epic.targetVersion,
+          targetLabel,
           epic.pis.map(pi => pi.label).join(' '),
         ].join(' ').toLowerCase();
         return values.includes(search);
@@ -1647,11 +1854,12 @@
           : '—';
         const team = epic.responsibleTeam || 'Unassigned Team';
         const piLabels = epic.pis.length ? epic.pis.map(pi => pi.label).join(', ') : '—';
+        const targetLabel = formatTargetVersionLabels(epic.targetVersions);
         const row = document.createElement('tr');
         row.innerHTML = `
           <td><a href="https://${domain}/browse/${epic.key}" target="_blank" rel="noopener">${epic.key}</a></td>
           <td>${epic.summary || '—'}</td>
-          <td>${epic.targetVersion || 'No Target Version'}</td>
+          <td>${targetLabel}</td>
           <td>${team}</td>
           <td>${piLabels}</td>
           <td>${epic.childTotal || 0}</td>
@@ -1670,11 +1878,14 @@
       const versions = new Map();
 
       state.epics.forEach(epic => {
-        const versionKey = epic.targetVersionKey || '__none__';
-        const versionLabel = epic.targetVersion || 'No Target Version';
-        if (!versions.has(versionKey)) {
-          versions.set(versionKey, { value: versionKey, label: versionLabel });
-        }
+        const targets = getAllTargetVersionsForEntity(epic);
+        targets.forEach(target => {
+          const key = target.key || '__none__';
+          const label = target.label || 'No Target Version';
+          if (!versions.has(key)) {
+            versions.set(key, { value: key, label });
+          }
+        });
 
         if (!epic.pis.length) {
           if (!allPis.has('__none__')) allPis.set('__none__', { value: '__none__', label: 'No Product Increment' });
@@ -1701,11 +1912,14 @@
       state.normalizedIssues.forEach(issue => {
         if (issue.parentKey) return;
 
-        const versionKey = issue.targetVersionKey || '__none__';
-        const versionLabel = issue.targetVersion || 'No Target Version';
-        if (!versions.has(versionKey)) {
-          versions.set(versionKey, { value: versionKey, label: versionLabel });
-        }
+        const targets = getAllTargetVersionsForEntity(issue, true);
+        targets.forEach(target => {
+          const key = target.key || '__none__';
+          const label = target.label || 'No Target Version';
+          if (!versions.has(key)) {
+            versions.set(key, { value: key, label });
+          }
+        });
 
         if (!issue.pis || !issue.pis.length) {
           if (!allPis.has('__none__')) {
@@ -1885,6 +2099,12 @@
                   existing.targetVersionKey = normalized.targetVersionKey;
                   existing.targetSource = normalized.targetSource;
                 }
+                if (normalized.targetVersions && normalized.targetVersions.length) {
+                  existing.targetVersions = normalized.targetVersions.map(target => ({ ...target }));
+                }
+                if (normalized.targetReleases && normalized.targetReleases.length) {
+                  existing.targetReleases = normalized.targetReleases.slice();
+                }
               } else {
                 childMap.set(normalized.key, normalized);
               }
@@ -1909,11 +2129,18 @@
                   existing.targetVersionKey = normalized.targetVersionKey;
                   existing.targetSource = normalized.targetSource;
                 }
+                if (normalized.targetVersions && normalized.targetVersions.length) {
+                  existing.targetVersions = normalized.targetVersions.map(target => ({ ...target }));
+                }
+                if (normalized.targetReleases && normalized.targetReleases.length) {
+                  existing.targetReleases = normalized.targetReleases.slice();
+                }
                 if (!existing.parentKey && normalized.parentKey) {
                   existing.parentKey = normalized.parentKey;
                   existing.parentSummary = normalized.parentSummary;
                   existing.parentTargetVersion = normalized.parentTargetVersion;
                   existing.parentTargetVersionKey = normalized.parentTargetVersionKey;
+                  existing.parentTargetVersions = normalized.parentTargetVersions?.map(target => ({ ...target })) || existing.parentTargetVersions;
                   existing.parentPis = normalized.parentPis;
                 }
               } else {
