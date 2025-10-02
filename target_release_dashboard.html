@@ -1628,6 +1628,52 @@
         });
       });
 
+      console.log('Release buckets:', Array.from(releaseBuckets.entries()).map(([key, bucket]) => ({
+        key,
+        name: bucket.release?.name,
+        id: bucket.release?.id,
+      })));
+
+      const normalizeVersionName = (name) => {
+        if (!name) return '';
+        return name.trim().toLowerCase().replace(/\s+/g, ' ');
+      };
+
+      const findBucketByNormalizedName = (normalizedName) => {
+        if (!normalizedName) return null;
+        for (const bucket of releaseBuckets.values()) {
+          if (bucket.release) {
+            const normalizedReleaseName = normalizeVersionName(bucket.release.name);
+            if (normalizedReleaseName === normalizedName) {
+              return bucket;
+            }
+          }
+        }
+        return null;
+      };
+
+      const findMatchingRelease = (targetKey, targetLabel) => {
+        if (releaseBuckets.has(targetKey)) {
+          return releaseBuckets.get(targetKey);
+        }
+
+        const normalizedLabel = normalizeVersionName(targetLabel);
+        let bucket = findBucketByNormalizedName(normalizedLabel);
+        if (bucket) return bucket;
+
+        if (targetKey.startsWith('target:')) {
+          bucket = findBucketByNormalizedName(normalizeVersionName(targetKey.slice('target:'.length)));
+          if (bucket) return bucket;
+        }
+
+        if (targetKey.startsWith('name:')) {
+          bucket = findBucketByNormalizedName(normalizeVersionName(targetKey.slice('name:'.length)));
+          if (bucket) return bucket;
+        }
+
+        return null;
+      };
+
       const orphanBuckets = new Map();
       const ensureOrphanBucket = (key, issue) => {
         if (orphanBuckets.has(key)) return orphanBuckets.get(key);
@@ -1700,7 +1746,18 @@
 
       timelineItems.forEach(issue => {
         const key = issue.timelineTargetVersionKey || issue.targetVersionKey || '__none__';
-        const bucket = releaseBuckets.get(key) || ensureOrphanBucket(key, issue);
+        const label = issue.timelineTargetVersion || issue.targetVersion || 'No Target Version';
+
+        console.log(`Matching issue ${issue.key}: targetKey=${key}, targetLabel=${label}`);
+
+        let bucket = findMatchingRelease(key, label);
+
+        console.log(`  -> Matched to bucket: ${bucket?.key || 'ORPHAN'}`);
+
+        if (!bucket) {
+          bucket = ensureOrphanBucket(key, issue);
+        }
+
         bucket.issues.push(issue);
       });
 
