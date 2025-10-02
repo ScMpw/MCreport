@@ -1419,6 +1419,7 @@
       const timelineTarget = issue.timelineTargetVersion || issue.targetVersion;
       const timelineSource = issue.timelineTargetSource || issue.targetSource;
       const targetSuffix = timelineSource === 'inherited' ? ' (from epic)' : '';
+      const issueType = (issue.type || '').toLowerCase();
       const metaParts = [
         `<span class="${badgeClass}">${issue.type}</span>`,
         `<span class="status-pill ${getStatusClass(issue.status)}">${issue.status}</span>`,
@@ -1428,7 +1429,10 @@
         const epicSummary = issue.parentSummary ? ` – ${issue.parentSummary}` : '';
         metaParts.push(`<span class="issue-epic">Epic <a href="https://${domain}/browse/${issue.parentKey}" target="_blank" rel="noopener">${issue.parentKey}</a>${epicSummary}</span>`);
       }
-      metaParts.push(`<span>Target: ${timelineTarget}${targetSuffix}</span>`);
+      const shouldShowTarget = issue.isEpic || issueType !== 'task';
+      if (shouldShowTarget) {
+        metaParts.push(`<span>Target: ${timelineTarget}${targetSuffix}</span>`);
+      }
       if (boards) metaParts.push(`<span>Boards: ${boards}</span>`);
       if (issue.assignee) metaParts.push(`<span>Assignee: ${issue.assignee}</span>`);
       if (updated) metaParts.push(`<span>Updated ${updated}</span>`);
