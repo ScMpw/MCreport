@@ -802,18 +802,41 @@
 
     function parseTargetReleaseValues(raw) {
       if (!raw) return [];
-      const values = [];
       const seenValues = new Set();
       const visitedObjects = new WeakSet();
 
-      const addValue = (value) => {
-        if (!value) return;
+      const primaryValues = [];
+      const dateFallbacks = [];
+      const numericFallbacks = [];
+
+      const classifyString = (value) => {
+        if (!value) return 'skip';
         const str = String(value).trim();
-        if (!str) return;
+        if (!str) return 'skip';
+        if (/^https?:\/\//i.test(str)) return 'skip';
+        if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return 'date';
+        if (/^\d+$/.test(str)) return 'numeric';
+        return 'normal';
+      };
+
+      const recordValue = (value, type) => {
+        const str = String(value).trim();
         const key = str.toLowerCase();
         if (seenValues.has(key)) return;
         seenValues.add(key);
-        values.push(str);
+        if (type === 'date') {
+          dateFallbacks.push(str);
+        } else if (type === 'numeric') {
+          numericFallbacks.push(str);
+        } else {
+          primaryValues.push(str);
+        }
+      };
+
+      const addValue = (value) => {
+        const type = classifyString(value);
+        if (type === 'skip') return;
+        recordValue(value, type);
       };
 
       const candidateKeys = ['name', 'label', 'value', 'release', 'targetRelease', 'target', 'title'];
@@ -823,6 +846,11 @@
 
         if (typeof node === 'string') {
           addValue(node);
+          return;
+        }
+
+        if (typeof node === 'number') {
+          addValue(String(node));
           return;
         }
 
@@ -842,15 +870,23 @@
           });
 
           Object.keys(node).forEach(key => {
-            if (!candidateKeys.includes(key)) {
-              walk(node[key], depth + 1);
+            if (candidateKeys.includes(key)) return;
+            const value = node[key];
+            if (value && (Array.isArray(value) || typeof value === 'object')) {
+              walk(value, depth + 1);
             }
           });
         }
       };
 
       walk(raw);
-      return values;
+      if (!primaryValues.length && dateFallbacks.length) {
+        primaryValues.push(dateFallbacks[0]);
+      }
+      if (!primaryValues.length && numericFallbacks.length) {
+        primaryValues.push(numericFallbacks[0]);
+      }
+      return primaryValues;
     }
 
     function resolveTargetReleaseValue(fields, targetReleaseField) {
