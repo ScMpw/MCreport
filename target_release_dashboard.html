@@ -558,24 +558,46 @@
         const fields = await resp.json();
         let fieldKey = 'target-release';
         if (Array.isArray(fields)) {
-          const normalized = fields.map(f => ({
-            key: f.key || f.id,
-            name: (f.name || '').toLowerCase(),
-          }));
-          const exact = normalized.find(f => f.key === 'target-release');
-          if (exact) {
-            fieldKey = exact.key;
-          } else {
-            const candidate = normalized.find(f => /target[\s-]?release/.test(f.name));
-            if (candidate && candidate.key) {
-              fieldKey = candidate.key;
+          let customCandidate;
+          let fallbackCandidate;
+          let defaultKey;
+          fields.forEach(field => {
+            const key = field?.key || field?.id;
+            const name = (field?.name || '').toLowerCase();
+            if (!key) return;
+            if (key === 'target-release') {
+              defaultKey = key;
             }
-          }
+            if (!name) return;
+            if (!/target[\s-]?release/.test(name)) return;
+            if (key.startsWith('customfield_') && !customCandidate) {
+              customCandidate = key;
+            }
+            if (!fallbackCandidate) {
+              fallbackCandidate = key;
+            }
+          });
+          fieldKey = customCandidate || fallbackCandidate || defaultKey || fieldKey;
         }
         return fieldKey;
       })();
       targetFieldCache.set(domain, promise);
       return promise;
+    }
+
+    function ensureTargetReleaseField(fields, targetReleaseField) {
+      if (!Array.isArray(fields)) return;
+      const set = new Set(fields);
+      const preferred = targetReleaseField && targetReleaseField !== 'target-release'
+        ? targetReleaseField
+        : 'target-release';
+      if (preferred && !set.has(preferred)) {
+        fields.push(preferred);
+        set.add(preferred);
+      }
+      if (preferred !== 'target-release' && !set.has('target-release')) {
+        fields.push('target-release');
+      }
     }
 
     async function jiraSearch(domain, payload) {
@@ -653,10 +675,7 @@
         'project',
         'updated',
       ];
-      const targetField = targetReleaseField && targetReleaseField !== 'target-release'
-        ? targetReleaseField
-        : 'target-release';
-      fields.push(targetField);
+      ensureTargetReleaseField(fields, targetReleaseField);
       if (responsibleField && responsibleField !== 'responsible-team') {
         fields.push(responsibleField);
       } else {
@@ -701,10 +720,7 @@
         'customfield_10014',
         'parent',
       ];
-      const targetField = targetReleaseField && targetReleaseField !== 'target-release'
-        ? targetReleaseField
-        : 'target-release';
-      fields.push(targetField);
+      ensureTargetReleaseField(fields, targetReleaseField);
       if (responsibleField && responsibleField !== 'responsible-team') {
         fields.push(responsibleField);
       } else {
@@ -752,10 +768,7 @@
         'customfield_10014',
         'parent',
       ];
-      const targetField = targetReleaseField && targetReleaseField !== 'target-release'
-        ? targetReleaseField
-        : 'target-release';
-      fields.push(targetField);
+      ensureTargetReleaseField(fields, targetReleaseField);
       if (responsibleField && responsibleField !== 'responsible-team') {
         fields.push(responsibleField);
       } else {
