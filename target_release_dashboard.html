@@ -42,6 +42,17 @@
     th { background:#f3f4f6; text-transform:uppercase; font-size:0.76em; letter-spacing:0.06em; color:#4b5563; }
     .table-controls { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:10px; }
     .table-controls input { padding:7px 10px; border:1px solid #d1d5db; border-radius:8px; font-size:0.9em; }
+    .timeline { position:relative; margin-top:16px; padding-left:24px; }
+    .timeline::before { content:''; position:absolute; left:8px; top:0; bottom:0; width:2px; background:#e5e7eb; }
+    .timeline-item { position:relative; margin-bottom:20px; padding-left:16px; }
+    .timeline-item:last-child { margin-bottom:0; }
+    .timeline-marker { position:absolute; left:-16px; top:6px; width:12px; height:12px; border-radius:999px; background:#6366f1; box-shadow:0 0 0 4px rgba(99,102,241,0.15); }
+    .timeline-content { background:#f9fafb; border:1px solid #e5e7eb; border-radius:14px; padding:14px 16px; box-shadow:0 1px 2px rgba(15,23,42,0.05); }
+    .timeline-title { font-size:1.05em; font-weight:600; color:#111827; margin-bottom:6px; }
+    .timeline-dates { display:flex; flex-wrap:wrap; gap:12px; font-size:0.9em; color:#4b5563; }
+    .timeline-dates span { display:flex; align-items:center; gap:6px; }
+    .timeline-date-label { font-weight:600; text-transform:uppercase; font-size:0.75em; letter-spacing:0.08em; color:#6b7280; }
+    .timeline-empty { background:#f9fafb; border:1px dashed #cbd5f5; border-radius:12px; padding:30px; text-align:center; color:#6b7280; font-size:0.95em; margin-top:20px; }
     .badge { background:#e5e7eb; border-radius:999px; padding:2px 10px; font-size:0.78em; font-weight:600; color:#374151; }
     .status-pill { border-radius:999px; padding:2px 10px; font-size:0.78em; font-weight:600; color:#fff; display:inline-block; }
     .status-pill.default { background:#6b7280; }
@@ -139,27 +150,10 @@
       <div class="section-title">Upcoming Releases</div>
       <div class="table-controls">
         <div style="font-size:0.85em; color:#6b7280;">Unreleased or future-dated versions from the selected boards.</div>
-        <input id="releaseSearch" placeholder="Search by release, board or project...">
+        <input id="releaseSearch" placeholder="Search releases...">
       </div>
-      <div class="table-wrap" style="overflow-x:auto;">
-        <table>
-          <thead>
-            <tr>
-              <th>Release</th>
-              <th>Board</th>
-              <th>Project</th>
-              <th>Status</th>
-              <th>Start</th>
-              <th>Release Date</th>
-              <th>Issues Planned</th>
-              <th>With Target</th>
-              <th>Coverage</th>
-            </tr>
-          </thead>
-          <tbody id="releasesTableBody"></tbody>
-        </table>
-      </div>
-      <div id="releasesEmpty" class="empty-state" style="display:none;">No upcoming releases were found for the selected boards.</div>
+      <div id="releasesTimeline" class="timeline"></div>
+      <div id="releasesEmpty" class="timeline-empty" style="display:none;">No upcoming releases were found for the selected boards.</div>
     </div>
 
     <div id="epicSection" style="display:none;">
@@ -1052,7 +1046,7 @@
         renderKpis();
         renderEpicTable();
         renderChildTable();
-        renderReleasesTable();
+        renderReleasesTimeline();
         setLoading('No epics found for the selected boards.');
         return;
       }
@@ -1112,7 +1106,7 @@
       updateCharts();
       renderEpicTable();
       renderChildTable();
-      renderReleasesTable();
+      renderReleasesTimeline();
 
       if (!filteredEpics.length) {
         setLoading('No epics match the current filter selection.');
@@ -1140,14 +1134,14 @@
       });
     }
 
-    function renderReleasesTable() {
-      const tbody = document.getElementById('releasesTableBody');
-      if (!tbody) return;
+    function renderReleasesTimeline() {
+      const container = document.getElementById('releasesTimeline');
+      if (!container) return;
       const releases = getUpcomingReleases();
       const search = document.getElementById('releaseSearch').value.trim().toLowerCase();
 
       if (!releases.length) {
-        tbody.innerHTML = '';
+        container.innerHTML = '';
         document.getElementById('releasesSection').style.display = 'none';
         document.getElementById('releasesEmpty').style.display = '';
         return;
@@ -1156,72 +1150,43 @@
       document.getElementById('releasesSection').style.display = '';
       document.getElementById('releasesEmpty').style.display = 'none';
 
-      const statsMap = new Map();
-      releases.forEach(rel => {
-        statsMap.set(rel.uniqueKey, {
-          release: rel,
-          total: 0,
-          withTarget: 0,
-        });
-      });
-
-      state.filteredIssues.forEach(issue => {
-        if (!issue.fixVersions || !issue.fixVersions.length) return;
-        issue.fixVersions.forEach(version => {
-          if (!version.key) return;
-          const stats = statsMap.get(version.key);
-          if (!stats) return;
-          stats.total += 1;
-          if (issue.hasTargetVersion) stats.withTarget += 1;
-        });
-      });
-
-      const rows = Array.from(statsMap.values()).map(stats => {
-        const release = stats.release;
+      const filtered = releases.filter(release => {
+        if (!search) return true;
         const boardName = state.boardsMap.get(Number(release.boardId))?.name || `Board ${release.boardId}`;
         const projectName = release.projectName || '';
         const projectKey = release.projectKey || '';
-        const displayProject = projectName || projectKey || '—';
-        const matchHaystack = [
+        const haystack = [
           release.name,
           boardName,
           projectName,
           projectKey,
         ].join(' ').toLowerCase();
-        if (search && !matchHaystack.includes(search)) return null;
-        const pct = stats.total ? Math.round((stats.withTarget / stats.total) * 100) : 0;
-        return {
-          release,
-          boardName,
-          displayProject,
-          status: release.released ? 'Released' : 'Unreleased',
-          total: stats.total,
-          withTarget: stats.withTarget,
-          pct,
-        };
-      }).filter(Boolean);
+        return haystack.includes(search);
+      });
 
-      tbody.innerHTML = '';
-      if (!rows.length) {
+      container.innerHTML = '';
+      if (!filtered.length) {
         document.getElementById('releasesEmpty').style.display = '';
         return;
       }
       document.getElementById('releasesEmpty').style.display = 'none';
 
-      rows.forEach(row => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${row.release.name}</td>
-          <td>${row.boardName}</td>
-          <td>${row.displayProject}</td>
-          <td>${row.status}</td>
-          <td>${row.release.startDate ? formatDate(row.release.startDate) : '—'}</td>
-          <td>${row.release.releaseDate ? formatDate(row.release.releaseDate) : '—'}</td>
-          <td>${row.total}</td>
-          <td>${row.withTarget}</td>
-          <td>${row.pct}%</td>
+      filtered.forEach(release => {
+        const item = document.createElement('div');
+        item.className = 'timeline-item';
+        const startDate = release.startDate ? formatDate(release.startDate) : 'Not set';
+        const releaseDate = release.releaseDate ? formatDate(release.releaseDate) : 'Not set';
+        item.innerHTML = `
+          <div class="timeline-marker"></div>
+          <div class="timeline-content">
+            <div class="timeline-title">${release.name}</div>
+            <div class="timeline-dates">
+              <span><span class="timeline-date-label">Start</span> ${startDate}</span>
+              <span><span class="timeline-date-label">Release</span> ${releaseDate}</span>
+            </div>
+          </div>
         `;
-        tbody.appendChild(tr);
+        container.appendChild(item);
       });
 
     }
@@ -1726,7 +1691,7 @@
     document.getElementById('jiraDomain').addEventListener('change', loadBoards);
     document.getElementById('epicSearch').addEventListener('input', () => renderEpicTable());
     document.getElementById('childSearch').addEventListener('input', () => renderChildTable());
-    document.getElementById('releaseSearch').addEventListener('input', () => renderReleasesTable());
+    document.getElementById('releaseSearch').addEventListener('input', () => renderReleasesTimeline());
     document.querySelectorAll('input[name="stackedDimension"]').forEach(input => input.addEventListener('change', updateCharts));
     document.getElementById('distributionMode').addEventListener('change', updateCharts);
     ['suffixCommitted', 'suffixPlanned', 'suffixSpillover'].forEach(id => {
