@@ -1148,6 +1148,104 @@
       return targets[0]?.label || 'No Target Version';
     }
 
+    function mergeTargetVersionLists(existingTargets, incomingTargets) {
+      const map = new Map();
+      const addTarget = (target, preferIncoming = false) => {
+        if (!target) return;
+        const key = target.key || '__none__';
+        const normalized = {
+          key,
+          label: target.label || 'No Target Version',
+          hasValue: target.hasValue !== false && key !== '__none__',
+          source: target.source || 'none',
+        };
+        if (!map.has(key)) {
+          map.set(key, normalized);
+          return;
+        }
+        if (preferIncoming) {
+          const current = map.get(key);
+          if (!current.hasValue && normalized.hasValue) {
+            map.set(key, normalized);
+            return;
+          }
+          if (normalized.hasValue === current.hasValue) {
+            map.set(key, normalized);
+          }
+        }
+      };
+
+      (existingTargets || []).forEach(target => addTarget(target, false));
+      (incomingTargets || []).forEach(target => addTarget(target, true));
+
+      const merged = Array.from(map.values());
+      if (!merged.length) {
+        merged.push({ key: '__none__', label: 'No Target Version', hasValue: false, source: 'none' });
+      }
+      return merged;
+    }
+
+    function mergeUniqueStrings(existingValues, incomingValues) {
+      const seen = new Set();
+      const results = [];
+
+      (existingValues || []).forEach(value => {
+        if (value === undefined || value === null) return;
+        const str = String(value);
+        if (seen.has(str)) return;
+        seen.add(str);
+        results.push(str);
+      });
+
+      (incomingValues || []).forEach(value => {
+        if (value === undefined || value === null) return;
+        const str = String(value);
+        if (seen.has(str)) return;
+        seen.add(str);
+        results.push(str);
+      });
+
+      return results;
+    }
+
+    function mergeFixVersionLists(existingVersions, incomingVersions) {
+      const map = new Map();
+
+      (existingVersions || []).forEach(version => {
+        if (!version) return;
+        const key = version.key || version.id || version.name || '__none__';
+        if (!map.has(key)) {
+          map.set(key, { ...version });
+        }
+      });
+
+      (incomingVersions || []).forEach(version => {
+        if (!version) return;
+        const key = version.key || version.id || version.name || '__none__';
+        if (!map.has(key)) {
+          map.set(key, { ...version });
+        } else {
+          const current = map.get(key);
+          map.set(key, { ...current, ...version });
+        }
+      });
+
+      return Array.from(map.values());
+    }
+
+    function refreshPrimaryTargetMetadata(entity) {
+      if (!entity) return;
+      if (!Array.isArray(entity.targetVersions) || !entity.targetVersions.length) {
+        entity.targetVersions = [{ key: '__none__', label: 'No Target Version', hasValue: false, source: 'none' }];
+      }
+      const primary = entity.targetVersions.find(target => target && target.hasValue && target.key !== '__none__')
+        || entity.targetVersions[0];
+      entity.targetVersion = primary?.label || 'No Target Version';
+      entity.targetVersionKey = primary?.key || '__none__';
+      entity.targetSource = primary?.source || 'none';
+      entity.hasTargetVersion = Boolean(primary && primary.hasValue && primary.key !== '__none__');
+    }
+
     function resolveTimelineTargets(entity, includeParent = false) {
       const directTargets = (entity?.targetVersions?.length
         ? entity.targetVersions
@@ -2120,6 +2218,20 @@
               if (epicMap.has(normalized.key)) {
                 const existing = epicMap.get(normalized.key);
                 normalized.boardIds.forEach(id => existing.boardIds.add(id));
+                existing.targetVersions = mergeTargetVersionLists(existing.targetVersions, normalized.targetVersions);
+                existing.targetReleases = mergeUniqueStrings(existing.targetReleases, normalized.targetReleases);
+                existing.fixVersions = mergeFixVersionLists(existing.fixVersions, normalized.fixVersions);
+                existing.labels = mergeUniqueStrings(existing.labels, normalized.labels);
+                existing.pis = mergeUniqueStrings(existing.pis?.map(pi => pi.label), normalized.pis?.map(pi => pi.label))
+                  .map(label => {
+                    const source = (normalized.pis || []).find(pi => pi.label === label)
+                      || (existing.pis || []).find(pi => pi.label === label);
+                    if (source) return { ...source };
+                    const [base, suffix] = label.split('_');
+                    return { base: base || label, suffix: suffix || null, label };
+                  });
+                refreshPrimaryTargetMetadata(existing);
+                existing.targetRelease = existing.targetReleases?.[0] || undefined;
               } else {
                 epicMap.set(normalized.key, normalized);
               }
