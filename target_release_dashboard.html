@@ -1087,6 +1087,11 @@
       });
     }
 
+    function normalizeVersionName(name) {
+      if (!name) return '';
+      return String(name).trim().toLowerCase().replace(/\s+/g, ' ');
+    }
+
     function computePct(withTarget, total) {
       if (!total) return 0;
       return Number(((withTarget / total) * 100).toFixed(1));
@@ -1101,6 +1106,8 @@
           if (!target) return;
           const key = target.key || '__none__';
           keys.add(key);
+          const normalized = normalizeVersionName(target.label);
+          if (normalized) keys.add(`normalized:${normalized}`);
         });
       };
 
@@ -1108,6 +1115,8 @@
         addTargets(entity.targetVersions);
       } else if (entity?.targetVersionKey) {
         keys.add(entity.targetVersionKey);
+        const normalized = normalizeVersionName(entity.targetVersion);
+        if (normalized) keys.add(`normalized:${normalized}`);
       }
 
       if (includeParent) {
@@ -1115,6 +1124,8 @@
           addTargets(entity.parentTargetVersions);
         } else if (entity?.parentTargetVersionKey) {
           keys.add(entity.parentTargetVersionKey);
+          const normalized = normalizeVersionName(entity.parentTargetVersion);
+          if (normalized) keys.add(`normalized:${normalized}`);
         }
       }
 
@@ -1458,8 +1469,38 @@
       return 'default';
     }
 
+    function expandSelectedVersionKeys(values) {
+      const expanded = new Set(values);
+      const normalizedKeys = new Set();
+
+      values.forEach(value => {
+        if (!value || value === '__none__') return;
+        if (value.startsWith('normalized:')) {
+          normalizedKeys.add(value);
+          return;
+        }
+
+        let label;
+        if (value.startsWith('target:')) {
+          label = value.slice('target:'.length);
+        } else if (value.startsWith('name:')) {
+          label = value.slice('name:'.length);
+        } else if (state.releaseIndex && state.releaseIndex.has(value)) {
+          label = state.releaseIndex.get(value)?.name;
+        }
+
+        if (!label) return;
+        const normalized = normalizeVersionName(label);
+        if (!normalized) return;
+        normalizedKeys.add(`normalized:${normalized}`);
+      });
+
+      normalizedKeys.forEach(key => expanded.add(key));
+      return expanded;
+    }
+
     function applyFilters() {
-      const selectedVersions = new Set(targetVersionChoices.getValue(true));
+      const selectedVersions = expandSelectedVersionKeys(targetVersionChoices.getValue(true));
       const selectedPiBases = new Set(piChoices.getValue(true));
       const allowCommitted = document.getElementById('suffixCommitted').checked;
       const allowPlanned = document.getElementById('suffixPlanned').checked;
@@ -1656,11 +1697,6 @@
         name: bucket.release?.name,
         id: bucket.release?.id,
       })));
-
-      const normalizeVersionName = (name) => {
-        if (!name) return '';
-        return name.trim().toLowerCase().replace(/\s+/g, ' ');
-      };
 
       const findBucketByNormalizedName = (normalizedName) => {
         if (!normalizedName) return null;
