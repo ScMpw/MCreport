@@ -342,6 +342,30 @@
     const projectCache = new Map();
     const boardConfigCache = new Map();
 
+    function stripOrderByClause(jql) {
+      if (!jql || typeof jql !== 'string') return '';
+      let inSingle = false;
+      let inDouble = false;
+      const upper = jql.toUpperCase();
+      for (let i = 0; i < upper.length; i++) {
+        const char = jql[i];
+        if (char === "'" && !inDouble) {
+          const escaped = i > 0 && jql[i - 1] === '\\';
+          if (!escaped) inSingle = !inSingle;
+        } else if (char === '"' && !inSingle) {
+          const escaped = i > 0 && jql[i - 1] === '\\';
+          if (!escaped) inDouble = !inDouble;
+        }
+        if (!inSingle && !inDouble && upper.startsWith('ORDER BY', i)) {
+          const prevChar = i > 0 ? jql[i - 1] : ' ';
+          if (/\s|\)/.test(prevChar)) {
+            return jql.slice(0, i).trim();
+          }
+        }
+      }
+      return jql.trim();
+    }
+
     function extractTeamsFromJql(jql, responsibleFieldKey) {
       if (!jql || typeof jql !== 'string') return [];
       const variants = new Set();
@@ -414,14 +438,14 @@
         const resp = await fetchWithRetry(url);
         const data = await resp.json();
         const filterId = data?.filter?.id;
-        let filterQuery = data?.filter?.query || '';
+        let filterQuery = stripOrderByClause(data?.filter?.query || '');
         let teams = extractTeamsFromJql(filterQuery, responsibleFieldKey);
 
         if ((!teams || !teams.length) && filterId) {
           try {
             const filterResp = await fetchWithRetry(`https://${domain}/rest/api/3/filter/${filterId}`);
             const filterData = await filterResp.json();
-            const filterJql = filterData?.jql || '';
+            const filterJql = stripOrderByClause(filterData?.jql || '');
             if (filterJql) {
               if (!filterQuery) filterQuery = filterJql;
               teams = extractTeamsFromJql(filterJql, responsibleFieldKey);
@@ -616,7 +640,8 @@
         fields.push('responsible-team');
       }
 
-      const baseJql = boardConfig.filterQuery ? `(${boardConfig.filterQuery}) AND ` : '';
+      const filterQuery = stripOrderByClause(boardConfig.filterQuery || '');
+      const baseJql = filterQuery ? `(${filterQuery}) AND ` : '';
       const projectClause = '(project in (ANP, NPSCO, BF))';
       const jql = `${baseJql}${projectClause} AND issuetype = Epic AND statusCategory != Done`;
 
@@ -660,7 +685,8 @@
         fields.push('responsible-team');
       }
 
-      const baseJql = boardConfig.filterQuery ? `(${boardConfig.filterQuery}) AND ` : '';
+      const filterQuery = stripOrderByClause(boardConfig.filterQuery || '');
+      const baseJql = filterQuery ? `(${filterQuery}) AND ` : '';
       const chunkSize = 40;
       const results = [];
       for (let i = 0; i < epicKeys.length; i += chunkSize) {
