@@ -254,6 +254,7 @@
       boardsMap: new Map(),
       normalizedIssues: [],
       responsibleFieldKey: 'responsible-team',
+      targetReleaseFieldKey: 'target-release',
       filteredIssues: [],
       aggregated: null,
       releases: [],
@@ -520,6 +521,7 @@
     }
 
     const fieldCache = new Map();
+    const targetFieldCache = new Map();
     async function discoverResponsibleField(domain) {
       if (fieldCache.has(domain)) return fieldCache.get(domain);
       const promise = (async () => {
@@ -545,6 +547,34 @@
         return fieldKey;
       })();
       fieldCache.set(domain, promise);
+      return promise;
+    }
+
+    async function discoverTargetReleaseField(domain) {
+      if (targetFieldCache.has(domain)) return targetFieldCache.get(domain);
+      const promise = (async () => {
+        const url = `https://${domain}/rest/api/3/field`;
+        const resp = await fetchWithRetry(url);
+        const fields = await resp.json();
+        let fieldKey = 'target-release';
+        if (Array.isArray(fields)) {
+          const normalized = fields.map(f => ({
+            key: f.key || f.id,
+            name: (f.name || '').toLowerCase(),
+          }));
+          const exact = normalized.find(f => f.key === 'target-release');
+          if (exact) {
+            fieldKey = exact.key;
+          } else {
+            const candidate = normalized.find(f => /target[\s-]?release/.test(f.name));
+            if (candidate && candidate.key) {
+              fieldKey = candidate.key;
+            }
+          }
+        }
+        return fieldKey;
+      })();
+      targetFieldCache.set(domain, promise);
       return promise;
     }
 
@@ -611,7 +641,7 @@
       }
     }
 
-    async function fetchEpicsForBoard(domain, boardConfig, responsibleField) {
+    async function fetchEpicsForBoard(domain, boardConfig, responsibleField, targetReleaseField) {
       const fields = [
         'key',
         'summary',
@@ -620,10 +650,13 @@
         'assignee',
         'labels',
         'fixVersions',
-        'target-release',
         'project',
         'updated',
       ];
+      const targetField = targetReleaseField && targetReleaseField !== 'target-release'
+        ? targetReleaseField
+        : 'target-release';
+      fields.push(targetField);
       if (responsibleField && responsibleField !== 'responsible-team') {
         fields.push(responsibleField);
       } else {
@@ -653,7 +686,7 @@
       return results;
     }
 
-    async function fetchChildIssuesForBoard(domain, boardConfig, epicKeys, responsibleField) {
+    async function fetchChildIssuesForBoard(domain, boardConfig, epicKeys, responsibleField, targetReleaseField) {
       if (!epicKeys.length) return [];
       const fields = [
         'key',
@@ -663,12 +696,15 @@
         'assignee',
         'labels',
         'fixVersions',
-        'target-release',
         'project',
         'updated',
         'customfield_10014',
         'parent',
       ];
+      const targetField = targetReleaseField && targetReleaseField !== 'target-release'
+        ? targetReleaseField
+        : 'target-release';
+      fields.push(targetField);
       if (responsibleField && responsibleField !== 'responsible-team') {
         fields.push(responsibleField);
       } else {
@@ -702,7 +738,7 @@
       return results;
     }
 
-    async function fetchStandaloneIssuesForBoard(domain, boardConfig, responsibleField) {
+    async function fetchStandaloneIssuesForBoard(domain, boardConfig, responsibleField, targetReleaseField) {
       const fields = [
         'key',
         'summary',
@@ -711,12 +747,15 @@
         'assignee',
         'labels',
         'fixVersions',
-        'target-release',
         'project',
         'updated',
         'customfield_10014',
         'parent',
       ];
+      const targetField = targetReleaseField && targetReleaseField !== 'target-release'
+        ? targetReleaseField
+        : 'target-release';
+      fields.push(targetField);
       if (responsibleField && responsibleField !== 'responsible-team') {
         fields.push(responsibleField);
       } else {
@@ -880,12 +919,14 @@
       };
     }
 
-    function normalizeEpic(issue, boardId, responsibleFieldKey) {
+    function normalizeEpic(issue, boardId, responsibleFieldKey, targetReleaseFieldKey) {
       const fields = issue.fields || {};
       const labels = Array.isArray(fields.labels) ? fields.labels.slice() : [];
       const pis = extractPis(labels);
       const fixVersions = parseFixVersions(fields.fixVersions);
-      const targetReleases = parseTargetReleaseValues(fields['target-release']);
+      const targetReleaseField = targetReleaseFieldKey || 'target-release';
+      const targetReleaseValue = fields[targetReleaseField] ?? fields['target-release'];
+      const targetReleases = parseTargetReleaseValues(targetReleaseValue);
       const targetInfo = determineTargetVersions(fixVersions, targetReleases);
       const targetPrimary = targetInfo.primary;
       const targetVersions = targetInfo.targets;
@@ -934,7 +975,7 @@
       return undefined;
     }
 
-    function normalizeChildIssue(issue, boardId, responsibleFieldKey, epicMap) {
+    function normalizeChildIssue(issue, boardId, responsibleFieldKey, epicMap, targetReleaseFieldKey) {
       const fields = issue.fields || {};
       const epicKey = extractEpicLink(fields);
       const parent = epicKey ? epicMap.get(epicKey) : undefined;
@@ -946,7 +987,9 @@
       }
       const pis = extractPis(labels);
       const fixVersions = parseFixVersions(fields.fixVersions);
-      const targetReleases = parseTargetReleaseValues(fields['target-release']);
+      const targetReleaseField = targetReleaseFieldKey || 'target-release';
+      const targetReleaseValue = fields[targetReleaseField] ?? fields['target-release'];
+      const targetReleases = parseTargetReleaseValues(targetReleaseValue);
       const targetInfo = determineTargetVersions(fixVersions, targetReleases);
       const targetPrimary = targetInfo.primary;
       const targetVersions = targetInfo.targets;
@@ -2014,7 +2057,9 @@
       try {
         setLoading('Discovering fields...');
         const responsibleField = await discoverResponsibleField(domain);
+        const targetReleaseField = await discoverTargetReleaseField(domain);
         state.responsibleFieldKey = responsibleField;
+        state.targetReleaseFieldKey = targetReleaseField;
         teamColorMap.clear();
 
         setLoading('Loading board configurations...');
@@ -2061,7 +2106,7 @@
         const epicsByBoard = new Map();
         await Promise.all(boardConfigs.map(async config => {
           try {
-            const items = await fetchEpicsForBoard(domain, config, responsibleField);
+            const items = await fetchEpicsForBoard(domain, config, responsibleField, targetReleaseField);
             const teamSet = new Set((config.teams || []).map(team => String(team).trim().toLowerCase()).filter(Boolean));
             items.forEach(({ issue, boardId }) => {
               if (teamSet.size) {
@@ -2071,7 +2116,7 @@
                   return;
                 }
               }
-              const normalized = normalizeEpic(issue, boardId, responsibleField);
+              const normalized = normalizeEpic(issue, boardId, responsibleField, targetReleaseField);
               if (epicMap.has(normalized.key)) {
                 const existing = epicMap.get(normalized.key);
                 normalized.boardIds.forEach(id => existing.boardIds.add(id));
@@ -2095,9 +2140,9 @@
           const keys = epicsByBoard.get(config.id);
           if (!keys || !keys.size) return;
           try {
-            const children = await fetchChildIssuesForBoard(domain, config, Array.from(keys), responsibleField);
+            const children = await fetchChildIssuesForBoard(domain, config, Array.from(keys), responsibleField, targetReleaseField);
             children.forEach(({ issue, boardId }) => {
-              const normalized = normalizeChildIssue(issue, boardId, responsibleField, epicMap);
+              const normalized = normalizeChildIssue(issue, boardId, responsibleField, epicMap, targetReleaseField);
               if (childMap.has(normalized.key)) {
                 const existing = childMap.get(normalized.key);
                 normalized.boardIds.forEach(id => existing.boardIds.add(id));
@@ -2125,9 +2170,9 @@
         setLoading('Fetching stand-alone items...');
         await Promise.all(boardConfigs.map(async config => {
           try {
-            const standalone = await fetchStandaloneIssuesForBoard(domain, config, responsibleField);
+            const standalone = await fetchStandaloneIssuesForBoard(domain, config, responsibleField, targetReleaseField);
             standalone.forEach(({ issue, boardId }) => {
-              const normalized = normalizeChildIssue(issue, boardId, responsibleField, epicMap);
+              const normalized = normalizeChildIssue(issue, boardId, responsibleField, epicMap, targetReleaseField);
               if (childMap.has(normalized.key)) {
                 const existing = childMap.get(normalized.key);
                 normalized.boardIds.forEach(id => existing.boardIds.add(id));
