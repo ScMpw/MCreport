@@ -699,6 +699,52 @@
       return results;
     }
 
+    async function fetchStandaloneIssuesForBoard(domain, boardConfig, responsibleField) {
+      const fields = [
+        'key',
+        'summary',
+        'issuetype',
+        'status',
+        'assignee',
+        'labels',
+        'fixVersions',
+        'target-release',
+        'project',
+        'updated',
+        'customfield_10014',
+        'parent',
+      ];
+      if (responsibleField && responsibleField !== 'responsible-team') {
+        fields.push(responsibleField);
+      } else {
+        fields.push('responsible-team');
+      }
+
+      const filterQuery = stripOrderByClause(boardConfig.filterQuery || '');
+      const baseJql = filterQuery ? `(${filterQuery}) AND ` : '';
+      const projectClause = '(project in (ANP, NPSCO, BF))';
+      const typeExclusion = 'issuetype not in (Epic, Sub-task, "Sub-Task")';
+      const epicEmptyClause = '"Epic Link" is EMPTY';
+      const jql = `${baseJql}${projectClause} AND ${typeExclusion} AND ${epicEmptyClause}`;
+
+      const results = [];
+      let startAt = 0;
+      const maxResults = 100;
+      for (let page = 0; page < 200; page++) {
+        const data = await jiraSearch(domain, {
+          jql,
+          startAt,
+          maxResults,
+          fields,
+        });
+        const issues = data.issues || [];
+        issues.forEach(issue => results.push({ issue, boardId: boardConfig.id }));
+        startAt += issues.length;
+        if (startAt >= (data.total || 0) || !issues.length) break;
+      }
+      return results;
+    }
+
     // Planning helpers will be defined below.
 
     function parseTargetReleaseValue(raw) {
@@ -836,9 +882,6 @@
       const fields = issue.fields || {};
       const epicKey = extractEpicLink(fields);
       const parent = epicKey ? epicMap.get(epicKey) : undefined;
-      if (!epicKey) {
-        Logger.warn('Skipping issue without epic link', issue.key);
-      }
       const labels = Array.isArray(fields.labels) ? fields.labels.slice() : [];
       if (parent?.labels) {
         parent.labels.forEach(label => {
@@ -850,6 +893,9 @@
       const targetRelease = parseTargetReleaseValue(fields['target-release']);
       const targetInfo = determineTargetVersion(fixVersions, targetRelease);
       const responsibleTeam = parent?.responsibleTeam || extractResponsibleTeam(fields, responsibleFieldKey);
+
+      const parentTargetVersion = parent?.targetVersion || targetInfo.label || 'No Target Version';
+      const parentTargetVersionKey = parent?.targetVersionKey || targetInfo.key || '__none__';
 
       return {
         id: String(issue.id || issue.key || ''),
@@ -868,8 +914,8 @@
         targetSource: targetInfo.source,
         parentKey: epicKey || parent?.key,
         parentSummary: parent?.summary,
-        parentTargetVersion: parent?.targetVersion || 'No Target Version',
-        parentTargetVersionKey: parent?.targetVersionKey || '__none__',
+        parentTargetVersion: parentTargetVersion,
+        parentTargetVersionKey: parentTargetVersionKey,
         parentPis: parent?.pis?.length ? parent.pis.slice() : (pis.length ? pis : []),
         pis,
         project: fields.project?.name ? String(fields.project.name) : undefined,
@@ -952,12 +998,12 @@
 
       issues.forEach(issue => {
         const teamName = issue.responsibleTeam || fallbackTeam;
-        const versionKey = issue.parentTargetVersionKey || fallbackVersion.key;
-        const versionLabel = issue.parentTargetVersion || fallbackVersion.label;
+        const versionKey = issue.parentTargetVersionKey || issue.targetVersionKey || fallbackVersion.key;
+        const versionLabel = issue.parentTargetVersion || issue.targetVersion || fallbackVersion.label;
         const versionBucket = ensureBucket(versionBuckets, versionKey, versionLabel);
         addIssue(versionBucket, issue, teamName);
 
-        const piValues = issue.parentPis && issue.parentPis.length ? issue.parentPis : [fallbackPi];
+        const piValues = issue.parentPis && issue.parentPis.length ? issue.parentPis : (issue.pis && issue.pis.length ? issue.pis : [fallbackPi]);
         const seenPi = new Set();
         piValues.forEach(pi => {
           const value = pi && pi.label ? pi.label : fallbackPi.label;
@@ -1032,16 +1078,6 @@
     }
 
     function applyFilters() {
-      if (!state.epics.length) {
-        state.filteredEpics = [];
-        state.filteredIssues = [];
-        state.aggregated = aggregateIssues([]);
-        renderKpis();
-        renderEpicTable();
-        renderReleasesTimeline();
-        setLoading('No epics found for the selected boards.');
-        return;
-      }
       const selectedVersions = new Set(targetVersionChoices.getValue(true));
       const selectedPiBases = new Set(piChoices.getValue(true));
       const allowCommitted = document.getElementById('suffixCommitted').checked;
@@ -1088,7 +1124,48 @@
       });
 
       const filteredEpicKeys = new Set(filteredEpics.map(epic => epic.key));
-      const filteredIssues = state.normalizedIssues.filter(issue => filteredEpicKeys.has(issue.parentKey));
+      const standaloneIssues = [];
+      const filteredIssues = state.normalizedIssues.filter(issue => {
+        if (issue.parentKey) {
+          return filteredEpicKeys.has(issue.parentKey);
+        }
+
+        if (selectedVersions.size) {
+          const versionKey = issue.targetVersionKey || '__none__';
+          if (!selectedVersions.has(versionKey)) return false;
+        }
+
+        if (selectedPiBases.size) {
+          let piMatch = false;
+          if ((!issue.pis || !issue.pis.length) && selectedPiBases.has('__none__')) {
+            piMatch = true;
+          }
+          (issue.pis || []).forEach(pi => {
+            if (!pi || !pi.base) return;
+            if (!selectedPiBases.has(pi.base)) return;
+            if (pi.suffix === 'committed' && !allowCommitted) return;
+            if (pi.suffix === 'planned' && !allowPlanned) return;
+            if (pi.suffix === 'spillover' && !allowSpillover) return;
+            piMatch = true;
+          });
+          if (!piMatch) return false;
+        }
+
+        if (selectedTeams.size) {
+          const team = issue.responsibleTeam || 'Unassigned Team';
+          if (!selectedTeams.has(team)) return false;
+        }
+
+        if (selectedBoardFilters.size) {
+          const boards = issue.boardIds && issue.boardIds.size
+            ? Array.from(issue.boardIds).map(String)
+            : ['__unassigned__'];
+          if (!boards.some(id => selectedBoardFilters.has(id))) return false;
+        }
+
+        standaloneIssues.push(issue);
+        return true;
+      });
 
       state.filteredEpics = filteredEpics;
       state.filteredIssues = filteredIssues;
@@ -1099,10 +1176,13 @@
       renderEpicTable();
       renderReleasesTimeline();
 
-      if (!filteredEpics.length) {
+      const epicIssueCount = filteredIssues.filter(issue => issue.parentKey).length;
+      if (!filteredEpics.length && epicIssueCount > 0) {
         setLoading('No epics match the current filter selection.');
-      } else if (!filteredIssues.length) {
+      } else if (!filteredIssues.length && state.epics.length && !standaloneIssues.length) {
         setLoading('Filtered epics do not have matching child items.');
+      } else if (!filteredEpics.length && !state.epics.length && !filteredIssues.length) {
+        setLoading('No epics found for the selected boards.');
       } else {
         setLoading('');
       }
@@ -1552,6 +1632,40 @@
         }
       });
 
+      state.normalizedIssues.forEach(issue => {
+        if (issue.parentKey) return;
+
+        const versionKey = issue.targetVersionKey || '__none__';
+        const versionLabel = issue.targetVersion || 'No Target Version';
+        if (!versions.has(versionKey)) {
+          versions.set(versionKey, { value: versionKey, label: versionLabel });
+        }
+
+        if (!issue.pis || !issue.pis.length) {
+          if (!allPis.has('__none__')) {
+            allPis.set('__none__', { value: '__none__', label: 'No Product Increment' });
+          }
+        }
+        (issue.pis || []).forEach(pi => {
+          if (!pi || !pi.base) return;
+          if (!allPis.has(pi.base)) {
+            allPis.set(pi.base, { value: pi.base, label: pi.base });
+          }
+        });
+
+        const team = issue.responsibleTeam || 'Unassigned Team';
+        teams.add(team);
+
+        if (issue.boardIds && issue.boardIds.size) {
+          issue.boardIds.forEach(id => {
+            const key = String(id);
+            if (!boardOptions.has(key)) {
+              boardOptions.set(key, { value: key, label: state.boardsMap.get(Number(id))?.name || `Board ${id}` });
+            }
+          });
+        }
+      });
+
       const versionChoices = Array.from(versions.values()).sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
       if (!versionChoices.length) versionChoices.push({ value: '__none__', label: 'No Target Version' });
       targetVersionChoices.clearChoices();
@@ -1696,7 +1810,6 @@
             const children = await fetchChildIssuesForBoard(domain, config, Array.from(keys), responsibleField);
             children.forEach(({ issue, boardId }) => {
               const normalized = normalizeChildIssue(issue, boardId, responsibleField, epicMap);
-              if (!normalized.parentKey) return;
               if (childMap.has(normalized.key)) {
                 const existing = childMap.get(normalized.key);
                 normalized.boardIds.forEach(id => existing.boardIds.add(id));
@@ -1712,6 +1825,37 @@
             });
           } catch (err) {
             Logger.error('Failed to load child issues for board', config.id, err);
+          }
+        }));
+
+        setLoading('Fetching stand-alone items...');
+        await Promise.all(boardConfigs.map(async config => {
+          try {
+            const standalone = await fetchStandaloneIssuesForBoard(domain, config, responsibleField);
+            standalone.forEach(({ issue, boardId }) => {
+              const normalized = normalizeChildIssue(issue, boardId, responsibleField, epicMap);
+              if (childMap.has(normalized.key)) {
+                const existing = childMap.get(normalized.key);
+                normalized.boardIds.forEach(id => existing.boardIds.add(id));
+                if (!existing.hasTargetVersion && normalized.hasTargetVersion) {
+                  existing.hasTargetVersion = true;
+                  existing.targetVersion = normalized.targetVersion;
+                  existing.targetVersionKey = normalized.targetVersionKey;
+                  existing.targetSource = normalized.targetSource;
+                }
+                if (!existing.parentKey && normalized.parentKey) {
+                  existing.parentKey = normalized.parentKey;
+                  existing.parentSummary = normalized.parentSummary;
+                  existing.parentTargetVersion = normalized.parentTargetVersion;
+                  existing.parentTargetVersionKey = normalized.parentTargetVersionKey;
+                  existing.parentPis = normalized.parentPis;
+                }
+              } else {
+                childMap.set(normalized.key, normalized);
+              }
+            });
+          } catch (err) {
+            Logger.error('Failed to load stand-alone issues for board', config.id, err);
           }
         }));
 
