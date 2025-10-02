@@ -1496,6 +1496,10 @@
       const timelineItems = [];
 
       state.filteredIssues.forEach(issue => {
+        const issueType = (issue.type || '').toLowerCase();
+        if (issueType === 'task') {
+          return;
+        }
         const baseItem = {
           ...issue,
           boardIds: issue.boardIds && issue.boardIds.size ? new Set(issue.boardIds) : new Set(),
