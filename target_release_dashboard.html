@@ -342,18 +342,101 @@
     const projectCache = new Map();
     const boardConfigCache = new Map();
 
-    async function fetchBoardConfiguration(domain, boardId) {
-      const cacheKey = `${domain}:board-config:${boardId}`;
+    function extractTeamsFromJql(jql, responsibleFieldKey) {
+      if (!jql || typeof jql !== 'string') return [];
+      const variants = new Set();
+      const addVariant = token => {
+        if (token) variants.add(token);
+      };
+
+      addVariant('Team');
+      addVariant('"Team"');
+      addVariant('responsible-team');
+      addVariant('"responsible-team"');
+      addVariant('Responsible Team');
+      addVariant('"Responsible Team"');
+
+      if (responsibleFieldKey) {
+        addVariant(responsibleFieldKey);
+        addVariant(`"${responsibleFieldKey}"`);
+        const cleaned = responsibleFieldKey.replace(/[_-]+/g, ' ');
+        addVariant(cleaned);
+        addVariant(`"${cleaned}"`);
+        const titled = cleaned.replace(/\b\w/g, c => c.toUpperCase());
+        addVariant(titled);
+        addVariant(`"${titled}"`);
+        const customMatch = responsibleFieldKey.match(/customfield_(\d+)/i);
+        if (customMatch) {
+          const id = customMatch[1];
+          addVariant(`customfield_${id}`);
+          addVariant(`"customfield_${id}"`);
+          addVariant(`cf[${id}]`);
+          addVariant(`"cf[${id}]"`);
+        }
+      }
+
+      const escapeRegexToken = token => token.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+      const pattern = Array.from(variants)
+        .filter(Boolean)
+        .map(escapeRegexToken)
+        .join('|');
+      if (!pattern) return [];
+
+      const regex = new RegExp(`(?:${pattern})\\s*(?:=|in)\\s*(\\([^\\)]*\\)|\"[^\"\\n]+\")`, 'gi');
+      const teams = new Set();
+
+      const addTeam = raw => {
+        if (!raw) return;
+        const cleaned = raw.replace(/^\s*["']?|["']?\s*$/g, '').trim();
+        if (cleaned) teams.add(cleaned);
+      };
+
+      let match;
+      while ((match = regex.exec(jql)) !== null) {
+        const value = match[1] ? match[1].trim() : '';
+        if (!value) continue;
+        if (value.startsWith('(') && value.endsWith(')')) {
+          value.slice(1, -1).split(',').forEach(part => addTeam(part));
+        } else {
+          addTeam(value);
+        }
+      }
+
+      return Array.from(teams);
+    }
+
+    async function fetchBoardConfiguration(domain, boardId, responsibleFieldKey) {
+      const cacheKey = `${domain}:board-config:${boardId}:${responsibleFieldKey || 'responsible-team'}`;
       if (boardConfigCache.has(cacheKey)) return boardConfigCache.get(cacheKey);
 
       const promise = (async () => {
         const url = `https://${domain}/rest/agile/1.0/board/${boardId}/configuration`;
         const resp = await fetchWithRetry(url);
         const data = await resp.json();
+        const filterId = data?.filter?.id;
+        let filterQuery = data?.filter?.query || '';
+        let teams = extractTeamsFromJql(filterQuery, responsibleFieldKey);
+
+        if ((!teams || !teams.length) && filterId) {
+          try {
+            const filterResp = await fetchWithRetry(`https://${domain}/rest/api/3/filter/${filterId}`);
+            const filterData = await filterResp.json();
+            const filterJql = filterData?.jql || '';
+            if (filterJql) {
+              if (!filterQuery) filterQuery = filterJql;
+              teams = extractTeamsFromJql(filterJql, responsibleFieldKey);
+            }
+          } catch (err) {
+            Logger.warn('Failed to fetch filter details for board', boardId, err);
+          }
+        }
+
         return {
           id: Number(boardId),
           name: data?.name,
-          filterQuery: data?.filter?.query || '',
+          filterId: filterId ? Number(filterId) : undefined,
+          filterQuery,
+          teams,
         };
       })();
 
@@ -1463,7 +1546,7 @@
 
         setLoading('Loading board configurations...');
         const boardConfigs = await Promise.all(boardIds.map(async id => {
-          const config = await fetchBoardConfiguration(domain, id);
+          const config = await fetchBoardConfiguration(domain, id, responsibleField);
           return { ...config, name: state.boardsMap.get(Number(id))?.name || config.name || `Board ${id}` };
         }));
 
@@ -1508,7 +1591,15 @@
         await Promise.all(boardConfigs.map(async config => {
           try {
             const items = await fetchEpicsForBoard(domain, config, responsibleField);
+            const teamSet = new Set((config.teams || []).map(team => String(team).trim().toLowerCase()).filter(Boolean));
             items.forEach(({ issue, boardId }) => {
+              if (teamSet.size) {
+                const epicTeamRaw = extractResponsibleTeam(issue.fields || {}, responsibleField);
+                const epicTeam = epicTeamRaw ? epicTeamRaw.trim().toLowerCase() : '';
+                if (!epicTeam || !teamSet.has(epicTeam)) {
+                  return;
+                }
+              }
               const normalized = normalizeEpic(issue, boardId, responsibleField);
               if (epicMap.has(normalized.key)) {
                 const existing = epicMap.get(normalized.key);
