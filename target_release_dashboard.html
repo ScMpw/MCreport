@@ -792,30 +792,53 @@
     function parseTargetReleaseValues(raw) {
       if (!raw) return [];
       const values = [];
-      const seen = new Set();
+      const seenValues = new Set();
+      const visitedObjects = new WeakSet();
+
       const addValue = (value) => {
         if (!value) return;
         const str = String(value).trim();
-        if (!str) return;
+        if (!str || /^https?:\/\//i.test(str)) return;
         const key = str.toLowerCase();
-        if (seen.has(key)) return;
-        seen.add(key);
+        if (seenValues.has(key)) return;
+        seenValues.add(key);
         values.push(str);
       };
-      if (typeof raw === 'string') {
-        addValue(raw);
-      } else if (Array.isArray(raw)) {
-        raw.forEach(item => {
-          if (!item) return;
-          if (typeof item === 'string') {
-            addValue(item);
-          } else if (typeof item === 'object') {
-            addValue(item.name || item.value || item.label);
-          }
-        });
-      } else if (typeof raw === 'object') {
-        addValue(raw.name || raw.value || raw.label);
-      }
+
+      const candidateKeys = ['name', 'label', 'value', 'release', 'targetRelease', 'target', 'title'];
+
+      const walk = (node, depth = 0) => {
+        if (node == null || depth > 5) return;
+
+        if (typeof node === 'string') {
+          addValue(node);
+          return;
+        }
+
+        if (Array.isArray(node)) {
+          node.forEach(item => walk(item, depth + 1));
+          return;
+        }
+
+        if (typeof node === 'object') {
+          if (visitedObjects.has(node)) return;
+          visitedObjects.add(node);
+
+          candidateKeys.forEach(key => {
+            if (Object.prototype.hasOwnProperty.call(node, key)) {
+              walk(node[key], depth + 1);
+            }
+          });
+
+          Object.keys(node).forEach(key => {
+            if (!candidateKeys.includes(key)) {
+              walk(node[key], depth + 1);
+            }
+          });
+        }
+      };
+
+      walk(raw);
       return values;
     }
 
