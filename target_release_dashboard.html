@@ -255,6 +255,7 @@
       normalizedIssues: [],
       responsibleFieldKey: 'responsible-team',
       targetReleaseFieldKey: 'target-release',
+      targetReleaseFieldKeys: ['target-release'],
       filteredIssues: [],
       aggregated: null,
       releases: [],
@@ -556,30 +557,25 @@
         const url = `https://${domain}/rest/api/3/field`;
         const resp = await fetchWithRetry(url);
         const fields = await resp.json();
-        let fieldKey = 'target-release';
         if (Array.isArray(fields)) {
-          let customCandidate;
-          let fallbackCandidate;
-          let defaultKey;
+          const matches = [];
           fields.forEach(field => {
             const key = field?.key || field?.id;
             const name = (field?.name || '').toLowerCase();
             if (!key) return;
             if (key === 'target-release') {
-              defaultKey = key;
+              matches.push(key);
+              return;
             }
             if (!name) return;
             if (!/target[\s-]?release/.test(name)) return;
-            if (key.startsWith('customfield_') && !customCandidate) {
-              customCandidate = key;
-            }
-            if (!fallbackCandidate) {
-              fallbackCandidate = key;
-            }
+            matches.push(key);
           });
-          fieldKey = customCandidate || fallbackCandidate || defaultKey || fieldKey;
+          const unique = Array.from(new Set(matches.filter(Boolean)));
+          if (!unique.includes('target-release')) unique.push('target-release');
+          return unique.length ? unique : ['target-release'];
         }
-        return fieldKey;
+        return ['target-release'];
       })();
       targetFieldCache.set(domain, promise);
       return promise;
@@ -587,15 +583,17 @@
 
     function ensureTargetReleaseField(fields, targetReleaseField) {
       if (!Array.isArray(fields)) return;
+      const keys = Array.isArray(targetReleaseField)
+        ? targetReleaseField.filter(Boolean)
+        : (targetReleaseField ? [targetReleaseField] : []);
       const set = new Set(fields);
-      const preferred = targetReleaseField && targetReleaseField !== 'target-release'
-        ? targetReleaseField
-        : 'target-release';
-      if (preferred && !set.has(preferred)) {
-        fields.push(preferred);
-        set.add(preferred);
-      }
-      if (preferred !== 'target-release' && !set.has('target-release')) {
+      keys.forEach(key => {
+        if (!set.has(key)) {
+          fields.push(key);
+          set.add(key);
+        }
+      });
+      if (!set.has('target-release')) {
         fields.push('target-release');
       }
     }
@@ -855,6 +853,34 @@
       return values;
     }
 
+    function resolveTargetReleaseValue(fields, targetReleaseField) {
+      if (!fields || typeof fields !== 'object') return undefined;
+      const keys = Array.isArray(targetReleaseField)
+        ? targetReleaseField
+        : (targetReleaseField ? [targetReleaseField] : []);
+      for (const key of keys) {
+        if (!key) continue;
+        const value = fields[key];
+        if (value === undefined || value === null) continue;
+        if (Array.isArray(value) && value.length === 0) continue;
+        if (typeof value === 'string' && !value.trim()) continue;
+        if (typeof value === 'object') {
+          if (Array.isArray(value)) {
+            if (!value.length) continue;
+          } else if (!Object.keys(value).length) {
+            continue;
+          }
+        }
+        return value;
+      }
+      const fallback = fields['target-release'];
+      if (fallback === undefined || fallback === null) return undefined;
+      if (Array.isArray(fallback) && fallback.length === 0) return undefined;
+      if (typeof fallback === 'string' && !fallback.trim()) return undefined;
+      if (typeof fallback === 'object' && !Array.isArray(fallback) && !Object.keys(fallback).length) return undefined;
+      return fallback;
+    }
+
     function parseFixVersions(raw) {
       if (!Array.isArray(raw) || !raw.length) return [];
       const seen = new Set();
@@ -944,7 +970,7 @@
       const pis = extractPis(labels);
       const fixVersions = parseFixVersions(fields.fixVersions);
       const targetReleaseField = targetReleaseFieldKey || 'target-release';
-      const targetReleaseValue = fields[targetReleaseField] ?? fields['target-release'];
+      const targetReleaseValue = resolveTargetReleaseValue(fields, targetReleaseField);
       const targetReleases = parseTargetReleaseValues(targetReleaseValue);
       const targetInfo = determineTargetVersions(targetReleases);
       const targetPrimary = targetInfo.primary;
@@ -1007,7 +1033,7 @@
       const pis = extractPis(labels);
       const fixVersions = parseFixVersions(fields.fixVersions);
       const targetReleaseField = targetReleaseFieldKey || 'target-release';
-      const targetReleaseValue = fields[targetReleaseField] ?? fields['target-release'];
+      const targetReleaseValue = resolveTargetReleaseValue(fields, targetReleaseField);
       const targetReleases = parseTargetReleaseValues(targetReleaseValue);
       const targetInfo = determineTargetVersions(targetReleases);
       const targetPrimary = targetInfo.primary;
@@ -2229,7 +2255,8 @@
         const responsibleField = await discoverResponsibleField(domain);
         const targetReleaseField = await discoverTargetReleaseField(domain);
         state.responsibleFieldKey = responsibleField;
-        state.targetReleaseFieldKey = targetReleaseField;
+        state.targetReleaseFieldKeys = Array.isArray(targetReleaseField) ? targetReleaseField : [targetReleaseField];
+        state.targetReleaseFieldKey = state.targetReleaseFieldKeys[0] || 'target-release';
         teamColorMap.clear();
 
         setLoading('Loading board configurations...');
@@ -2276,7 +2303,7 @@
         const epicsByBoard = new Map();
         await Promise.all(boardConfigs.map(async config => {
           try {
-            const items = await fetchEpicsForBoard(domain, config, responsibleField, targetReleaseField);
+            const items = await fetchEpicsForBoard(domain, config, responsibleField, state.targetReleaseFieldKeys);
             const teamSet = new Set((config.teams || []).map(team => String(team).trim().toLowerCase()).filter(Boolean));
             items.forEach(({ issue, boardId }) => {
               if (teamSet.size) {
@@ -2286,7 +2313,7 @@
                   return;
                 }
               }
-              const normalized = normalizeEpic(issue, boardId, responsibleField, targetReleaseField);
+              const normalized = normalizeEpic(issue, boardId, responsibleField, state.targetReleaseFieldKeys);
               if (epicMap.has(normalized.key)) {
                 const existing = epicMap.get(normalized.key);
                 normalized.boardIds.forEach(id => existing.boardIds.add(id));
@@ -2320,9 +2347,9 @@
           const keys = epicsByBoard.get(config.id);
           if (!keys || !keys.size) return;
           try {
-            const children = await fetchChildIssuesForBoard(domain, config, Array.from(keys), responsibleField, targetReleaseField);
+            const children = await fetchChildIssuesForBoard(domain, config, Array.from(keys), responsibleField, state.targetReleaseFieldKeys);
             children.forEach(({ issue, boardId }) => {
-              const normalized = normalizeChildIssue(issue, boardId, responsibleField, epicMap, targetReleaseField);
+              const normalized = normalizeChildIssue(issue, boardId, responsibleField, epicMap, state.targetReleaseFieldKeys);
               if (childMap.has(normalized.key)) {
                 const existing = childMap.get(normalized.key);
                 normalized.boardIds.forEach(id => existing.boardIds.add(id));
@@ -2350,9 +2377,9 @@
         setLoading('Fetching stand-alone items...');
         await Promise.all(boardConfigs.map(async config => {
           try {
-            const standalone = await fetchStandaloneIssuesForBoard(domain, config, responsibleField, targetReleaseField);
+            const standalone = await fetchStandaloneIssuesForBoard(domain, config, responsibleField, state.targetReleaseFieldKeys);
             standalone.forEach(({ issue, boardId }) => {
-              const normalized = normalizeChildIssue(issue, boardId, responsibleField, epicMap, targetReleaseField);
+              const normalized = normalizeChildIssue(issue, boardId, responsibleField, epicMap, state.targetReleaseFieldKeys);
               if (childMap.has(normalized.key)) {
                 const existing = childMap.get(normalized.key);
                 normalized.boardIds.forEach(id => existing.boardIds.add(id));
