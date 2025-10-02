@@ -55,12 +55,15 @@
     .timeline-issues { margin-top:12px; display:flex; flex-direction:column; gap:10px; }
     .timeline-issue { background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:10px 12px; display:flex; flex-direction:column; gap:6px; }
     .timeline-issue.no-target { background:#fef2f2; border-color:#fecaca; }
+    .timeline-issue.epic { border-left:4px solid #f59e0b; background:#fffbeb; box-shadow:0 1px 3px rgba(251, 191, 36, 0.25); }
+    .timeline-issue.inherited-target { border-style:dashed; border-color:#c7d2fe; background:#eef2ff; }
     .timeline-issue-header { display:flex; flex-wrap:wrap; gap:8px; align-items:center; font-weight:600; color:#1f2937; }
     .timeline-issue-header a { color:#4338ca; text-decoration:none; }
     .timeline-issue-header a:hover { text-decoration:underline; }
     .timeline-issue-summary { flex:1; color:#374151; font-weight:500; }
     .timeline-issue-meta { display:flex; flex-wrap:wrap; gap:8px; font-size:0.82em; color:#4b5563; align-items:center; }
     .timeline-issue-meta .badge { background:#e0e7ff; color:#3730a3; }
+    .timeline-issue-meta .badge.epic-badge { background:#fef3c7; color:#b45309; }
     .timeline-issue-meta .issue-team { background:#f1f5f9; border-radius:999px; padding:2px 8px; font-weight:600; }
     .timeline-issue-meta span.issue-epic { display:flex; align-items:center; gap:6px; }
     .timeline-issue-meta span.issue-epic a { color:#4338ca; text-decoration:none; font-weight:600; }
@@ -1212,8 +1215,12 @@
         ? Array.from(issue.boardIds).map(id => state.boardsMap.get(Number(id))?.name || `Board ${id}`).join(', ')
         : '';
       const updated = formatDate(issue.updated);
+      const badgeClass = issue.isEpic ? 'badge epic-badge' : 'badge';
+      const timelineTarget = issue.timelineTargetVersion || issue.targetVersion;
+      const timelineSource = issue.timelineTargetSource || issue.targetSource;
+      const targetSuffix = timelineSource === 'inherited' ? ' (from epic)' : '';
       const metaParts = [
-        `<span class="badge">${issue.type}</span>`,
+        `<span class="${badgeClass}">${issue.type}</span>`,
         `<span class="status-pill ${getStatusClass(issue.status)}">${issue.status}</span>`,
         `<span class="issue-team">Team: ${team}</span>`,
       ];
@@ -1221,13 +1228,18 @@
         const epicSummary = issue.parentSummary ? ` – ${issue.parentSummary}` : '';
         metaParts.push(`<span class="issue-epic">Epic <a href="https://${domain}/browse/${issue.parentKey}" target="_blank" rel="noopener">${issue.parentKey}</a>${epicSummary}</span>`);
       }
-      metaParts.push(`<span>Target: ${issue.targetVersion}</span>`);
+      metaParts.push(`<span>Target: ${timelineTarget}${targetSuffix}</span>`);
       if (boards) metaParts.push(`<span>Boards: ${boards}</span>`);
       if (issue.assignee) metaParts.push(`<span>Assignee: ${issue.assignee}</span>`);
       if (updated) metaParts.push(`<span>Updated ${updated}</span>`);
 
+      const classes = ['timeline-issue'];
+      if (!issue.hasTargetVersion && timelineSource !== 'inherited') classes.push('no-target');
+      if (issue.isEpic) classes.push('epic');
+      if (timelineSource === 'inherited') classes.push('inherited-target');
+
       return `
-        <div class="timeline-issue ${issue.hasTargetVersion ? '' : 'no-target'}">
+        <div class="${classes.join(' ')}">
           <div class="timeline-issue-header">
             <a href="https://${domain}/browse/${issue.key}" target="_blank" rel="noopener">${issue.key}</a>
             <span class="timeline-issue-summary">${issue.summary || '—'}</span>
@@ -1260,13 +1272,16 @@
       const orphanBuckets = new Map();
       const ensureOrphanBucket = (key, issue) => {
         if (orphanBuckets.has(key)) return orphanBuckets.get(key);
-        let label = issue?.targetVersion || 'Unmapped Target Version';
-        let type = issue?.targetSource === 'target-release' ? 'manual' : 'unmapped';
-        if (key === '__none__' || !issue?.hasTargetVersion) {
+        const timelineTarget = issue?.timelineTargetVersion || issue?.targetVersion;
+        const timelineSource = issue?.timelineTargetSource || issue?.targetSource;
+        let label = timelineTarget || 'Unmapped Target Version';
+        let type = timelineSource === 'target-release' ? 'manual' : 'unmapped';
+        if (timelineSource === 'inherited') type = 'inherited';
+        if (key === '__none__' || (!issue?.hasTargetVersion && timelineSource !== 'inherited')) {
           label = 'No Target Version';
           type = 'none';
-        } else if (issue?.targetSource === 'target-release' && key.startsWith('target:')) {
-          label = issue?.targetVersion || key.slice('target:'.length);
+        } else if (timelineSource === 'target-release' && key.startsWith('target:')) {
+          label = timelineTarget || key.slice('target:'.length);
           type = 'manual';
         }
         const bucket = { type, key, label, release: null, issues: [] };
@@ -1274,8 +1289,48 @@
         return bucket;
       };
 
+      const timelineItems = [];
+
       state.filteredIssues.forEach(issue => {
-        const key = issue.targetVersionKey || '__none__';
+        const item = {
+          ...issue,
+          boardIds: issue.boardIds && issue.boardIds.size ? new Set(issue.boardIds) : new Set(),
+          isEpic: false,
+          timelineTargetVersion: issue.targetVersion,
+          timelineTargetVersionKey: issue.targetVersionKey,
+          timelineTargetSource: issue.targetSource,
+        };
+        const inheritsFromEpic = (!issue.hasTargetVersion || !issue.targetVersionKey || issue.targetVersionKey === '__none__')
+          && issue.parentTargetVersionKey
+          && issue.parentTargetVersionKey !== '__none__';
+        if (inheritsFromEpic) {
+          item.timelineTargetVersion = issue.parentTargetVersion;
+          item.timelineTargetVersionKey = issue.parentTargetVersionKey;
+          item.timelineTargetSource = 'inherited';
+        }
+        timelineItems.push(item);
+      });
+
+      state.filteredEpics.forEach(epic => {
+        const item = {
+          ...epic,
+          type: 'Epic',
+          isEpic: true,
+          boardIds: epic.boardIds && epic.boardIds.size ? new Set(epic.boardIds) : new Set(),
+          timelineTargetVersion: epic.targetVersion,
+          timelineTargetVersionKey: epic.targetVersionKey,
+          timelineTargetSource: epic.targetSource,
+          parentKey: undefined,
+          parentSummary: undefined,
+          parentTargetVersion: epic.targetVersion,
+          parentTargetVersionKey: epic.targetVersionKey,
+          parentPis: epic.pis,
+        };
+        timelineItems.push(item);
+      });
+
+      timelineItems.forEach(issue => {
+        const key = issue.timelineTargetVersionKey || issue.targetVersionKey || '__none__';
         const bucket = releaseBuckets.get(key) || ensureOrphanBucket(key, issue);
         bucket.issues.push(issue);
       });
@@ -1308,6 +1363,8 @@
           values.push('no target version');
         } else if (bucket.type === 'manual') {
           values.push('target release');
+        } else if (bucket.type === 'inherited') {
+          values.push('inherited target');
         } else {
           values.push('fix version');
         }
@@ -1319,6 +1376,7 @@
             issue.status,
             issue.type,
             issue.targetVersion,
+            issue.timelineTargetVersion,
             issue.assignee,
             issue.parentKey,
             issue.parentSummary,
@@ -1354,6 +1412,12 @@
       };
 
       filteredBuckets.forEach(bucket => {
+        bucket.issues.sort((a, b) => {
+          if (Boolean(a.isEpic) === Boolean(b.isEpic)) {
+            return String(a.key || '').localeCompare(String(b.key || ''), undefined, { numeric: true });
+          }
+          return a.isEpic ? -1 : 1;
+        });
         const item = document.createElement('div');
         item.className = 'timeline-item';
         const issueCount = bucket.issues.length;
@@ -1376,20 +1440,22 @@
           ];
           if (boardName) metaSpans.push(`<span><span class="timeline-date-label">Board</span> ${boardName}</span>`);
           if (projectDisplay) metaSpans.push(`<span><span class="timeline-date-label">Project</span> ${projectDisplay}</span>`);
-        } else {
-          const boardNames = collectBoardNames(bucket.issues);
-          metaSpans = [
-            `<span><span class="timeline-date-label">Issues</span> ${issueCount}</span>`,
-          ];
-          if (bucket.type === 'none') {
-            metaSpans.push(`<span><span class="timeline-date-label">Status</span> No Target Version</span>`);
-          } else if (bucket.type === 'manual') {
-            metaSpans.push(`<span><span class="timeline-date-label">Source</span> Target Release Field</span>`);
           } else {
-            metaSpans.push(`<span><span class="timeline-date-label">Source</span> Fix Version</span>`);
-          }
-          if (boardNames.length) {
-            metaSpans.push(`<span><span class="timeline-date-label">Boards</span> ${boardNames.join(', ')}</span>`);
+            const boardNames = collectBoardNames(bucket.issues);
+            metaSpans = [
+              `<span><span class="timeline-date-label">Issues</span> ${issueCount}</span>`,
+            ];
+            if (bucket.type === 'none') {
+              metaSpans.push(`<span><span class="timeline-date-label">Status</span> No Target Version</span>`);
+            } else if (bucket.type === 'manual') {
+              metaSpans.push(`<span><span class="timeline-date-label">Source</span> Target Release Field</span>`);
+            } else if (bucket.type === 'inherited') {
+              metaSpans.push(`<span><span class="timeline-date-label">Source</span> Inherited from Epic</span>`);
+            } else {
+              metaSpans.push(`<span><span class="timeline-date-label">Source</span> Fix Version</span>`);
+            }
+            if (boardNames.length) {
+              metaSpans.push(`<span><span class="timeline-date-label">Boards</span> ${boardNames.join(', ')}</span>`);
           }
         }
 
