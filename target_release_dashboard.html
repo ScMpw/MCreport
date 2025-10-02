@@ -798,7 +798,7 @@
       const addValue = (value) => {
         if (!value) return;
         const str = String(value).trim();
-        if (!str || /^https?:\/\//i.test(str)) return;
+        if (!str) return;
         const key = str.toLowerCase();
         if (seenValues.has(key)) return;
         seenValues.add(key);
