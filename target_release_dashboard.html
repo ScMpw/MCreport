@@ -64,6 +64,7 @@
     .timeline-issue-meta { display:flex; flex-wrap:wrap; gap:8px; font-size:0.82em; color:#4b5563; align-items:center; }
     .timeline-issue-meta .badge { background:#e0e7ff; color:#3730a3; }
     .timeline-issue-meta .badge.epic-badge { background:#fef3c7; color:#b45309; }
+    .timeline-issue-meta .badge.missing-fix-version { background:#fee2e2; color:#b91c1c; border:1px solid #fecaca; }
     .timeline-issue-meta .issue-team { background:#f1f5f9; border-radius:999px; padding:2px 8px; font-weight:600; }
     .timeline-issue-meta span.issue-epic { display:flex; align-items:center; gap:6px; }
     .timeline-issue-meta span.issue-epic a { color:#4338ca; text-decoration:none; font-weight:600; }
@@ -1457,7 +1458,7 @@
     function getStatusClass(status) {
       if (!status) return 'default';
       const lower = status.toLowerCase();
-      if (lower.includes('done') || lower.includes('closed')) return 'done';
+      if (lower.includes('done') || lower.includes('closed') || lower.includes('resolve')) return 'done';
       if (lower.includes('progress') || lower.includes('in progress')) return 'progress';
       if (lower.includes('block')) return 'blocked';
       return 'default';
@@ -1635,9 +1636,10 @@
       const timelineSource = issue.timelineTargetSource || issue.targetSource;
       const targetSuffix = timelineSource === 'inherited' ? ' (from epic)' : '';
       const issueType = (issue.type || '').toLowerCase();
+      const statusClass = getStatusClass(issue.status);
       const metaParts = [
         `<span class="${badgeClass}">${issue.type}</span>`,
-        `<span class="status-pill ${getStatusClass(issue.status)}">${issue.status}</span>`,
+        `<span class="status-pill ${statusClass}">${issue.status}</span>`,
         `<span class="issue-team">Team: ${team}</span>`,
       ];
       if (issue.parentKey) {
@@ -1645,6 +1647,11 @@
         metaParts.push(`<span class="issue-epic">Epic <a href="https://${domain}/browse/${issue.parentKey}" target="_blank" rel="noopener">${issue.parentKey}</a>${epicSummary}</span>`);
       }
       const shouldShowTarget = issue.isEpic || issueType !== 'task';
+      const hasFixVersion = Array.isArray(issue.fixVersions) && issue.fixVersions.length > 0;
+      const isClosedStory = !issue.isEpic && issueType === 'story' && statusClass === 'done' && !hasFixVersion;
+      if (isClosedStory) {
+        metaParts.push('<span class="badge missing-fix-version" title="Closed story without a fix version">No Fix Version</span>');
+      }
       if (shouldShowTarget) {
         metaParts.push(`<span>Target: ${timelineTarget}${targetSuffix}</span>`);
       }
