@@ -1248,6 +1248,22 @@ function renderCharts(displaySprints, allSprints) {
     return new XMLSerializer().serializeToString(svg);
   }
 
+  async function renderChartToPdf(pdf, canvas, x, y, width, height) {
+    if (window.svg2pdf) {
+      try {
+        const svgString = canvasToSVG(canvas);
+        const parser = new DOMParser();
+        const svgDoc = parser.parseFromString(svgString, 'image/svg+xml');
+        const svgElement = svgDoc.documentElement;
+        await window.svg2pdf(svgElement, pdf, { x, y, width, height });
+        return;
+      } catch (err) {
+        console.error('SVG conversion failed, falling back to JPEG', err);
+      }
+    }
+    pdf.addImage(canvasToOptimizedDataURL(canvas), 'JPEG', x, y, width, height);
+  }
+
   async function exportPDF() {
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
@@ -1300,22 +1316,7 @@ function renderCharts(displaySprints, allSprints) {
           pdf.setFontSize(12);
           pdf.text(`${boardTitle} - ${chartTitleEl.textContent.trim()}`, margin, y);
           y += 14;
-          let rendered = false;
-          if (window.svg2pdf) {
-            try {
-              const svgString = canvasToSVG(canvas);
-              const parser = new DOMParser();
-              const svgDoc = parser.parseFromString(svgString, 'image/svg+xml');
-              const svgElement = svgDoc.documentElement;
-              await window.svg2pdf(svgElement, pdf, { x: margin, y, width, height });
-              rendered = true;
-            } catch (err) {
-              console.error('SVG conversion failed, falling back to JPEG', err);
-            }
-          }
-          if (!rendered) {
-            pdf.addImage(canvasToOptimizedDataURL(canvas), 'JPEG', margin, y, width, height);
-          }
+          await renderChartToPdf(pdf, canvas, margin, y, width, height);
           y += height + 10;
         }
       }
