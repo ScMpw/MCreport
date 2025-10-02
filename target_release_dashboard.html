@@ -910,47 +910,27 @@
       return matches;
     }
 
-    function determineTargetVersions(fixVersions, targetReleases, options = {}) {
-      const { allowFixVersionFallback = true } = options;
+    function determineTargetVersions(targetReleases) {
       const targets = [];
-      const seen = new Set();
-
-      const addTarget = (key, label, source, hasValue = true) => {
-        if (!key) return;
-        const finalKey = key || '__none__';
-        if (seen.has(finalKey)) return;
-        seen.add(finalKey);
-        targets.push({
-          key: finalKey,
-          label: label || 'No Target Version',
-          hasValue,
-          source,
-        });
-      };
 
       if (Array.isArray(targetReleases) && targetReleases.length) {
         targetReleases.forEach(value => {
           if (!value) return;
           const label = value;
-          const key = `target:${value}`;
-          addTarget(key, label, 'target-release', true);
-        });
-      }
-
-      if (allowFixVersionFallback && Array.isArray(fixVersions) && fixVersions.length) {
-        fixVersions.forEach(version => {
-          if (!version) return;
-          const key = version.key || version.id || (version.name ? `name:${version.name}` : undefined) || '__none__';
-          const label = version.name || 'Unnamed Release';
-          addTarget(key, label, 'fixVersion', key !== '__none__');
+          targets.push({
+            key: label,
+            label,
+            hasValue: true,
+            source: 'target-release',
+          });
         });
       }
 
       if (!targets.length) {
-        addTarget('__none__', 'No Target Version', 'none', false);
+        targets.push({ key: '__none__', label: 'No Target Version', hasValue: false, source: 'none' });
       }
 
-      const primary = targets.find(t => t.hasValue) || targets[0];
+      const primary = targets[0];
 
       return {
         primary,
@@ -966,7 +946,7 @@
       const targetReleaseField = targetReleaseFieldKey || 'target-release';
       const targetReleaseValue = fields[targetReleaseField] ?? fields['target-release'];
       const targetReleases = parseTargetReleaseValues(targetReleaseValue);
-      const targetInfo = determineTargetVersions(fixVersions, targetReleases, { allowFixVersionFallback: false });
+      const targetInfo = determineTargetVersions(targetReleases);
       const targetPrimary = targetInfo.primary;
       const targetVersions = targetInfo.targets;
       const responsibleTeam = extractResponsibleTeam(fields, responsibleFieldKey);
@@ -1029,7 +1009,7 @@
       const targetReleaseField = targetReleaseFieldKey || 'target-release';
       const targetReleaseValue = fields[targetReleaseField] ?? fields['target-release'];
       const targetReleases = parseTargetReleaseValues(targetReleaseValue);
-      const targetInfo = determineTargetVersions(fixVersions, targetReleases);
+      const targetInfo = determineTargetVersions(targetReleases);
       const targetPrimary = targetInfo.primary;
       const targetVersions = targetInfo.targets;
       const responsibleTeam = parent?.responsibleTeam || extractResponsibleTeam(fields, responsibleFieldKey);
@@ -1198,43 +1178,6 @@
       return targets[0]?.label || 'No Target Version';
     }
 
-    function mergeTargetVersionLists(existingTargets, incomingTargets) {
-      const map = new Map();
-      const addTarget = (target, preferIncoming = false) => {
-        if (!target) return;
-        const key = target.key || '__none__';
-        const normalized = {
-          key,
-          label: target.label || 'No Target Version',
-          hasValue: target.hasValue !== false && key !== '__none__',
-          source: target.source || 'none',
-        };
-        if (!map.has(key)) {
-          map.set(key, normalized);
-          return;
-        }
-        if (preferIncoming) {
-          const current = map.get(key);
-          if (!current.hasValue && normalized.hasValue) {
-            map.set(key, normalized);
-            return;
-          }
-          if (normalized.hasValue === current.hasValue) {
-            map.set(key, normalized);
-          }
-        }
-      };
-
-      (existingTargets || []).forEach(target => addTarget(target, false));
-      (incomingTargets || []).forEach(target => addTarget(target, true));
-
-      const merged = Array.from(map.values());
-      if (!merged.length) {
-        merged.push({ key: '__none__', label: 'No Target Version', hasValue: false, source: 'none' });
-      }
-      return merged;
-    }
-
     function mergeUniqueStrings(existingValues, incomingValues) {
       const seen = new Set();
       const results = [];
@@ -1281,19 +1224,6 @@
       });
 
       return Array.from(map.values());
-    }
-
-    function refreshPrimaryTargetMetadata(entity) {
-      if (!entity) return;
-      if (!Array.isArray(entity.targetVersions) || !entity.targetVersions.length) {
-        entity.targetVersions = [{ key: '__none__', label: 'No Target Version', hasValue: false, source: 'none' }];
-      }
-      const primary = entity.targetVersions.find(target => target && target.hasValue && target.key !== '__none__')
-        || entity.targetVersions[0];
-      entity.targetVersion = primary?.label || 'No Target Version';
-      entity.targetVersionKey = primary?.key || '__none__';
-      entity.targetSource = primary?.source || 'none';
-      entity.hasTargetVersion = Boolean(primary && primary.hasValue && primary.key !== '__none__');
     }
 
     function resolveTimelineTargets(entity, includeParent = false) {
@@ -1487,6 +1417,8 @@
           label = value.slice('target:'.length);
         } else if (value.startsWith('name:')) {
           label = value.slice('name:'.length);
+        } else if (!value.startsWith('normalized:')) {
+          label = value;
         } else if (state.releaseIndex && state.releaseIndex.has(value)) {
           label = state.releaseIndex.get(value)?.name;
         }
@@ -1722,14 +1654,18 @@
         let bucket = findBucketByNormalizedName(normalizedLabel);
         if (bucket) return bucket;
 
-        if (targetKey.startsWith('target:')) {
-          bucket = findBucketByNormalizedName(normalizeVersionName(targetKey.slice('target:'.length)));
-          if (bucket) return bucket;
-        }
-
-        if (targetKey.startsWith('name:')) {
-          bucket = findBucketByNormalizedName(normalizeVersionName(targetKey.slice('name:'.length)));
-          if (bucket) return bucket;
+        if (targetKey) {
+          let candidate = targetKey;
+          if (candidate.startsWith('target:')) {
+            candidate = candidate.slice('target:'.length);
+          } else if (candidate.startsWith('name:')) {
+            candidate = candidate.slice('name:'.length);
+          }
+          const normalizedCandidate = normalizeVersionName(candidate);
+          if (normalizedCandidate) {
+            bucket = findBucketByNormalizedName(normalizedCandidate);
+            if (bucket) return bucket;
+          }
         }
 
         return null;
@@ -1746,8 +1682,12 @@
         if (key === '__none__' || (!issue?.hasTargetVersion && timelineSource !== 'inherited')) {
           label = 'No Target Version';
           type = 'none';
-        } else if (timelineSource === 'target-release' && key.startsWith('target:')) {
-          label = timelineTarget || key.slice('target:'.length);
+        } else if (timelineSource === 'target-release') {
+          if (key.startsWith('target:')) {
+            label = timelineTarget || key.slice('target:'.length);
+          } else {
+            label = timelineTarget || key;
+          }
           type = 'manual';
         }
         const bucket = { type, key, label, release: null, issues: [] };
@@ -2350,8 +2290,6 @@
               if (epicMap.has(normalized.key)) {
                 const existing = epicMap.get(normalized.key);
                 normalized.boardIds.forEach(id => existing.boardIds.add(id));
-                existing.targetVersions = mergeTargetVersionLists(existing.targetVersions, normalized.targetVersions);
-                existing.targetReleases = mergeUniqueStrings(existing.targetReleases, normalized.targetReleases);
                 existing.fixVersions = mergeFixVersionLists(existing.fixVersions, normalized.fixVersions);
                 existing.labels = mergeUniqueStrings(existing.labels, normalized.labels);
                 existing.pis = mergeUniqueStrings(existing.pis?.map(pi => pi.label), normalized.pis?.map(pi => pi.label))
@@ -2362,8 +2300,6 @@
                     const [base, suffix] = label.split('_');
                     return { base: base || label, suffix: suffix || null, label };
                   });
-                refreshPrimaryTargetMetadata(existing);
-                existing.targetRelease = existing.targetReleases?.[0] || undefined;
               } else {
                 epicMap.set(normalized.key, normalized);
               }
