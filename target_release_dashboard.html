@@ -51,6 +51,11 @@
     .timeline-issue.no-target { background:#fef2f2; border-color:#fecaca; }
     .timeline-issue.epic { border-left:4px solid #f59e0b; background:#fffbeb; box-shadow:0 1px 3px rgba(251, 191, 36, 0.25); }
     .timeline-issue.inherited-target { border-style:dashed; border-color:#c7d2fe; background:#eef2ff; }
+    .timeline-issue-group { display:flex; flex-direction:column; gap:10px; }
+    .timeline-issue-group + .timeline-issue-group { margin-top:12px; }
+    .timeline-issue-group-children { display:flex; flex-direction:column; gap:10px; margin-left:26px; }
+    .timeline-issue-group-title { font-size:0.85em; font-weight:700; color:#1f2937; text-transform:uppercase; letter-spacing:0.05em; padding:4px 2px; }
+    .timeline-issue-group.no-parent-group .timeline-issue-group-title { color:#4b5563; }
     .timeline-issue-header { display:flex; flex-wrap:wrap; gap:8px; align-items:center; font-weight:600; color:#1f2937; }
     .timeline-issue-header a { color:#4338ca; text-decoration:none; }
     .timeline-issue-header a:hover { text-decoration:underline; }
@@ -1628,6 +1633,95 @@
       `;
     }
 
+    function buildGroupedTimelineIssuesHtml(issues) {
+      if (!Array.isArray(issues) || !issues.length) {
+        return '<div class="timeline-no-issues">No child items match the current filters.</div>';
+      }
+
+      const epicGroups = new Map();
+      const noParentIssues = [];
+
+      const pushIssueToGroup = (parentKey, updater) => {
+        if (!epicGroups.has(parentKey)) {
+          epicGroups.set(parentKey, { epic: null, children: [] });
+        }
+        const entry = epicGroups.get(parentKey);
+        updater(entry);
+      };
+
+      const sortIssuesByKey = (list) => list.slice().sort((a, b) => {
+        return String(a.key || '').localeCompare(String(b.key || ''), undefined, { numeric: true });
+      });
+
+      issues.forEach(issue => {
+        if (issue.isEpic) {
+          pushIssueToGroup(issue.key, entry => { entry.epic = issue; });
+          return;
+        }
+        if (issue.parentKey) {
+          pushIssueToGroup(issue.parentKey, entry => { entry.children.push(issue); });
+          return;
+        }
+        noParentIssues.push(issue);
+      });
+
+      const groupEntries = Array.from(epicGroups.entries()).map(([parentKey, group]) => ({
+        parentKey,
+        epic: group.epic,
+        children: sortIssuesByKey(group.children),
+      }));
+
+      groupEntries.sort((a, b) => {
+        const aHasEpic = Boolean(a.epic);
+        const bHasEpic = Boolean(b.epic);
+        if (aHasEpic && bHasEpic) {
+          return String(a.epic.key || '').localeCompare(String(b.epic.key || ''), undefined, { numeric: true });
+        }
+        if (aHasEpic !== bHasEpic) {
+          return aHasEpic ? -1 : 1;
+        }
+        return String(a.parentKey || '').localeCompare(String(b.parentKey || ''), undefined, { numeric: true });
+      });
+
+      const parts = [];
+
+      groupEntries.forEach(group => {
+        const groupParts = [];
+        if (group.epic) {
+          groupParts.push(buildTimelineIssueHtml(group.epic));
+        } else {
+          const label = group.parentKey
+            ? `Parent Epic ${group.parentKey}`
+            : 'Parent Epic';
+          groupParts.push(`<div class="timeline-issue-group-title">${label}</div>`);
+        }
+        if (group.children.length) {
+          const childrenHtml = group.children.map(buildTimelineIssueHtml).join('');
+          groupParts.push(`<div class="timeline-issue-group-children">${childrenHtml}</div>`);
+        }
+        if (groupParts.length) {
+          parts.push(`<div class="timeline-issue-group">${groupParts.join('')}</div>`);
+        }
+      });
+
+      if (noParentIssues.length) {
+        const sortedNoParent = sortIssuesByKey(noParentIssues);
+        const noParentHtml = sortedNoParent.map(buildTimelineIssueHtml).join('');
+        parts.push(`
+          <div class="timeline-issue-group no-parent-group">
+            <div class="timeline-issue-group-title">No Parent</div>
+            <div class="timeline-issue-group-children">${noParentHtml}</div>
+          </div>
+        `);
+      }
+
+      if (!parts.length) {
+        return '<div class="timeline-no-issues">No child items match the current filters.</div>';
+      }
+
+      return `<div class="timeline-issues">${parts.join('')}</div>`;
+    }
+
     function renderReleasesTimeline() {
       const container = document.getElementById('releasesTimeline');
       if (!container) return;
@@ -1863,12 +1957,6 @@
       };
 
       filteredBuckets.forEach(bucket => {
-        bucket.issues.sort((a, b) => {
-          if (Boolean(a.isEpic) === Boolean(b.isEpic)) {
-            return String(a.key || '').localeCompare(String(b.key || ''), undefined, { numeric: true });
-          }
-          return a.isEpic ? -1 : 1;
-        });
         const item = document.createElement('div');
         item.className = 'timeline-item';
         const issueCount = bucket.issues.length;
@@ -1911,7 +1999,7 @@
         }
 
         const issuesHtml = issueCount
-          ? `<div class="timeline-issues">${bucket.issues.map(buildTimelineIssueHtml).join('')}</div>`
+          ? buildGroupedTimelineIssuesHtml(bucket.issues)
           : '<div class="timeline-no-issues">No child items match the current filters.</div>';
 
         item.innerHTML = `
