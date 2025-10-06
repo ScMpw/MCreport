@@ -135,7 +135,7 @@
           <select id="piSelect" multiple></select>
           <div class="suffix-toggles">
             <label><input type="checkbox" id="suffixCommitted" checked> Committed</label>
-            <label><input type="checkbox" id="suffixPlanned" checked> Planned</label>
+            <label><input type="checkbox" id="suffixCandidate" checked> Candidate</label>
             <label><input type="checkbox" id="suffixSpillover" checked> Spillover</label>
           </div>
         </div>
@@ -1014,21 +1014,32 @@
       return undefined;
     }
 
+    function parsePiLabel(label) {
+      if (typeof label !== 'string') return null;
+      const trimmed = label.trim();
+      const match = trimmed.match(/^(\d{4})[_-](pi\d+)(?:[_-](committed|candidate|spillover))?$/i);
+      if (!match) return null;
+      const year = match[1];
+      const piSegment = match[2].toLowerCase();
+      const suffix = match[3] ? match[3].toLowerCase() : null;
+      const base = `${year}_${piSegment}`;
+      const baseLabel = `${year}_${piSegment.toUpperCase()}`;
+      const normalizedSuffix = suffix === 'committed' || suffix === 'candidate' || suffix === 'spillover' ? suffix : null;
+      const fullLabel = normalizedSuffix ? `${baseLabel}_${normalizedSuffix}` : baseLabel;
+      return { base, baseLabel, suffix: normalizedSuffix, label: fullLabel };
+    }
+
     function extractPis(labels) {
       if (!Array.isArray(labels) || !labels.length) return [];
       const matches = [];
       const seen = new Set();
       labels.forEach(label => {
-        if (typeof label !== 'string') return;
-        const trimmed = label.trim();
-        const match = trimmed.match(/^(pi\d{2})(?:[_-](committed|planned|spillover))?$/i);
-        if (!match) return;
-        const base = match[1].toLowerCase();
-        const suffix = match[2] ? match[2].toLowerCase() : null;
-        const key = suffix ? `${base}_${suffix}` : base;
+        const parsed = parsePiLabel(label);
+        if (!parsed) return;
+        const key = `${parsed.base}__${parsed.suffix || ''}`;
         if (seen.has(key)) return;
         seen.add(key);
-        matches.push({ base, suffix: suffix === 'committed' || suffix === 'planned' || suffix === 'spillover' ? suffix : null, label: suffix ? `${base}_${suffix}` : base });
+        matches.push(parsed);
       });
       return matches;
     }
@@ -1330,6 +1341,30 @@
       return results;
     }
 
+    function mergePiLists(existing, incoming) {
+      const map = new Map();
+      const addEntry = entry => {
+        if (!entry) return;
+        let parsed = null;
+        if (typeof entry === 'string') {
+          parsed = parsePiLabel(entry);
+        } else if (typeof entry === 'object') {
+          if (entry.label) parsed = parsePiLabel(entry.label);
+          if (!parsed && entry.baseLabel) parsed = parsePiLabel(entry.baseLabel);
+          if (!parsed && entry.base) parsed = parsePiLabel(entry.base);
+        }
+        if (!parsed) return;
+        const key = `${parsed.base}__${parsed.suffix || ''}`;
+        if (map.has(key)) return;
+        map.set(key, parsed);
+      };
+
+      (existing || []).forEach(addEntry);
+      (incoming || []).forEach(addEntry);
+
+      return Array.from(map.values());
+    }
+
     function mergeFixVersionLists(existingVersions, incomingVersions) {
       const map = new Map();
 
@@ -1453,12 +1488,13 @@
       const selectedVersions = expandSelectedVersionKeys(targetVersionChoices.getValue(true));
       const selectedPiBases = new Set(piChoices.getValue(true));
       const allowCommitted = document.getElementById('suffixCommitted').checked;
-      const allowPlanned = document.getElementById('suffixPlanned').checked;
+      const allowCandidate = document.getElementById('suffixCandidate').checked;
       const allowSpillover = document.getElementById('suffixSpillover').checked;
       const selectedTeams = new Set(teamChoices.getValue(true));
       const selectedBoardFilters = new Set(boardFilterChoices.getValue(true));
 
       const filteredEpics = state.epics.filter(epic => {
+        if (!Array.isArray(epic.pis) || !epic.pis.length) return false;
         if (selectedVersions.size) {
           const keys = collectTargetVersionKeys(epic);
           if (!keys.some(key => selectedVersions.has(key))) return false;
@@ -1466,14 +1502,11 @@
 
         if (selectedPiBases.size) {
           let piMatch = false;
-          if (!epic.pis.length && selectedPiBases.has('__none__')) {
-            piMatch = true;
-          }
           epic.pis.forEach(pi => {
             if (!pi || !pi.base) return;
             if (!selectedPiBases.has(pi.base)) return;
             if (pi.suffix === 'committed' && !allowCommitted) return;
-            if (pi.suffix === 'planned' && !allowPlanned) return;
+            if (pi.suffix === 'candidate' && !allowCandidate) return;
             if (pi.suffix === 'spillover' && !allowSpillover) return;
             piMatch = true;
           });
@@ -1516,7 +1549,7 @@
             if (!pi || !pi.base) return;
             if (!selectedPiBases.has(pi.base)) return;
             if (pi.suffix === 'committed' && !allowCommitted) return;
-            if (pi.suffix === 'planned' && !allowPlanned) return;
+            if (pi.suffix === 'candidate' && !allowCandidate) return;
             if (pi.suffix === 'spillover' && !allowSpillover) return;
             piMatch = true;
           });
@@ -2090,12 +2123,13 @@
           }
         });
 
-        if (!epic.pis.length) {
+        if (!Array.isArray(epic.pis) || !epic.pis.length) {
           if (!allPis.has('__none__')) allPis.set('__none__', { value: '__none__', label: 'No Product Increment' });
         }
-        epic.pis.forEach(pi => {
+        (epic.pis || []).forEach(pi => {
+          if (!pi || !pi.base) return;
           if (!allPis.has(pi.base)) {
-            allPis.set(pi.base, { value: pi.base, label: pi.base });
+            allPis.set(pi.base, { value: pi.base, label: pi.baseLabel || pi.base });
           }
         });
 
@@ -2132,7 +2166,7 @@
         (issue.pis || []).forEach(pi => {
           if (!pi || !pi.base) return;
           if (!allPis.has(pi.base)) {
-            allPis.set(pi.base, { value: pi.base, label: pi.base });
+            allPis.set(pi.base, { value: pi.base, label: pi.baseLabel || pi.base });
           }
         });
 
@@ -2270,14 +2304,7 @@
                 normalized.boardIds.forEach(id => existing.boardIds.add(id));
                 existing.fixVersions = mergeFixVersionLists(existing.fixVersions, normalized.fixVersions);
                 existing.labels = mergeUniqueStrings(existing.labels, normalized.labels);
-                existing.pis = mergeUniqueStrings(existing.pis?.map(pi => pi.label), normalized.pis?.map(pi => pi.label))
-                  .map(label => {
-                    const source = (normalized.pis || []).find(pi => pi.label === label)
-                      || (existing.pis || []).find(pi => pi.label === label);
-                    if (source) return { ...source };
-                    const [base, suffix] = label.split('_');
-                    return { base: base || label, suffix: suffix || null, label };
-                  });
+                existing.pis = mergePiLists(existing.pis, normalized.pis);
               } else {
                 epicMap.set(normalized.key, normalized);
               }
@@ -2423,7 +2450,7 @@
     document.getElementById('jiraDomain').addEventListener('change', loadBoards);
     document.getElementById('epicSearch').addEventListener('input', () => renderEpicTable());
     document.getElementById('releaseSearch').addEventListener('input', () => renderReleasesTimeline());
-    ['suffixCommitted', 'suffixPlanned', 'suffixSpillover'].forEach(id => {
+    ['suffixCommitted', 'suffixCandidate', 'suffixSpillover'].forEach(id => {
       document.getElementById(id).addEventListener('change', applyFilters);
     });
 
