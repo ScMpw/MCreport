@@ -1625,9 +1625,9 @@
       const statusClass = getStatusClass(issue.status);
       const hasOwnTargetVersion = issue.hasOwnTargetVersion ?? issue.hasTargetVersion;
       const resolution = issue.resolution ? String(issue.resolution) : '';
-      const normalizedResolution = resolution.trim().toLowerCase().replace(/\s+/g, '');
-      const isImplementedDone = normalizedResolution === 'implemented/done' || normalizedResolution === 'implementeddone';
-      const requiresVersionBadges = !resolution || isImplementedDone;
+      const trimmedResolution = resolution.trim();
+      const isImplementedDone = /^implemented\s*\/\s*done$/i.test(trimmedResolution);
+      const hasNonImplementedDoneResolution = Boolean(trimmedResolution) && !isImplementedDone;
       const metaParts = [
         `<span class="${badgeClass}">${issue.type}</span>`,
         `<span class="status-pill ${statusClass}">${issue.status}</span>`,
@@ -1639,13 +1639,13 @@
       const shouldShowTarget = issue.isEpic || issueType !== 'task';
       const hasFixVersion = Array.isArray(issue.fixVersions) && issue.fixVersions.length > 0;
       const isClosedStory = !issue.isEpic && issueType === 'story' && statusClass === 'done' && !hasFixVersion;
-      if (requiresVersionBadges && isClosedStory) {
+      if (!hasNonImplementedDoneResolution && isClosedStory) {
         metaParts.push('<span class="badge missing-fix-version" title="Closed story without a fix version">No Fix Version</span>');
       }
       if (!hasOwnTargetVersion && timelineSource === 'inherited') {
         metaParts.push('<span class="badge inherited-parent" title="Issue inherits its release from the parent">Parent Target</span>');
       }
-      if (!requiresVersionBadges && resolution) {
+      if (hasNonImplementedDoneResolution) {
         const safeResolution = resolution.replace(/[&<>"']/g, ch => ({
           '&': '&amp;',
           '<': '&lt;',
@@ -1665,7 +1665,7 @@
       if (updated) metaParts.push(`<span>Updated ${updated}</span>`);
 
       const classes = ['timeline-issue'];
-      if (!issue.hasTargetVersion && timelineSource !== 'inherited') classes.push('no-target');
+      if (!issue.hasTargetVersion && timelineSource !== 'inherited' && !hasNonImplementedDoneResolution) classes.push('no-target');
       if (issue.isEpic) classes.push('epic');
       if (timelineSource === 'inherited') classes.push('inherited-target');
 
