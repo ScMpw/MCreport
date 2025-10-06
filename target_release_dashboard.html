@@ -1672,10 +1672,11 @@
       const nowTime = Date.now();
       return state.releases.filter(rel => {
         if (rel.archived) return false;
-        if (!rel.releaseDate) return !rel.released;
+        if (rel.released) return false;
+        if (!rel.releaseDate) return true;
         const date = new Date(rel.releaseDate);
-        if (Number.isNaN(date.getTime())) return !rel.released;
-        return !rel.released || date.getTime() >= nowTime;
+        if (Number.isNaN(date.getTime())) return true;
+        return date.getTime() >= nowTime;
       }).sort((a, b) => {
         const aTime = a.releaseDate ? new Date(a.releaseDate).getTime() : Number.MAX_SAFE_INTEGER;
         const bTime = b.releaseDate ? new Date(b.releaseDate).getTime() : Number.MAX_SAFE_INTEGER;
