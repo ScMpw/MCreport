@@ -372,6 +372,68 @@
         return '1=1';
       });
 
+      const PI_LABEL_PATTERN = /^(?:\d{4}[_-]?pi\d{1,2}(?:[_-](?:committed|commited|planned|spillover|candidate))?|pi\d{1,2}(?:[_-](?:committed|commited|planned|spillover|candidate))?)$/i;
+
+      const piLabelLookup = new Map();
+      const recordPiLabels = values => {
+        if (!values || !values.length) return;
+        values.forEach(value => {
+          const cleaned = value.replace(/^\s*["']?|["']?\s*$/g, '').trim();
+          if (!cleaned) return;
+          if (!PI_LABEL_PATTERN.test(cleaned)) return;
+          const key = cleaned.toLowerCase();
+          if (!piLabelLookup.has(key)) piLabelLookup.set(key, cleaned);
+        });
+      };
+
+      const labelInScanner = /\b"?labels"?\s+in\s*\(([^)]*)\)/gi;
+      let labelMatch;
+      while ((labelMatch = labelInScanner.exec(filterQuery)) !== null) {
+        const values = parseList(labelMatch[1]);
+        recordPiLabels(values);
+      }
+
+      const labelEqScanner = /\b"?labels"?\s*=\s*("[^"]+"|'[^']+'|[^\s)]+)/gi;
+      while ((labelMatch = labelEqScanner.exec(filterQuery)) !== null) {
+        recordPiLabels([labelMatch[1]]);
+      }
+
+      const allPiLabels = Array.from(piLabelLookup.values());
+
+      const buildEpicAwareLabelClause = (fieldToken, rawValues, originalClause) => {
+        const cleanedValues = Array.isArray(rawValues)
+          ? rawValues.map(value => value.replace(/^\s*["']?|["']?\s*$/g, '').trim()).filter(Boolean)
+          : [];
+
+        const clauseLabels = [];
+        const clauseSeen = new Set();
+        cleanedValues.forEach(value => {
+          if (!PI_LABEL_PATTERN.test(value)) return;
+          const key = value.toLowerCase();
+          if (clauseSeen.has(key)) return;
+          clauseSeen.add(key);
+          clauseLabels.push(value);
+        });
+
+        const effectiveLabels = clauseLabels.length ? clauseLabels : allPiLabels;
+        if (!effectiveLabels.length) return originalClause;
+
+        const formattedList = effectiveLabels
+          .map(label => `"${label.replace(/"/g, '\\"')}"`)
+          .join(', ');
+        const field = fieldToken && fieldToken.trim() ? fieldToken.trim() : 'labels';
+        return `(${originalClause} OR (issuetype = "Epic" AND ${field} in (${formattedList})))`;
+      };
+
+      updated = updated.replace(/\b("?labels"?)\s+in\s*\(([^)]*)\)/gi, (match, field, list) => {
+        const values = parseList(list);
+        return buildEpicAwareLabelClause(field, values, match);
+      });
+
+      updated = updated.replace(/\b("?labels"?)\s*=\s*("[^"]+"|'[^']+'|[^\s)]+)/gi, (match, field, rawValue) => {
+        return buildEpicAwareLabelClause(field, [rawValue], match);
+      });
+
       return updated.trim();
     }
 
