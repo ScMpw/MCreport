@@ -1962,7 +1962,6 @@
         const issueCount = bucket.issues.length;
         let metaSpans = [];
         if (bucket.release) {
-          const startDate = bucket.release.startDate ? formatDate(bucket.release.startDate) : 'Not set';
           const releaseDate = bucket.release.releaseDate ? formatDate(bucket.release.releaseDate) : 'Not set';
           const boardName = bucket.release.boardId !== undefined
             ? state.boardsMap.get(Number(bucket.release.boardId))?.name || `Board ${bucket.release.boardId}`
@@ -1973,7 +1972,6 @@
               : bucket.release.projectName
             : (bucket.release.projectKey || '');
           metaSpans = [
-            `<span><span class="timeline-date-label">Start</span> ${startDate}</span>`,
             `<span><span class="timeline-date-label">Release</span> ${releaseDate}</span>`,
             `<span><span class="timeline-date-label">Issues</span> ${issueCount}</span>`,
           ];
