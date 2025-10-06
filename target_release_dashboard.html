@@ -1095,7 +1095,7 @@
         status: fields.status?.name ? String(fields.status.name) : 'Unknown',
         assignee: fields.assignee?.displayName ? String(fields.assignee.displayName) : undefined,
         responsibleTeam: normalizedTeam,
-        resolutionType: fields.resolution?.name ? String(fields.resolution.name) : undefined,
+        resolution: fields.resolution?.name ? String(fields.resolution.name) : undefined,
         boardIds: new Set([Number(boardId)]),
         fixVersions,
         targetRelease: targetReleases[0] || undefined,
@@ -1169,7 +1169,7 @@
         status: fields.status?.name ? String(fields.status.name) : 'Unknown',
         assignee: fields.assignee?.displayName ? String(fields.assignee.displayName) : undefined,
         responsibleTeam: responsibleTeam || undefined,
-        resolutionType: fields.resolution?.name ? String(fields.resolution.name) : undefined,
+        resolution: fields.resolution?.name ? String(fields.resolution.name) : undefined,
         boardIds: new Set([Number(boardId)]),
         fixVersions,
         targetRelease: targetReleases[0] || undefined,
@@ -1624,10 +1624,10 @@
       const issueType = (issue.type || '').toLowerCase();
       const statusClass = getStatusClass(issue.status);
       const hasOwnTargetVersion = issue.hasOwnTargetVersion ?? issue.hasTargetVersion;
-      const resolutionType = issue.resolutionType ? String(issue.resolutionType) : '';
-      const normalizedResolution = resolutionType.trim().toLowerCase().replace(/\s+/g, '');
+      const resolution = issue.resolution ? String(issue.resolution) : '';
+      const normalizedResolution = resolution.trim().toLowerCase().replace(/\s+/g, '');
       const isImplementedDone = normalizedResolution === 'implemented/done' || normalizedResolution === 'implementeddone';
-      const requiresVersionBadges = !resolutionType || isImplementedDone;
+      const requiresVersionBadges = !resolution || isImplementedDone;
       const metaParts = [
         `<span class="${badgeClass}">${issue.type}</span>`,
         `<span class="status-pill ${statusClass}">${issue.status}</span>`,
@@ -1645,8 +1645,8 @@
       if (!hasOwnTargetVersion && timelineSource === 'inherited') {
         metaParts.push('<span class="badge inherited-parent" title="Issue inherits its release from the parent">Parent Target</span>');
       }
-      if (!requiresVersionBadges && resolutionType) {
-        const safeResolution = resolutionType.replace(/[&<>"']/g, ch => ({
+      if (!requiresVersionBadges && resolution) {
+        const safeResolution = resolution.replace(/[&<>"']/g, ch => ({
           '&': '&amp;',
           '<': '&lt;',
           '>': '&gt;',
@@ -2319,8 +2319,8 @@
                 existing.fixVersions = mergeFixVersionLists(existing.fixVersions, normalized.fixVersions);
                 existing.labels = mergeUniqueStrings(existing.labels, normalized.labels);
                 existing.pis = mergePiLists(existing.pis, normalized.pis);
-                if (!existing.resolutionType && normalized.resolutionType) {
-                  existing.resolutionType = normalized.resolutionType;
+                if (!existing.resolution && normalized.resolution) {
+                  existing.resolution = normalized.resolution;
                 }
               } else {
                 epicMap.set(normalized.key, normalized);
@@ -2355,8 +2355,8 @@
               if (childMap.has(normalized.key)) {
                 const existing = childMap.get(normalized.key);
                 normalized.boardIds.forEach(id => existing.boardIds.add(id));
-                if (!existing.resolutionType && normalized.resolutionType) {
-                  existing.resolutionType = normalized.resolutionType;
+                if (!existing.resolution && normalized.resolution) {
+                  existing.resolution = normalized.resolution;
                 }
                 if (!existing.hasTargetVersion && normalized.hasTargetVersion) {
                   existing.hasTargetVersion = true;
@@ -2389,8 +2389,8 @@
               if (childMap.has(normalized.key)) {
                 const existing = childMap.get(normalized.key);
                 normalized.boardIds.forEach(id => existing.boardIds.add(id));
-                if (!existing.resolutionType && normalized.resolutionType) {
-                  existing.resolutionType = normalized.resolutionType;
+                if (!existing.resolution && normalized.resolution) {
+                  existing.resolution = normalized.resolution;
                 }
                 if (!existing.hasTargetVersion && normalized.hasTargetVersion) {
                   existing.hasTargetVersion = true;
