@@ -1224,6 +1224,72 @@
       return String(name).trim().toLowerCase().replace(/\s+/g, ' ');
     }
 
+    function parseReleaseVersion(name) {
+      const normalized = String(name ?? '').toLowerCase();
+      const tokens = normalized.match(/\d+|x/gi) || [];
+
+      const majorToken = tokens[0];
+      const minorToken = tokens[1];
+      const patchToken = tokens[2];
+
+      const majorIsNumber = /^\d+$/.test(majorToken || '');
+      const minorIsNumber = /^\d+$/.test(minorToken || '');
+
+      const major = majorIsNumber ? Number(majorToken) : Number.POSITIVE_INFINITY;
+      const minor = majorIsNumber
+        ? (minorIsNumber ? Number(minorToken) : (minorToken && minorToken.toLowerCase() === 'x' ? Number.POSITIVE_INFINITY : 0))
+        : Number.POSITIVE_INFINITY;
+
+      let patch = Number.POSITIVE_INFINITY;
+      let patchIsWildcard = false;
+      if (majorIsNumber && minor !== Number.POSITIVE_INFINITY) {
+        if (!patchToken) {
+          patch = 0;
+        } else if (patchToken.toLowerCase() === 'x') {
+          patch = Number.POSITIVE_INFINITY;
+          patchIsWildcard = true;
+        } else if (/^\d+$/.test(patchToken)) {
+          patch = Number(patchToken);
+        } else {
+          patch = 0;
+        }
+      }
+
+      return { major, minor, patch, patchIsWildcard };
+    }
+
+    function compareVersionSegment(a, b) {
+      const aFinite = Number.isFinite(a);
+      const bFinite = Number.isFinite(b);
+      if (aFinite && bFinite) {
+        if (a === b) return 0;
+        return a - b;
+      }
+      if (aFinite && !bFinite) return -1;
+      if (!aFinite && bFinite) return 1;
+      return 0;
+    }
+
+    function compareReleaseNames(a, b) {
+      const aVersion = parseReleaseVersion(a);
+      const bVersion = parseReleaseVersion(b);
+
+      const majorDiff = compareVersionSegment(aVersion.major, bVersion.major);
+      if (majorDiff) return majorDiff;
+
+      const minorDiff = compareVersionSegment(aVersion.minor, bVersion.minor);
+      if (minorDiff) return minorDiff;
+
+      const patchDiff = compareVersionSegment(aVersion.patch, bVersion.patch);
+      if (patchDiff) return patchDiff;
+
+      if (aVersion.patchIsWildcard !== bVersion.patchIsWildcard) {
+        return aVersion.patchIsWildcard ? 1 : -1;
+      }
+
+      return String(a || '').localeCompare(String(b || ''), undefined, { numeric: true });
+    }
+
     function computePct(withTarget, total) {
       if (!total) return 0;
       return Number(((withTarget / total) * 100).toFixed(1));
@@ -1613,7 +1679,7 @@
       }).sort((a, b) => {
         const aTime = a.releaseDate ? new Date(a.releaseDate).getTime() : Number.MAX_SAFE_INTEGER;
         const bTime = b.releaseDate ? new Date(b.releaseDate).getTime() : Number.MAX_SAFE_INTEGER;
-        if (aTime === bTime) return a.name.localeCompare(b.name, undefined, { numeric: true });
+        if (aTime === bTime) return compareReleaseNames(a.name, b.name);
         return aTime - bTime;
       });
     }
@@ -1947,7 +2013,7 @@
       const releaseList = Array.from(releaseBuckets.values()).sort((a, b) => {
         const aDate = a.release?.releaseDate ? new Date(a.release.releaseDate).getTime() : Number.MAX_SAFE_INTEGER;
         const bDate = b.release?.releaseDate ? new Date(b.release.releaseDate).getTime() : Number.MAX_SAFE_INTEGER;
-        if (aDate === bDate) return a.label.localeCompare(b.label, undefined, { numeric: true });
+        if (aDate === bDate) return compareReleaseNames(a.label, b.label);
         return aDate - bDate;
       });
       const orphanList = Array.from(orphanBuckets.values()).sort((a, b) => {
