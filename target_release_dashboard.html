@@ -695,29 +695,62 @@
       const filterQuery = stripOrderByClause(boardConfig.filterQuery || '');
       const relaxedFilter = ensureEpicFriendlyFilter(filterQuery);
       const projectClause = '(project in (ANP, NPSCO, BF))';
-      const jqlParts = [];
-      if (relaxedFilter) jqlParts.push(`(${relaxedFilter})`);
-      jqlParts.push(projectClause);
-      jqlParts.push('issuetype = Epic');
-      jqlParts.push('statusCategory != Done');
-      const jql = jqlParts.join(' AND ');
 
-      const results = [];
-      let startAt = 0;
-      const maxResults = 100;
-      for (let page = 0; page < 200; page++) {
-        const data = await jiraSearch(domain, {
-          jql,
-          startAt,
-          maxResults,
-          fields,
-        });
-        const issues = data.issues || [];
-        issues.forEach(issue => results.push({ issue, boardId: boardConfig.id }));
-        startAt += issues.length;
-        if (startAt >= (data.total || 0) || !issues.length) break;
+      const buildJql = (filter) => {
+        const jqlParts = [];
+        if (filter) jqlParts.push(`(${filter})`);
+        jqlParts.push(projectClause);
+        jqlParts.push('issuetype = Epic');
+        jqlParts.push('statusCategory != Done');
+        return jqlParts.join(' AND ');
+      };
+
+      const attempts = [];
+      if (relaxedFilter) {
+        attempts.push({ filter: relaxedFilter, label: 'relaxed board filter', allowEmptyFallback: true });
       }
-      return results;
+      if (filterQuery && relaxedFilter !== filterQuery) {
+        attempts.push({ filter: filterQuery, label: 'board filter', allowEmptyFallback: true });
+      }
+      attempts.push({ filter: '', label: 'project scope', allowEmptyFallback: false });
+
+      const boardLabel = boardConfig.name || boardConfig.filterName || `Board ${boardConfig.id}`;
+      let lastError = null;
+
+      for (const attempt of attempts) {
+        const jql = buildJql(attempt.filter);
+        try {
+          const results = [];
+          let startAt = 0;
+          const maxResults = 100;
+          for (let page = 0; page < 200; page++) {
+            const data = await jiraSearch(domain, {
+              jql,
+              startAt,
+              maxResults,
+              fields,
+            });
+            const issues = data.issues || [];
+            issues.forEach(issue => results.push({ issue, boardId: boardConfig.id }));
+            startAt += issues.length;
+            if (startAt >= (data.total || 0) || !issues.length) break;
+          }
+          if (!results.length && attempt.allowEmptyFallback) {
+            Logger.info(`Board ${boardConfig.id} (${boardLabel}): no epics returned using ${attempt.label}, trying fallback.`);
+            continue;
+          }
+          if (attempt.filter !== relaxedFilter && attempt.label !== 'relaxed board filter' && attempt.filter !== '') {
+            Logger.warn(`Board ${boardConfig.id} (${boardLabel}): using fallback ${attempt.label} for epic query.`);
+          }
+          return results;
+        } catch (err) {
+          lastError = err;
+          Logger.warn(`Board ${boardConfig.id} (${boardLabel}): epic query failed using ${attempt.label}.`, err);
+        }
+      }
+
+      if (lastError) throw lastError;
+      return [];
     }
 
     async function fetchChildIssuesForBoard(domain, boardConfig, epicKeys, responsibleField, targetReleaseField) {
@@ -2135,18 +2168,14 @@
         setLoading('Fetching epics...');
         const epicMap = new Map();
         const epicsByBoard = new Map();
+        const epicLoadErrors = [];
+        let totalEpicsFetched = 0;
         await Promise.all(boardConfigs.map(async config => {
           try {
             const items = await fetchEpicsForBoard(domain, config, responsibleField, state.targetReleaseFieldKeys);
-            const teamSet = new Set((config.teams || []).map(team => String(team).trim().toLowerCase()).filter(Boolean));
+            Logger.info(`Board ${config.id} (${config.name || `Board ${config.id}`}) fetched ${items.length} epics.`);
+            totalEpicsFetched += items.length;
             items.forEach(({ issue, boardId }) => {
-              if (teamSet.size) {
-                const epicTeamRaw = extractResponsibleTeam(issue.fields || {}, responsibleField);
-                const epicTeam = epicTeamRaw ? epicTeamRaw.trim().toLowerCase() : '';
-                if (!epicTeam || !teamSet.has(epicTeam)) {
-                  return;
-                }
-              }
               const normalized = normalizeEpic(issue, boardId, responsibleField, state.targetReleaseFieldKeys);
               if (epicMap.has(normalized.key)) {
                 const existing = epicMap.get(normalized.key);
@@ -2169,8 +2198,15 @@
             });
           } catch (err) {
             Logger.error('Failed to load epics for board', config.id, err);
+            const reason = err && err.message ? ` (${err.message})` : '';
+            epicLoadErrors.push(`${config.name || `Board ${config.id}`}${reason}`);
           }
         }));
+
+        Logger.info(`Fetched ${totalEpicsFetched} epics across ${boardConfigs.length} boards.`);
+        if (epicLoadErrors.length) {
+          setError(`Some boards failed to load epics: ${epicLoadErrors.join(', ')}`);
+        }
 
         state.epics = Array.from(epicMap.values()).sort((a, b) => a.targetVersion.localeCompare(b.targetVersion, undefined, { numeric: true }));
         state.epicMap = epicMap;
