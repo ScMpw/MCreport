@@ -1030,6 +1030,7 @@
         targetVersion: targetPrimary.label,
         targetVersionKey: targetPrimary.key,
         hasTargetVersion: targetPrimary.hasValue,
+        hasOwnTargetVersion: targetPrimary.hasValue,
         targetSource: targetPrimary.source,
         targetVersions,
         pis,
@@ -1100,6 +1101,7 @@
         targetVersion: targetPrimary.label,
         targetVersionKey: targetPrimary.key,
         hasTargetVersion: targetPrimary.hasValue,
+        hasOwnTargetVersion: targetPrimary.hasValue,
         targetSource: targetPrimary.source,
         targetVersions,
         parentKey: epicKey || parent?.key,
@@ -1639,6 +1641,7 @@
       const targetSuffix = timelineSource === 'inherited' ? ' (from epic)' : '';
       const issueType = (issue.type || '').toLowerCase();
       const statusClass = getStatusClass(issue.status);
+      const hasOwnTargetVersion = issue.hasOwnTargetVersion ?? issue.hasTargetVersion;
       const metaParts = [
         `<span class="${badgeClass}">${issue.type}</span>`,
         `<span class="status-pill ${statusClass}">${issue.status}</span>`,
@@ -1654,10 +1657,10 @@
       if (isClosedStory) {
         metaParts.push('<span class="badge missing-fix-version" title="Closed story without a fix version">No Fix Version</span>');
       }
-      if (!issue.hasTargetVersion && timelineSource === 'inherited') {
+      if (!hasOwnTargetVersion && timelineSource === 'inherited') {
         metaParts.push('<span class="badge inherited-parent" title="Issue inherits its release from the parent">Parent Target</span>');
       }
-      if (!issue.hasTargetVersion) {
+      if (!hasOwnTargetVersion) {
         metaParts.push('<span class="badge missing-target-version" title="Issue has no target version of its own">No Target Version</span>');
       }
       if (shouldShowTarget) {
@@ -1786,12 +1789,14 @@
         };
         const targets = resolveTimelineTargets(issue, true);
         targets.forEach(target => {
+          const directHasTargetVersion = baseItem.hasOwnTargetVersion ?? baseItem.hasTargetVersion;
           const item = {
             ...baseItem,
             timelineTargetVersion: target.label,
             timelineTargetVersionKey: target.key,
             timelineTargetSource: target.source,
             hasTargetVersion: target.hasValue,
+            hasOwnTargetVersion: directHasTargetVersion,
           };
           timelineItems.push(item);
         });
@@ -1811,12 +1816,14 @@
         };
         const targets = resolveTimelineTargets(epic, false);
         targets.forEach(target => {
+          const directHasTargetVersion = baseItem.hasOwnTargetVersion ?? baseItem.hasTargetVersion;
           const item = {
             ...baseItem,
             timelineTargetVersion: target.label,
             timelineTargetVersionKey: target.key,
             timelineTargetSource: target.source,
             hasTargetVersion: target.hasValue,
+            hasOwnTargetVersion: directHasTargetVersion,
           };
           timelineItems.push(item);
         });
@@ -2406,6 +2413,7 @@
                 normalized.boardIds.forEach(id => existing.boardIds.add(id));
                 if (!existing.hasTargetVersion && normalized.hasTargetVersion) {
                   existing.hasTargetVersion = true;
+                  existing.hasOwnTargetVersion = true;
                   existing.targetVersion = normalized.targetVersion;
                   existing.targetVersionKey = normalized.targetVersionKey;
                   existing.targetSource = normalized.targetSource;
@@ -2436,6 +2444,7 @@
                 normalized.boardIds.forEach(id => existing.boardIds.add(id));
                 if (!existing.hasTargetVersion && normalized.hasTargetVersion) {
                   existing.hasTargetVersion = true;
+                  existing.hasOwnTargetVersion = true;
                   existing.targetVersion = normalized.targetVersion;
                   existing.targetVersionKey = normalized.targetVersionKey;
                   existing.targetSource = normalized.targetSource;
