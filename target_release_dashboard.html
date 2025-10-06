@@ -690,6 +690,7 @@
         'fixVersions',
         'project',
         'updated',
+        'resolution',
       ];
       ensureTargetReleaseField(fields, targetReleaseField);
       if (responsibleField && responsibleField !== 'responsible-team') {
@@ -773,6 +774,7 @@
         'updated',
         'customfield_10014',
         'parent',
+        'resolution',
       ];
       ensureTargetReleaseField(fields, targetReleaseField);
       if (responsibleField && responsibleField !== 'responsible-team') {
@@ -825,6 +827,7 @@
         'updated',
         'customfield_10014',
         'parent',
+        'resolution',
       ];
       ensureTargetReleaseField(fields, targetReleaseField);
       if (responsibleField && responsibleField !== 'responsible-team') {
@@ -1087,6 +1090,7 @@
       const responsibleTeam = extractResponsibleTeam(fields, responsibleFieldKey);
       const boardName = state.boardsMap.get(Number(boardId))?.name;
       const normalizedTeam = boardName || responsibleTeam || undefined;
+      const resolutionName = fields.resolution?.name ? String(fields.resolution.name) : undefined;
 
       return {
         id: String(issue.id || issue.key || ''),
@@ -1095,7 +1099,8 @@
         status: fields.status?.name ? String(fields.status.name) : 'Unknown',
         assignee: fields.assignee?.displayName ? String(fields.assignee.displayName) : undefined,
         responsibleTeam: normalizedTeam,
-        resolution: fields.resolution?.name ? String(fields.resolution.name) : undefined,
+        resolution: resolutionName,
+        resolutionType: resolutionName,
         boardIds: new Set([Number(boardId)]),
         fixVersions,
         targetRelease: targetReleases[0] || undefined,
@@ -1154,6 +1159,7 @@
       const extractedTeam = extractResponsibleTeam(fields, responsibleFieldKey);
       const boardName = state.boardsMap.get(Number(boardId))?.name;
       const responsibleTeam = parent?.responsibleTeam || boardName || extractedTeam;
+      const resolutionName = fields.resolution?.name ? String(fields.resolution.name) : undefined;
 
       const parentTargetVersion = parent?.targetVersion || targetPrimary.label || 'No Target Version';
       const parentTargetVersionKey = parent?.targetVersionKey || targetPrimary.key || '__none__';
@@ -1169,7 +1175,8 @@
         status: fields.status?.name ? String(fields.status.name) : 'Unknown',
         assignee: fields.assignee?.displayName ? String(fields.assignee.displayName) : undefined,
         responsibleTeam: responsibleTeam || undefined,
-        resolution: fields.resolution?.name ? String(fields.resolution.name) : undefined,
+        resolution: resolutionName,
+        resolutionType: resolutionName,
         boardIds: new Set([Number(boardId)]),
         fixVersions,
         targetRelease: targetReleases[0] || undefined,
@@ -1624,11 +1631,12 @@
       const issueType = (issue.type || '').toLowerCase();
       const statusClass = getStatusClass(issue.status);
       const hasOwnTargetVersion = issue.hasOwnTargetVersion ?? issue.hasTargetVersion;
-      const resolution = issue.resolution ? String(issue.resolution) : '';
-      const trimmedResolution = resolution.trim();
+      const resolutionRaw = issue.resolutionType ?? issue.resolution ?? '';
+      const trimmedResolution = String(resolutionRaw).trim();
+      const hasResolution = Boolean(trimmedResolution);
       const isImplementedDone = /^implemented\s*\/\s*done$/i.test(trimmedResolution);
-      const hasNonImplementedDoneResolution = Boolean(trimmedResolution) && !isImplementedDone;
-      const safeResolution = hasNonImplementedDoneResolution
+      const hasDisplayableResolution = hasResolution && !isImplementedDone;
+      const safeResolution = hasDisplayableResolution
         ? trimmedResolution.replace(/[&<>"']/g, ch => ({
             '&': '&amp;',
             '<': '&lt;',
@@ -1641,7 +1649,7 @@
         `<span class="${badgeClass}">${issue.type}</span>`,
         `<span class="status-pill ${statusClass}">${issue.status}</span>`,
       ];
-      if (hasNonImplementedDoneResolution) {
+      if (hasDisplayableResolution) {
         metaParts.push(`<span class="badge resolution-badge" title="Issue resolution">${safeResolution}</span>`);
       }
       if (issue.parentKey) {
@@ -1650,14 +1658,18 @@
       }
       const shouldShowTarget = issue.isEpic || issueType !== 'task';
       const hasFixVersion = Array.isArray(issue.fixVersions) && issue.fixVersions.length > 0;
-      const isClosedStory = !issue.isEpic && issueType === 'story' && statusClass === 'done' && !hasFixVersion;
-      if (!hasNonImplementedDoneResolution && isClosedStory) {
+      const isClosedStory = !issue.isEpic && issueType === 'story' && statusClass === 'done' && isImplementedDone && !hasFixVersion;
+      if (!hasDisplayableResolution && isClosedStory) {
         metaParts.push('<span class="badge missing-fix-version" title="Closed story without a fix version">No Fix Version</span>');
       }
+      const parentHasTarget = Boolean(issue.parentTargetVersionKey && issue.parentTargetVersionKey !== '__none__');
+      const inheritsParentTarget = !hasOwnTargetVersion && (timelineSource === 'inherited' || parentHasTarget);
       if (!hasOwnTargetVersion && timelineSource === 'inherited') {
         metaParts.push('<span class="badge inherited-parent" title="Issue inherits its release from the parent">Parent Target</span>');
       }
-      if (!hasNonImplementedDoneResolution && !hasOwnTargetVersion) {
+      const shouldFlagMissingTarget = (issue.isEpic && !hasOwnTargetVersion && timelineSource !== 'inherited')
+        || (!issue.isEpic && isImplementedDone && !hasOwnTargetVersion && !inheritsParentTarget);
+      if (!hasDisplayableResolution && shouldFlagMissingTarget) {
         metaParts.push('<span class="badge missing-target-version" title="Issue has no target version of its own">No Target Version</span>');
       }
       if (shouldShowTarget) {
@@ -1668,7 +1680,7 @@
       if (updated) metaParts.push(`<span>Updated ${updated}</span>`);
 
       const classes = ['timeline-issue'];
-      if (!issue.hasTargetVersion && timelineSource !== 'inherited' && !hasNonImplementedDoneResolution) classes.push('no-target');
+      if (shouldFlagMissingTarget) classes.push('no-target');
       if (issue.isEpic) classes.push('epic');
       if (timelineSource === 'inherited') classes.push('inherited-target');
 
@@ -2325,6 +2337,9 @@
                 if (!existing.resolution && normalized.resolution) {
                   existing.resolution = normalized.resolution;
                 }
+                if (!existing.resolutionType && normalized.resolutionType) {
+                  existing.resolutionType = normalized.resolutionType;
+                }
               } else {
                 epicMap.set(normalized.key, normalized);
               }
@@ -2361,6 +2376,9 @@
                 if (!existing.resolution && normalized.resolution) {
                   existing.resolution = normalized.resolution;
                 }
+                if (!existing.resolutionType && normalized.resolutionType) {
+                  existing.resolutionType = normalized.resolutionType;
+                }
                 if (!existing.hasTargetVersion && normalized.hasTargetVersion) {
                   existing.hasTargetVersion = true;
                   existing.hasOwnTargetVersion = true;
@@ -2394,6 +2412,9 @@
                 normalized.boardIds.forEach(id => existing.boardIds.add(id));
                 if (!existing.resolution && normalized.resolution) {
                   existing.resolution = normalized.resolution;
+                }
+                if (!existing.resolutionType && normalized.resolutionType) {
+                  existing.resolutionType = normalized.resolutionType;
                 }
                 if (!existing.hasTargetVersion && normalized.hasTargetVersion) {
                   existing.hasTargetVersion = true;
