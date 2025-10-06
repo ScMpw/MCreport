@@ -66,6 +66,7 @@
     .timeline-issue-meta .badge.missing-fix-version { background:#fee2e2; color:#b91c1c; border:1px solid #fecaca; }
     .timeline-issue-meta .badge.missing-target-version { background:#fef3c7; color:#92400e; border:1px solid #fde68a; }
     .timeline-issue-meta .badge.inherited-parent { background:#ede9fe; color:#5b21b6; border:1px solid #ddd6fe; }
+    .timeline-issue-meta .badge.resolution-badge { background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd; }
     .timeline-issue-meta .issue-team { background:#f1f5f9; border-radius:999px; padding:2px 8px; font-weight:600; }
     .timeline-issue-meta span.issue-epic { display:flex; align-items:center; gap:6px; }
     .timeline-issue-meta span.issue-epic a { color:#4338ca; text-decoration:none; font-weight:600; }
@@ -1094,6 +1095,7 @@
         status: fields.status?.name ? String(fields.status.name) : 'Unknown',
         assignee: fields.assignee?.displayName ? String(fields.assignee.displayName) : undefined,
         responsibleTeam: normalizedTeam,
+        resolutionType: fields.resolution?.name ? String(fields.resolution.name) : undefined,
         boardIds: new Set([Number(boardId)]),
         fixVersions,
         targetRelease: targetReleases[0] || undefined,
@@ -1167,6 +1169,7 @@
         status: fields.status?.name ? String(fields.status.name) : 'Unknown',
         assignee: fields.assignee?.displayName ? String(fields.assignee.displayName) : undefined,
         responsibleTeam: responsibleTeam || undefined,
+        resolutionType: fields.resolution?.name ? String(fields.resolution.name) : undefined,
         boardIds: new Set([Number(boardId)]),
         fixVersions,
         targetRelease: targetReleases[0] || undefined,
@@ -1621,6 +1624,10 @@
       const issueType = (issue.type || '').toLowerCase();
       const statusClass = getStatusClass(issue.status);
       const hasOwnTargetVersion = issue.hasOwnTargetVersion ?? issue.hasTargetVersion;
+      const resolutionType = issue.resolutionType ? String(issue.resolutionType) : '';
+      const normalizedResolution = resolutionType.trim().toLowerCase().replace(/\s+/g, '');
+      const isImplementedDone = normalizedResolution === 'implemented/done' || normalizedResolution === 'implementeddone';
+      const requiresVersionBadges = !resolutionType || isImplementedDone;
       const metaParts = [
         `<span class="${badgeClass}">${issue.type}</span>`,
         `<span class="status-pill ${statusClass}">${issue.status}</span>`,
@@ -1632,13 +1639,22 @@
       const shouldShowTarget = issue.isEpic || issueType !== 'task';
       const hasFixVersion = Array.isArray(issue.fixVersions) && issue.fixVersions.length > 0;
       const isClosedStory = !issue.isEpic && issueType === 'story' && statusClass === 'done' && !hasFixVersion;
-      if (isClosedStory) {
+      if (requiresVersionBadges && isClosedStory) {
         metaParts.push('<span class="badge missing-fix-version" title="Closed story without a fix version">No Fix Version</span>');
       }
       if (!hasOwnTargetVersion && timelineSource === 'inherited') {
         metaParts.push('<span class="badge inherited-parent" title="Issue inherits its release from the parent">Parent Target</span>');
       }
-      if (!hasOwnTargetVersion) {
+      if (!requiresVersionBadges && resolutionType) {
+        const safeResolution = resolutionType.replace(/[&<>"']/g, ch => ({
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          '"': '&quot;',
+          "'": '&#39;',
+        })[ch] || ch);
+        metaParts.push(`<span class="badge resolution-badge" title="Issue resolution">${safeResolution}</span>`);
+      } else if (!hasOwnTargetVersion) {
         metaParts.push('<span class="badge missing-target-version" title="Issue has no target version of its own">No Target Version</span>');
       }
       if (shouldShowTarget) {
@@ -2303,6 +2319,9 @@
                 existing.fixVersions = mergeFixVersionLists(existing.fixVersions, normalized.fixVersions);
                 existing.labels = mergeUniqueStrings(existing.labels, normalized.labels);
                 existing.pis = mergePiLists(existing.pis, normalized.pis);
+                if (!existing.resolutionType && normalized.resolutionType) {
+                  existing.resolutionType = normalized.resolutionType;
+                }
               } else {
                 epicMap.set(normalized.key, normalized);
               }
@@ -2336,6 +2355,9 @@
               if (childMap.has(normalized.key)) {
                 const existing = childMap.get(normalized.key);
                 normalized.boardIds.forEach(id => existing.boardIds.add(id));
+                if (!existing.resolutionType && normalized.resolutionType) {
+                  existing.resolutionType = normalized.resolutionType;
+                }
                 if (!existing.hasTargetVersion && normalized.hasTargetVersion) {
                   existing.hasTargetVersion = true;
                   existing.hasOwnTargetVersion = true;
@@ -2367,6 +2389,9 @@
               if (childMap.has(normalized.key)) {
                 const existing = childMap.get(normalized.key);
                 normalized.boardIds.forEach(id => existing.boardIds.add(id));
+                if (!existing.resolutionType && normalized.resolutionType) {
+                  existing.resolutionType = normalized.resolutionType;
+                }
                 if (!existing.hasTargetVersion && normalized.hasTargetVersion) {
                   existing.hasTargetVersion = true;
                   existing.hasOwnTargetVersion = true;
