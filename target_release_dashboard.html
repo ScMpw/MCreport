@@ -319,6 +319,57 @@
       return jql.trim();
     }
 
+    function ensureEpicFriendlyFilter(filterQuery) {
+      if (!filterQuery) return '';
+
+      const isEpicValue = value => {
+        if (!value) return false;
+        return value.replace(/^\s*["']?|["']?\s*$/g, '').trim().toLowerCase() === 'epic';
+      };
+
+      const parseList = raw => {
+        if (!raw) return [];
+        return raw
+          .split(',')
+          .map(part => part.trim())
+          .filter(Boolean);
+      };
+
+      const formatList = values => values.join(', ');
+
+      let updated = filterQuery;
+
+      updated = updated.replace(/\b(issuetype|type)\s+in\s*\(([^)]*)\)/gi, (match, field, list) => {
+        const values = parseList(list);
+        if (!values.length) return match;
+        if (!values.some(isEpicValue)) {
+          values.push('"Epic"');
+        }
+        return `${field} in (${formatList(values)})`;
+      });
+
+      updated = updated.replace(/\b(issuetype|type)\s+not\s+in\s*\(([^)]*)\)/gi, (match, field, list) => {
+        const values = parseList(list);
+        if (!values.length) return match;
+        const filtered = values.filter(value => !isEpicValue(value));
+        if (filtered.length === values.length) return match;
+        if (!filtered.length) return '1=1';
+        return `${field} not in (${formatList(filtered)})`;
+      });
+
+      updated = updated.replace(/\b(issuetype|type)\s*=\s*("[^"]+"|'[^']+'|[^\s)]+)/gi, (match, field, rawValue) => {
+        if (isEpicValue(rawValue)) return `${field} = "Epic"`;
+        return `${field} in (${rawValue.trim()}, "Epic")`;
+      });
+
+      updated = updated.replace(/\b(issuetype|type)\s*!=\s*("[^"]+"|'[^']+'|[^\s)]+)/gi, (match, field, rawValue) => {
+        if (!isEpicValue(rawValue)) return match;
+        return '1=1';
+      });
+
+      return updated.trim();
+    }
+
     function extractTeamsFromJql(jql, responsibleFieldKey) {
       if (!jql || typeof jql !== 'string') return [];
       const variants = new Set();
@@ -642,9 +693,14 @@
       }
 
       const filterQuery = stripOrderByClause(boardConfig.filterQuery || '');
-      const baseJql = filterQuery ? `(${filterQuery}) AND ` : '';
+      const relaxedFilter = ensureEpicFriendlyFilter(filterQuery);
       const projectClause = '(project in (ANP, NPSCO, BF))';
-      const jql = `${baseJql}${projectClause} AND issuetype = Epic AND statusCategory != Done`;
+      const jqlParts = [];
+      if (relaxedFilter) jqlParts.push(`(${relaxedFilter})`);
+      jqlParts.push(projectClause);
+      jqlParts.push('issuetype = Epic');
+      jqlParts.push('statusCategory != Done');
+      const jql = jqlParts.join(' AND ');
 
       const results = [];
       let startAt = 0;
@@ -687,14 +743,18 @@
       }
 
       const filterQuery = stripOrderByClause(boardConfig.filterQuery || '');
-      const baseJql = filterQuery ? `(${filterQuery}) AND ` : '';
+      const projectClause = '(project in (ANP, NPSCO, BF))';
+      const baseParts = [];
+      if (filterQuery) baseParts.push(`(${filterQuery})`);
+      baseParts.push(projectClause);
       const chunkSize = 40;
       const results = [];
       for (let i = 0; i < epicKeys.length; i += chunkSize) {
         const chunk = epicKeys.slice(i, i + chunkSize);
         const formattedKeys = chunk.map(key => `'${String(key).replace(/'/g, "\\'")}'`).join(',');
-        const projectClause = '(project in (ANP, NPSCO, BF))';
-        const jql = `${baseJql}${projectClause} AND "Epic Link" in (${formattedKeys})`;
+        const jqlParts = baseParts.slice();
+        jqlParts.push(`"Epic Link" in (${formattedKeys})`);
+        const jql = jqlParts.join(' AND ');
         let startAt = 0;
         const maxResults = 100;
         for (let page = 0; page < 200; page++) {
@@ -735,11 +795,13 @@
       }
 
       const filterQuery = stripOrderByClause(boardConfig.filterQuery || '');
-      const baseJql = filterQuery ? `(${filterQuery}) AND ` : '';
       const projectClause = '(project in (ANP, NPSCO, BF))';
-      const typeExclusion = 'issuetype not in (Epic, Sub-task, "Sub-Task")';
-      const epicEmptyClause = '"Epic Link" is EMPTY';
-      const jql = `${baseJql}${projectClause} AND ${typeExclusion} AND ${epicEmptyClause}`;
+      const jqlParts = [];
+      if (filterQuery) jqlParts.push(`(${filterQuery})`);
+      jqlParts.push(projectClause);
+      jqlParts.push('issuetype not in (Epic, Sub-task, "Sub-Task")');
+      jqlParts.push('"Epic Link" is EMPTY');
+      const jql = jqlParts.join(' AND ');
 
       const results = [];
       let startAt = 0;
