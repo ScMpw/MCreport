@@ -7,7 +7,6 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css" />
   <link rel="stylesheet" href="public/tailwind.css">
   <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <style>
@@ -32,11 +31,6 @@
     .kpi-card { background:#f9fafb; border:1px solid #e5e7eb; border-radius:16px; padding:18px 20px; box-shadow: inset 0 1px 0 #fff; }
     .kpi-label { font-size:0.9em; color:#6b7280; text-transform:uppercase; letter-spacing:0.04em; margin-bottom:6px; font-weight:600; }
     .kpi-value { font-size:2em; font-weight:600; color:#111827; }
-    .chart-section { margin-top:32px; }
-    .chart-wrapper { background:#fff; border-radius:16px; border:1px solid #e5e7eb; padding:20px; box-shadow: 0 2px 6px #e5e7f070; }
-    .chart-toolbar { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:10px; }
-    .chart-toolbar .toggle-group label { margin-right:12px; font-size:0.92em; color:#374151; font-weight:600; }
-    .chart-toolbar .toggle-group input { margin-right:4px; }
     table { border-collapse:collapse; width:100%; }
     th, td { border:1px solid #e5e7eb; padding:8px 10px; font-size:0.9em; text-align:left; }
     th { background:#f3f4f6; text-transform:uppercase; font-size:0.76em; letter-spacing:0.06em; color:#4b5563; }
@@ -212,38 +206,6 @@
       </details>
     </div>
 
-    <div id="chartsSection" style="display:none;">
-      <div class="section-title">Target Version Coverage</div>
-      <div class="chart-section">
-        <div class="chart-toolbar">
-          <div class="toggle-group">
-            <label><input type="radio" name="stackedDimension" value="targetVersion" checked> By Target Version</label>
-            <label><input type="radio" name="stackedDimension" value="pi"> By Product Increment</label>
-          </div>
-          <div style="font-size:0.85em; color:#6b7280;">Stacks display with/without target version per responsible team.</div>
-        </div>
-        <div class="chart-wrapper">
-          <canvas id="stackedChart" height="360"></canvas>
-        </div>
-      </div>
-
-      <div class="chart-section" style="margin-top:36px;">
-        <div class="chart-toolbar">
-          <div class="toggle-group">
-            <label for="distributionMode">Distribution View:</label>
-            <select id="distributionMode">
-              <option value="team">By Team</option>
-              <option value="targetVersion">By Target Version</option>
-              <option value="pi">By Product Increment</option>
-            </select>
-          </div>
-          <div style="font-size:0.85em; color:#6b7280;">Shows ratio of issues with/without target versions.</div>
-        </div>
-        <div class="chart-wrapper">
-          <canvas id="distributionChart" height="360"></canvas>
-        </div>
-      </div>
-    </div>
   </div>
 
   <script src="src/logger.js"></script>
@@ -260,7 +222,6 @@
       targetReleaseFieldKey: 'target-release',
       targetReleaseFieldKeys: ['target-release'],
       filteredIssues: [],
-      aggregated: null,
       releases: [],
       releaseIndex: new Map(),
       epics: [],
@@ -269,9 +230,6 @@
     };
 
     let boardChoices, targetVersionChoices, piChoices, teamChoices, boardFilterChoices;
-    let stackedChart, distributionChart;
-    const teamColorMap = new Map();
-    const palette = ['#6366f1', '#ec4899', '#10b981', '#f97316', '#14b8a6', '#8b5cf6', '#f59e0b', '#ef4444', '#3b82f6', '#22c55e'];
 
     function initChoices() {
       boardChoices = new Choices('#boardSelect', { removeItemButton: true, shouldSort: false });
@@ -1339,119 +1297,6 @@
       return [{ key: '__none__', label: 'No Target Version', hasValue: false, source: includeParent ? 'inherited' : 'none' }];
     }
 
-    function aggregateIssues(issues) {
-      const fallbackVersion = { key: '__none__', label: 'No Target Version' };
-      const fallbackPi = { key: 'no-pi', label: 'No Product Increment' };
-      const fallbackTeam = 'Unassigned Team';
-
-      function ensureBucket(map, key, label) {
-        if (!map.has(key)) {
-          map.set(key, {
-            key,
-            label,
-            total: 0,
-            withTarget: 0,
-            withoutTarget: 0,
-            pctWith: 0,
-            teams: {},
-          });
-        }
-        return map.get(key);
-      }
-
-      function ensureTeam(bucket, team) {
-        if (!bucket.teams[team]) {
-          bucket.teams[team] = { team, total: 0, withTarget: 0, withoutTarget: 0, pctWith: 0 };
-        }
-        return bucket.teams[team];
-      }
-
-      function addIssue(bucket, issue, teamName) {
-        bucket.total += 1;
-        if (issue.hasTargetVersion) bucket.withTarget += 1; else bucket.withoutTarget += 1;
-        const teamAgg = ensureTeam(bucket, teamName);
-        teamAgg.total += 1;
-        if (issue.hasTargetVersion) teamAgg.withTarget += 1; else teamAgg.withoutTarget += 1;
-      }
-
-      function finalizeBucket(bucket) {
-        bucket.pctWith = computePct(bucket.withTarget, bucket.total);
-        Object.values(bucket.teams).forEach(team => {
-          team.pctWith = computePct(team.withTarget, team.total);
-        });
-      }
-
-      const versionBuckets = new Map();
-      const piBuckets = new Map();
-      const teamBuckets = new Map();
-      let total = 0;
-      let withTarget = 0;
-
-      issues.forEach(issue => {
-        const teamName = issue.responsibleTeam || fallbackTeam;
-        const versionKey = issue.parentTargetVersionKey || issue.targetVersionKey || fallbackVersion.key;
-        const versionLabel = issue.parentTargetVersion || issue.targetVersion || fallbackVersion.label;
-        const versionBucket = ensureBucket(versionBuckets, versionKey, versionLabel);
-        addIssue(versionBucket, issue, teamName);
-
-        const piValues = issue.parentPis && issue.parentPis.length ? issue.parentPis : (issue.pis && issue.pis.length ? issue.pis : [fallbackPi]);
-        const seenPi = new Set();
-        piValues.forEach(pi => {
-          const value = pi && pi.label ? pi.label : fallbackPi.label;
-          if (seenPi.has(value)) return;
-          seenPi.add(value);
-          const bucket = ensureBucket(piBuckets, value, value);
-          addIssue(bucket, issue, teamName);
-        });
-
-        if (!teamBuckets.has(teamName)) {
-          teamBuckets.set(teamName, { team: teamName, total: 0, withTarget: 0, withoutTarget: 0, pctWith: 0 });
-        }
-        const teamBucket = teamBuckets.get(teamName);
-        teamBucket.total += 1;
-        if (issue.hasTargetVersion) teamBucket.withTarget += 1; else teamBucket.withoutTarget += 1;
-
-        total += 1;
-        if (issue.hasTargetVersion) withTarget += 1;
-      });
-
-      const byTargetVersion = Array.from(versionBuckets.values()).sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
-      byTargetVersion.forEach(finalizeBucket);
-
-      const byPi = Array.from(piBuckets.values()).sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
-      byPi.forEach(finalizeBucket);
-
-      const byTeam = Array.from(teamBuckets.values()).sort((a, b) => a.team.localeCompare(b.team));
-      byTeam.forEach(team => { team.pctWith = computePct(team.withTarget, team.total); });
-
-      return {
-        total,
-        withTarget,
-        withoutTarget: total - withTarget,
-        pctWith: computePct(withTarget, total),
-        byTargetVersion,
-        byPi,
-        byTeam,
-      };
-    }
-
-    function teamColor(team) {
-      if (!teamColorMap.has(team)) {
-        const idx = teamColorMap.size % palette.length;
-        teamColorMap.set(team, palette[idx]);
-      }
-      return teamColorMap.get(team);
-    }
-
-    function colorWithAlpha(hex, alpha) {
-      const clean = hex.replace('#', '');
-      const bigint = parseInt(clean, 16);
-      const r = (bigint >> 16) & 255;
-      const g = (bigint >> 8) & 255;
-      const b = bigint & 255;
-      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-    }
-
     function formatDate(value) {
       if (!value) return '';
       const date = new Date(value);
@@ -1592,10 +1437,8 @@
 
       state.filteredEpics = filteredEpics;
       state.filteredIssues = filteredIssues;
-      state.aggregated = aggregateIssues(filteredIssues);
       computeEpicCoverage(filteredEpics, filteredIssues);
       renderKpis();
-      updateCharts();
       renderEpicTable();
       renderReleasesTimeline();
 
@@ -1997,137 +1840,7 @@
       document.getElementById('kpiWithout').textContent = withoutTarget;
       document.getElementById('kpiPct').textContent = `${pct}%`;
       document.getElementById('kpiSection').style.display = '';
-      document.getElementById('chartsSection').style.display = state.filteredIssues.length ? '' : 'none';
       document.getElementById('epicSection').style.display = '';
-    }
-
-    function buildStackedData(dimension) {
-      const buckets = dimension === 'pi' ? state.aggregated.byPi : state.aggregated.byTargetVersion;
-      const labels = buckets.map(b => b.label);
-      const teamNames = new Set();
-      buckets.forEach(bucket => {
-        Object.keys(bucket.teams).forEach(team => teamNames.add(team));
-      });
-      const datasets = [];
-      Array.from(teamNames.values()).sort().forEach(team => {
-        const color = teamColor(team);
-        datasets.push({
-          label: `${team} – With Target`,
-          data: buckets.map(bucket => (bucket.teams[team]?.withTarget || 0)),
-          backgroundColor: colorWithAlpha(color, 0.85),
-          stack: team,
-          borderRadius: 4,
-        });
-        datasets.push({
-          label: `${team} – Without Target`,
-          data: buckets.map(bucket => (bucket.teams[team]?.withoutTarget || 0)),
-          backgroundColor: colorWithAlpha(color, 0.45),
-          stack: team,
-          borderRadius: 4,
-        });
-      });
-      return { labels, datasets };
-    }
-
-    function buildDistributionData(mode) {
-      if (mode === 'team') {
-        const labels = state.aggregated.byTeam.map(t => t.team);
-        return {
-          labels,
-          datasets: [
-            {
-              label: 'With Target',
-              data: state.aggregated.byTeam.map(t => t.withTarget),
-              backgroundColor: '#10b981',
-              stack: 'total',
-              borderRadius: 4,
-            },
-            {
-              label: 'Without Target',
-              data: state.aggregated.byTeam.map(t => t.withoutTarget),
-              backgroundColor: '#f97316',
-              stack: 'total',
-              borderRadius: 4,
-            }
-          ]
-        };
-      }
-      const source = mode === 'targetVersion' ? state.aggregated.byTargetVersion : state.aggregated.byPi;
-      const labels = source.map(b => b.label);
-      return {
-        labels,
-        datasets: [
-          {
-            label: 'With Target',
-            data: source.map(b => b.withTarget),
-            backgroundColor: '#3b82f6',
-            stack: 'total',
-            borderRadius: 4,
-          },
-          {
-            label: 'Without Target',
-            data: source.map(b => b.withoutTarget),
-            backgroundColor: '#ef4444',
-            stack: 'total',
-            borderRadius: 4,
-          }
-        ]
-      };
-    }
-
-    function updateCharts() {
-      if (!state.aggregated) return;
-      const stackedDimension = document.querySelector('input[name="stackedDimension"]:checked').value;
-      const stackedData = buildStackedData(stackedDimension);
-      const distributionMode = document.getElementById('distributionMode').value;
-      const distributionData = buildDistributionData(distributionMode);
-
-      const stackedCtx = document.getElementById('stackedChart').getContext('2d');
-      if (!stackedChart) {
-        stackedChart = new Chart(stackedCtx, {
-          type: 'bar',
-          data: stackedData,
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-              x: { stacked: true, ticks: { autoSkip: false, maxRotation: 45, minRotation: 0 } },
-              y: { stacked: true, beginAtZero: true }
-            },
-            plugins: {
-              legend: { position: 'top' },
-              tooltip: { mode: 'index', intersect: false }
-            }
-          }
-        });
-      } else {
-        stackedChart.data = stackedData;
-        stackedChart.update();
-      }
-
-      const distributionCtx = document.getElementById('distributionChart').getContext('2d');
-      if (!distributionChart) {
-        distributionChart = new Chart(distributionCtx, {
-          type: 'bar',
-          data: distributionData,
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            indexAxis: 'y',
-            scales: {
-              x: { stacked: true, beginAtZero: true },
-              y: { stacked: true }
-            },
-            plugins: {
-              legend: { position: 'top' },
-              tooltip: { mode: 'index', intersect: false }
-            }
-          }
-        });
-      } else {
-        distributionChart.data = distributionData;
-        distributionChart.update();
-      }
     }
 
     function renderEpicTable() {
@@ -2315,7 +2028,6 @@
         state.responsibleFieldKey = responsibleField;
         state.targetReleaseFieldKeys = Array.isArray(targetReleaseField) ? targetReleaseField : [targetReleaseField];
         state.targetReleaseFieldKey = state.targetReleaseFieldKeys[0] || 'target-release';
-        teamColorMap.clear();
 
         setLoading('Loading board configurations...');
         const boardConfigs = await Promise.all(boardIds.map(async id => {
@@ -2477,13 +2189,11 @@
         updateFilterOptions();
         document.getElementById('filtersSection').style.display = '';
         document.getElementById('kpiSection').style.display = '';
-        document.getElementById('chartsSection').style.display = state.normalizedIssues.length ? '' : 'none';
         document.getElementById('epicSection').style.display = '';
 
         setLoading('Applying filters...');
         state.filteredEpics = state.epics.slice();
         state.filteredIssues = state.normalizedIssues.slice();
-        state.aggregated = aggregateIssues(state.normalizedIssues);
         applyFilters();
         setLoading('');
       } catch (err) {
@@ -2525,8 +2235,6 @@
     document.getElementById('jiraDomain').addEventListener('change', loadBoards);
     document.getElementById('epicSearch').addEventListener('input', () => renderEpicTable());
     document.getElementById('releaseSearch').addEventListener('input', () => renderReleasesTimeline());
-    document.querySelectorAll('input[name="stackedDimension"]').forEach(input => input.addEventListener('change', updateCharts));
-    document.getElementById('distributionMode').addEventListener('change', updateCharts);
     ['suffixCommitted', 'suffixPlanned', 'suffixSpillover'].forEach(id => {
       document.getElementById(id).addEventListener('change', applyFilters);
     });
