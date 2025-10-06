@@ -950,6 +950,14 @@
       return primaryValues;
     }
 
+    function filterPixTargetReleases(values) {
+      if (!Array.isArray(values) || !values.length) return [];
+      const pattern = /^\d{4}_pi\d{1,2}_(?:committed|commited|candidate)$/i;
+      return values
+        .map(value => typeof value === 'string' ? value.trim() : String(value || '').trim())
+        .filter(value => value && pattern.test(value));
+    }
+
     function resolveTargetReleaseValue(fields, targetReleaseField) {
       if (!fields || typeof fields !== 'object') return undefined;
       const keys = Array.isArray(targetReleaseField)
@@ -1068,7 +1076,8 @@
       const fixVersions = parseFixVersions(fields.fixVersions);
       const targetReleaseField = targetReleaseFieldKey || 'target-release';
       const targetReleaseValue = resolveTargetReleaseValue(fields, targetReleaseField);
-      const targetReleases = parseTargetReleaseValues(targetReleaseValue);
+      const targetReleasesRaw = parseTargetReleaseValues(targetReleaseValue);
+      const targetReleases = filterPixTargetReleases(targetReleasesRaw);
       const targetInfo = determineTargetVersions(targetReleases);
       const targetPrimary = targetInfo.primary;
       const targetVersions = targetInfo.targets;
@@ -1101,6 +1110,7 @@
         childWithTarget: 0,
         childWithoutTarget: 0,
         coveragePct: 0,
+        hasValidPixTarget: targetReleases.length > 0,
       };
     }
 
@@ -2265,6 +2275,10 @@
             totalEpicsFetched += items.length;
             items.forEach(({ issue, boardId }) => {
               const normalized = normalizeEpic(issue, boardId, responsibleField, state.targetReleaseFieldKeys);
+              if (!normalized.hasValidPixTarget) {
+                Logger.debug(`Skipping epic ${normalized.key} – missing YEAR_PIx_(committed|candidate) target release.`);
+                return;
+              }
               if (epicMap.has(normalized.key)) {
                 const existing = epicMap.get(normalized.key);
                 normalized.boardIds.forEach(id => existing.boardIds.add(id));
