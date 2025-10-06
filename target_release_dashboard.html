@@ -135,7 +135,7 @@
           <select id="piSelect" multiple></select>
           <div class="suffix-toggles">
             <label><input type="checkbox" id="suffixCommitted" checked> Committed</label>
-            <label><input type="checkbox" id="suffixPlanned" checked> Planned / Candidate</label>
+            <label><input type="checkbox" id="suffixPlanned" checked> Planned</label>
             <label><input type="checkbox" id="suffixSpillover" checked> Spillover</label>
           </div>
         </div>
@@ -370,68 +370,6 @@
       updated = updated.replace(/\b(issuetype|type)\s*!=\s*("[^"]+"|'[^']+'|[^\s)]+)/gi, (match, field, rawValue) => {
         if (!isEpicValue(rawValue)) return match;
         return '1=1';
-      });
-
-      const PI_LABEL_PATTERN = /^(?:\d{4}[_-]?pi\d{1,2}(?:[_-](?:committed|commited|planned|spillover|candidate))?|pi\d{1,2}(?:[_-](?:committed|commited|planned|spillover|candidate))?)$/i;
-
-      const piLabelLookup = new Map();
-      const recordPiLabels = values => {
-        if (!values || !values.length) return;
-        values.forEach(value => {
-          const cleaned = value.replace(/^\s*["']?|["']?\s*$/g, '').trim();
-          if (!cleaned) return;
-          if (!PI_LABEL_PATTERN.test(cleaned)) return;
-          const key = cleaned.toLowerCase();
-          if (!piLabelLookup.has(key)) piLabelLookup.set(key, cleaned);
-        });
-      };
-
-      const labelInScanner = /\b"?labels"?\s+in\s*\(([^)]*)\)/gi;
-      let labelMatch;
-      while ((labelMatch = labelInScanner.exec(filterQuery)) !== null) {
-        const values = parseList(labelMatch[1]);
-        recordPiLabels(values);
-      }
-
-      const labelEqScanner = /\b"?labels"?\s*=\s*("[^"]+"|'[^']+'|[^\s)]+)/gi;
-      while ((labelMatch = labelEqScanner.exec(filterQuery)) !== null) {
-        recordPiLabels([labelMatch[1]]);
-      }
-
-      const allPiLabels = Array.from(piLabelLookup.values());
-
-      const buildEpicAwareLabelClause = (fieldToken, rawValues, originalClause) => {
-        const cleanedValues = Array.isArray(rawValues)
-          ? rawValues.map(value => value.replace(/^\s*["']?|["']?\s*$/g, '').trim()).filter(Boolean)
-          : [];
-
-        const clauseLabels = [];
-        const clauseSeen = new Set();
-        cleanedValues.forEach(value => {
-          if (!PI_LABEL_PATTERN.test(value)) return;
-          const key = value.toLowerCase();
-          if (clauseSeen.has(key)) return;
-          clauseSeen.add(key);
-          clauseLabels.push(value);
-        });
-
-        const effectiveLabels = clauseLabels.length ? clauseLabels : allPiLabels;
-        if (!effectiveLabels.length) return originalClause;
-
-        const formattedList = effectiveLabels
-          .map(label => `"${label.replace(/"/g, '\\"')}"`)
-          .join(', ');
-        const field = fieldToken && fieldToken.trim() ? fieldToken.trim() : 'labels';
-        return `(${originalClause} OR (issuetype = "Epic" AND ${field} in (${formattedList})))`;
-      };
-
-      updated = updated.replace(/\b("?labels"?)\s+in\s*\(([^)]*)\)/gi, (match, field, list) => {
-        const values = parseList(list);
-        return buildEpicAwareLabelClause(field, values, match);
-      });
-
-      updated = updated.replace(/\b("?labels"?)\s*=\s*("[^"]+"|'[^']+'|[^\s)]+)/gi, (match, field, rawValue) => {
-        return buildEpicAwareLabelClause(field, [rawValue], match);
       });
 
       return updated.trim();
@@ -923,43 +861,6 @@
 
     // Planning helpers will be defined below.
 
-    const PI_PLANNING_PATTERN = /^(\d{4})[_-]?pi(\d{1,2})(?:[_-](committed|commited|planned|spillover|candidate))?$/i;
-    const LEGACY_PI_PATTERN = /^(pi\d{1,2})(?:[_-](committed|commited|planned|spillover|candidate))?$/i;
-
-    function normalizePiPlanningLabel(value) {
-      if (typeof value !== 'string') return null;
-      const trimmed = value.trim();
-      if (!trimmed) return null;
-      const match = trimmed.match(PI_PLANNING_PATTERN);
-      if (!match) return null;
-      const year = match[1];
-      const piNumber = match[2];
-      let suffix = match[3] ? match[3].toLowerCase() : null;
-      if (suffix === 'commited') suffix = 'committed';
-      const base = `${year}_PI${piNumber}`;
-      const label = suffix ? `${base}_${suffix}` : base;
-      return { base, suffix, label };
-    }
-
-    function parsePiLabel(value) {
-      if (typeof value !== 'string') return null;
-      const trimmed = value.trim();
-      if (!trimmed) return null;
-
-      const planning = normalizePiPlanningLabel(trimmed);
-      if (planning) {
-        return { base: planning.base, suffix: planning.suffix, label: planning.label };
-      }
-
-      const legacyMatch = trimmed.match(LEGACY_PI_PATTERN);
-      if (!legacyMatch) return null;
-      const base = legacyMatch[1].toUpperCase();
-      let suffix = legacyMatch[2] ? legacyMatch[2].toLowerCase() : null;
-      if (suffix === 'commited') suffix = 'committed';
-      const label = suffix ? `${base}_${suffix}` : base;
-      return { base, suffix, label };
-    }
-
     function parseTargetReleaseValues(raw) {
       if (!raw) return [];
       const seenValues = new Set();
@@ -1049,22 +950,6 @@
       return primaryValues;
     }
 
-    function filterPixTargetReleases(values) {
-      if (!Array.isArray(values) || !values.length) return [];
-      const seen = new Set();
-      const results = [];
-      values
-        .map(value => typeof value === 'string' ? value.trim() : String(value || '').trim())
-        .forEach(value => {
-          const normalized = normalizePiPlanningLabel(value);
-          if (!normalized || !normalized.suffix) return;
-          if (seen.has(normalized.label)) return;
-          seen.add(normalized.label);
-          results.push(normalized.label);
-        });
-      return results;
-    }
-
     function resolveTargetReleaseValue(fields, targetReleaseField) {
       if (!fields || typeof fields !== 'object') return undefined;
       const keys = Array.isArray(targetReleaseField)
@@ -1134,12 +1019,16 @@
       const matches = [];
       const seen = new Set();
       labels.forEach(label => {
-        const parsed = parsePiLabel(label);
-        if (!parsed) return;
-        const key = parsed.label.toLowerCase();
+        if (typeof label !== 'string') return;
+        const trimmed = label.trim();
+        const match = trimmed.match(/^(pi\d{2})(?:[_-](committed|planned|spillover))?$/i);
+        if (!match) return;
+        const base = match[1].toLowerCase();
+        const suffix = match[2] ? match[2].toLowerCase() : null;
+        const key = suffix ? `${base}_${suffix}` : base;
         if (seen.has(key)) return;
         seen.add(key);
-        matches.push({ base: parsed.base, suffix: parsed.suffix, label: parsed.label });
+        matches.push({ base, suffix: suffix === 'committed' || suffix === 'planned' || suffix === 'spillover' ? suffix : null, label: suffix ? `${base}_${suffix}` : base });
       });
       return matches;
     }
@@ -1179,8 +1068,7 @@
       const fixVersions = parseFixVersions(fields.fixVersions);
       const targetReleaseField = targetReleaseFieldKey || 'target-release';
       const targetReleaseValue = resolveTargetReleaseValue(fields, targetReleaseField);
-      const targetReleasesRaw = parseTargetReleaseValues(targetReleaseValue);
-      const targetReleases = filterPixTargetReleases(targetReleasesRaw);
+      const targetReleases = parseTargetReleaseValues(targetReleaseValue);
       const targetInfo = determineTargetVersions(targetReleases);
       const targetPrimary = targetInfo.primary;
       const targetVersions = targetInfo.targets;
@@ -1213,7 +1101,6 @@
         childWithTarget: 0,
         childWithoutTarget: 0,
         coveragePct: 0,
-        hasValidPixTarget: targetReleases.length > 0,
       };
     }
 
@@ -1586,7 +1473,7 @@
             if (!pi || !pi.base) return;
             if (!selectedPiBases.has(pi.base)) return;
             if (pi.suffix === 'committed' && !allowCommitted) return;
-            if ((pi.suffix === 'planned' || pi.suffix === 'candidate') && !allowPlanned) return;
+            if (pi.suffix === 'planned' && !allowPlanned) return;
             if (pi.suffix === 'spillover' && !allowSpillover) return;
             piMatch = true;
           });
@@ -1629,7 +1516,7 @@
             if (!pi || !pi.base) return;
             if (!selectedPiBases.has(pi.base)) return;
             if (pi.suffix === 'committed' && !allowCommitted) return;
-            if ((pi.suffix === 'planned' || pi.suffix === 'candidate') && !allowPlanned) return;
+            if (pi.suffix === 'planned' && !allowPlanned) return;
             if (pi.suffix === 'spillover' && !allowSpillover) return;
             piMatch = true;
           });
@@ -2378,10 +2265,6 @@
             totalEpicsFetched += items.length;
             items.forEach(({ issue, boardId }) => {
               const normalized = normalizeEpic(issue, boardId, responsibleField, state.targetReleaseFieldKeys);
-              if (!normalized.hasValidPixTarget) {
-                Logger.debug(`Skipping epic ${normalized.key} – missing YEAR_PIx_(committed|planned|spillover|candidate) target release.`);
-                return;
-              }
               if (epicMap.has(normalized.key)) {
                 const existing = epicMap.get(normalized.key);
                 normalized.boardIds.forEach(id => existing.boardIds.add(id));
@@ -2392,14 +2275,8 @@
                     const source = (normalized.pis || []).find(pi => pi.label === label)
                       || (existing.pis || []).find(pi => pi.label === label);
                     if (source) return { ...source };
-                    const parsed = parsePiLabel(label);
-                    if (parsed) {
-                      return { base: parsed.base, suffix: parsed.suffix, label: parsed.label };
-                    }
-                    const parts = label.split('_');
-                    const suffix = parts.length > 1 ? parts.pop() : null;
-                    const base = parts.join('_') || label;
-                    return { base, suffix, label };
+                    const [base, suffix] = label.split('_');
+                    return { base: base || label, suffix: suffix || null, label };
                   });
               } else {
                 epicMap.set(normalized.key, normalized);
