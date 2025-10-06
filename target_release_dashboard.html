@@ -1628,10 +1628,22 @@
       const trimmedResolution = resolution.trim();
       const isImplementedDone = /^implemented\s*\/\s*done$/i.test(trimmedResolution);
       const hasNonImplementedDoneResolution = Boolean(trimmedResolution) && !isImplementedDone;
+      const safeResolution = hasNonImplementedDoneResolution
+        ? trimmedResolution.replace(/[&<>"']/g, ch => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;',
+          })[ch] || ch)
+        : '';
       const metaParts = [
         `<span class="${badgeClass}">${issue.type}</span>`,
         `<span class="status-pill ${statusClass}">${issue.status}</span>`,
       ];
+      if (hasNonImplementedDoneResolution) {
+        metaParts.push(`<span class="badge resolution-badge" title="Issue resolution">${safeResolution}</span>`);
+      }
       if (issue.parentKey) {
         const epicSummary = issue.parentSummary ? ` – ${issue.parentSummary}` : '';
         metaParts.push(`<span class="issue-epic">Epic <a href="https://${domain}/browse/${issue.parentKey}" target="_blank" rel="noopener">${issue.parentKey}</a>${epicSummary}</span>`);
@@ -1645,16 +1657,7 @@
       if (!hasOwnTargetVersion && timelineSource === 'inherited') {
         metaParts.push('<span class="badge inherited-parent" title="Issue inherits its release from the parent">Parent Target</span>');
       }
-      if (hasNonImplementedDoneResolution) {
-        const safeResolution = resolution.replace(/[&<>"']/g, ch => ({
-          '&': '&amp;',
-          '<': '&lt;',
-          '>': '&gt;',
-          '"': '&quot;',
-          "'": '&#39;',
-        })[ch] || ch);
-        metaParts.push(`<span class="badge resolution-badge" title="Issue resolution">${safeResolution}</span>`);
-      } else if (!hasOwnTargetVersion) {
+      if (!hasNonImplementedDoneResolution && !hasOwnTargetVersion) {
         metaParts.push('<span class="badge missing-target-version" title="Issue has no target version of its own">No Target Version</span>');
       }
       if (shouldShowTarget) {
