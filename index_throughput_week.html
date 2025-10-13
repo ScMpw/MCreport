@@ -154,13 +154,32 @@
   <script src="src/jira.js"></script>
   <script>
 const DEFAULT_JIRA_DOMAIN = 'aldi-sued.atlassian.net';
+const BOARD_TEAM_DEFAULTS = {
+  'mco the pay-team': ['the_pay-team'],
+  'mco synergy': ['Team_synergy'],
+  'mco sales': ['Team_sales'],
+  'npsco scrum board tnt': ['SCO_TNT'],
+  'npsco scrum board the till titans': ['SCO_TheTillTitans'],
+  'npsco scrum board two fingered sloth': ['SCO_Two_fingered_sloth'],
+  'bf team papillon': ['Team_Papillon'],
+  'bf team vlinder': ['Team_vlinder'],
+  'gebit engineering': ['Checkout_cho']
+};
 let jiraDomain = DEFAULT_JIRA_DOMAIN, boardNum = '', sprints = [], closedSprintsSorted = [];
+let selectedBoardName = '';
 const boardSelect = document.getElementById('boardNum');
 let boardChoices = new Choices(boardSelect, {
   shouldSort: false,
   itemSelectText: '',
   searchPlaceholderValue: 'Search boards...'
 });
+
+function getBoardDefaultTeams(name) {
+  if (!name) return [];
+  const key = name.trim().toLowerCase();
+  const defaults = BOARD_TEAM_DEFAULTS[key];
+  return defaults ? [...defaults] : [];
+}
 
 function createPlaceholder(label = 'Select a board…') {
   return { value: '', label, disabled: true, selected: true };
@@ -193,6 +212,12 @@ populateBoards();
 
 boardSelect.addEventListener('change', () => {
   boardNum = boardSelect.value;
+  const selected = boardChoices && typeof boardChoices.getValue === 'function'
+    ? boardChoices.getValue()
+    : null;
+  const selectedEntry = Array.isArray(selected) ? selected[0] : selected;
+  selectedBoardName = selectedEntry && selectedEntry.label ? selectedEntry.label.trim() : '';
+  boardTeams = getBoardDefaultTeams(selectedBoardName);
   document.getElementById('sprintRow').style.display = 'none';
   document.getElementById('configSection').style.display = 'none';
 });
@@ -232,13 +257,33 @@ function getStoryTeams(story) {
 }
 
 function matchesTeamFilters(teams, filters = teamFilters) {
+  if (!filters || !Object.keys(filters).length) return true;
+  const activeFilters = Object.keys(filters).filter(key => filters[key]);
+  if (!activeFilters.length) return true;
   if (!Array.isArray(teams) || !teams.length) return false;
-  if (!filters || !Object.keys(filters).length) return false;
   return teams.some(t => filters[t]);
 }
 
 function storyMatchesTeamFilters(story, filters = teamFilters) {
   return matchesTeamFilters(getStoryTeams(story), filters);
+}
+
+function applyDefaultTeamFilters() {
+  const availableTeams = Object.keys(teamFilters || {});
+  if (!availableTeams.length) return;
+  const preferred = (boardTeams || []).filter(Boolean);
+  let applied = false;
+  preferred.forEach(team => {
+    if (teamFilters.hasOwnProperty(team)) {
+      teamFilters[team] = true;
+      applied = true;
+    }
+  });
+  if (!applied) {
+    availableTeams.forEach(team => {
+      teamFilters[team] = true;
+    });
+  }
 }
 document.getElementById('versionSelect').value = 'index_throughput_week.html';
 function switchVersion(page) {
@@ -732,7 +777,22 @@ function addTooltipListeners() {
     }
 
     async function fetchBoardTeam() {
-      boardTeams = [];
+      boardTeams = getBoardDefaultTeams(selectedBoardName);
+      try {
+        const boardResp = await fetch(`https://${jiraDomain}/rest/agile/1.0/board/${boardNum}`, { credentials: "include" });
+        if (boardResp.ok) {
+          const boardInfo = await boardResp.json();
+          if (boardInfo && boardInfo.name) {
+            selectedBoardName = boardInfo.name.trim();
+            const defaults = getBoardDefaultTeams(selectedBoardName);
+            defaults.forEach(team => {
+              if (team && !boardTeams.includes(team)) boardTeams.push(team);
+            });
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch board info', err);
+      }
       try {
         const cfgUrl = `https://${jiraDomain}/rest/agile/1.0/board/${boardNum}/configuration`;
         const cfgResp = await fetch(cfgUrl, { credentials: "include" });
@@ -1034,6 +1094,7 @@ function addTooltipListeners() {
       });
       teamFilters = {};
       allTeams.forEach(t => { teamFilters[t] = false; });
+      applyDefaultTeamFilters();
       // --- FETCH HISTORICAL THROUGHPUT FROM JIRA REPORT ---
       throughputArr = await fetchThroughputFromReport(jiraDomain, boardNum, selectedSprintId);
       document.getElementById('configSection').style.display = '';

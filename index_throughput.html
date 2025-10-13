@@ -154,6 +154,25 @@
     </div>
   </div>
   <script>
+const BOARD_TEAM_DEFAULTS = {
+  'mco the pay-team': ['the_pay-team'],
+  'mco synergy': ['Team_synergy'],
+  'mco sales': ['Team_sales'],
+  'npsco scrum board tnt': ['SCO_TNT'],
+  'npsco scrum board the till titans': ['SCO_TheTillTitans'],
+  'npsco scrum board two fingered sloth': ['SCO_Two_fingered_sloth'],
+  'bf team papillon': ['Team_Papillon'],
+  'bf team vlinder': ['Team_vlinder'],
+  'gebit engineering': ['Checkout_cho']
+};
+
+function getBoardDefaultTeams(name) {
+  if (!name) return [];
+  const key = name.trim().toLowerCase();
+  const defaults = BOARD_TEAM_DEFAULTS[key];
+  return defaults ? [...defaults] : [];
+}
+
 let jiraDomain = '', boardNum = '', sprints = [], closedSprintsSorted = [];
 let allEpics = {}, epicStories = {}, epicStoriesBaseline = {};
 let throughputArr = [];
@@ -266,6 +285,7 @@ let epicAllocations = {}, epicBacklogs = {}, epicRequiredAlloc = {}, epicRequire
 let epicForecastResults = {};
 let historicData = [];
 let storyFilters = { current:true, previous:true, new:true, open:true, removed:true };
+let selectedBoardName = '';
 let boardTeams = [];
 let teamFilters = {};
 let statusChoices = null;
@@ -296,6 +316,56 @@ function addTooltipListeners() {
   document.addEventListener('click', () => {
     document.querySelectorAll('.info-icon.active').forEach(i => i.classList.remove('active'));
   });
+}
+
+function parseTeamString(teamStr = '') {
+  const seen = new Set();
+  return teamStr
+    .split(',')
+    .map(t => t.trim())
+    .filter(t => {
+      if (!t || seen.has(t)) return false;
+      seen.add(t);
+      return true;
+    });
+}
+
+function getStoryTeams(story) {
+  if (!story) return [];
+  if (Array.isArray(story.team)) {
+    return parseTeamString(story.team.join(', '));
+  }
+  return parseTeamString(story.team || '');
+}
+
+function matchesTeamFilters(teams, filters = teamFilters) {
+  if (!filters || !Object.keys(filters).length) return true;
+  const activeFilters = Object.keys(filters).filter(key => filters[key]);
+  if (!activeFilters.length) return true;
+  if (!Array.isArray(teams) || !teams.length) return false;
+  return teams.some(t => filters[t]);
+}
+
+function storyMatchesTeamFilters(story, filters = teamFilters) {
+  return matchesTeamFilters(getStoryTeams(story), filters);
+}
+
+function applyDefaultTeamFilters() {
+  const availableTeams = Object.keys(teamFilters || {});
+  if (!availableTeams.length) return;
+  const preferred = (boardTeams || []).filter(Boolean);
+  let applied = false;
+  preferred.forEach(team => {
+    if (teamFilters.hasOwnProperty(team)) {
+      teamFilters[team] = true;
+      applied = true;
+    }
+  });
+  if (!applied) {
+    availableTeams.forEach(team => {
+      teamFilters[team] = true;
+    });
+  }
 }
 
 
@@ -603,7 +673,22 @@ function addTooltipListeners() {
     }
 
     async function fetchBoardTeam() {
-      boardTeams = [];
+      boardTeams = getBoardDefaultTeams(selectedBoardName);
+      try {
+        const boardResp = await fetch(`https://${jiraDomain}/rest/agile/1.0/board/${boardNum}`, { credentials: "include" });
+        if (boardResp.ok) {
+          const boardInfo = await boardResp.json();
+          if (boardInfo && boardInfo.name) {
+            selectedBoardName = boardInfo.name.trim();
+            const defaults = getBoardDefaultTeams(selectedBoardName);
+            defaults.forEach(team => {
+              if (team && !boardTeams.includes(team)) boardTeams.push(team);
+            });
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch board info', err);
+      }
       try {
         const cfgUrl = `https://${jiraDomain}/rest/agile/1.0/board/${boardNum}/configuration`;
         const cfgResp = await fetch(cfgUrl, { credentials: "include" });
@@ -636,6 +721,8 @@ function addTooltipListeners() {
     async function fetchAllSprints() {
       jiraDomain = document.getElementById('jiraDomain').value.trim();
       boardNum = document.getElementById('boardNum').value.trim();
+      selectedBoardName = '';
+      boardTeams = [];
       if (!jiraDomain || !boardNum) return alert("Enter Jira domain and board number.");
 
       showLoading('Fetching sprints...');
@@ -837,11 +924,12 @@ function addTooltipListeners() {
       let allTeams = new Set();
       Object.values(epicStories).forEach(arr => {
         arr.forEach(st => {
-          st.team.split(',').forEach(t => { t = t.trim(); if (t) allTeams.add(t); });
+          getStoryTeams(st).forEach(t => { if (t) allTeams.add(t); });
         });
       });
       teamFilters = {};
       allTeams.forEach(t => { teamFilters[t] = false; });
+      applyDefaultTeamFilters();
       // --- FETCH HISTORICAL THROUGHPUT FROM JIRA REPORT ---
       throughputArr = await fetchThroughputFromReport(jiraDomain, boardNum, selectedSprintId);
       document.getElementById('configSection').style.display = '';
@@ -930,30 +1018,30 @@ function addTooltipListeners() {
         document.querySelectorAll('.story-status-blocked').forEach(el=>el.style.display = storyFilters.open? '':'none');
         document.querySelectorAll('.story-status-other').forEach(el=>el.style.display = storyFilters.open? '':'none');
         document.querySelectorAll('.removed-lane').forEach(el=>el.style.display = storyFilters.removed? '':'none');
-        document.querySelectorAll('.story-card').forEach(el=>{
-          if (el.style.display==='none') return;
-          let teams = (el.dataset.teams||'').split(',').map(t=>t.trim()).filter(Boolean);
-          if (!teams.length || !teams.some(t=>teamFilters[t])) el.style.display='none';
-        });
-        updateEpicStatusCounts();
-      }
+      document.querySelectorAll('.story-card').forEach(el=>{
+        if (el.style.display==='none') return;
+        const teams = parseTeamString(el.dataset.teams || '');
+        if (!matchesTeamFilters(teams)) el.style.display='none';
+      });
+      updateEpicStatusCounts();
+    }
 
       function updateEpicStatusCounts() {
         const currSprintObj = sprints.find(s => String(s.id) === String(selectedSprintId));
         Object.keys(epicStories).forEach(epicKey => {
           let done=0, prog=0, open=0, blocked=0;
           let ptsDone=0, ptsProg=0, ptsOpen=0, ptsBlocked=0;
-          (epicStories[epicKey]||[]).forEach(story => {
-            let show=true;
-            let cls = getStoryRowClass(story, currSprintObj);
-            if (cls==='story-status-current' && !storyFilters.current) show=false;
-            else if (cls==='story-status-previous' && !storyFilters.previous) show=false;
-            else if (cls==='story-status-new' && !storyFilters.new) show=false;
-            else if ((cls==='story-status-open' || cls==='story-status-inprogress' || cls==='story-status-blocked' || cls==='story-status-other') && !storyFilters.open) show=false;
-            if (show) {
-              let teams=(story.team||'').split(',').map(t=>t.trim()).filter(Boolean);
-              if (!teams.length || !teams.some(t=>teamFilters[t])) show=false;
-            }
+        (epicStories[epicKey]||[]).forEach(story => {
+          let show=true;
+          let cls = getStoryRowClass(story, currSprintObj);
+          if (cls==='story-status-current' && !storyFilters.current) show=false;
+          else if (cls==='story-status-previous' && !storyFilters.previous) show=false;
+          else if (cls==='story-status-new' && !storyFilters.new) show=false;
+          else if ((cls==='story-status-open' || cls==='story-status-inprogress' || cls==='story-status-blocked' || cls==='story-status-other') && !storyFilters.open) show=false;
+          if (show) {
+            const teams = getStoryTeams(story);
+            if (!matchesTeamFilters(teams)) show=false;
+          }
             if (!show) return;
             let grp=statusGroup(story.status);
             if (grp==='Done') { done++; ptsDone+=story.points; }
@@ -1004,8 +1092,8 @@ function addTooltipListeners() {
         let backlog = stories.filter(st => {
           if (isDone(st.status)) return false;
           if (!validResolution(st.resolution)) return false;
-          let teams = (st.team||'').split(',').map(t=>t.trim()).filter(Boolean);
-          if (!teams.length || !teams.some(t=>teamFilters[t])) return false;
+          const teams = getStoryTeams(st);
+          if (!matchesTeamFilters(teams)) return false;
           return true;
         }).length;
         epicBacklogs[epicKey] = backlog;
@@ -1073,8 +1161,8 @@ function addTooltipListeners() {
       Object.keys(epicStoriesBaseline).forEach(epicKey => {
         let stories = epicStoriesBaseline[epicKey] || [];
         let backlogPts = stories.filter(st => {
-          let teams = (st.team||'').split(',').map(t=>t.trim()).filter(Boolean);
-          if (!teams.length || !teams.some(t=>teamFilters[t])) return false;
+          const teams = getStoryTeams(st);
+          if (!matchesTeamFilters(teams)) return false;
           if (!validResolution(st.resolution)) return false;
           let res = st.resolved ? new Date(st.resolved) : null;
           if (baselineEnd && res && res <= baselineEnd) return false;
@@ -1138,8 +1226,8 @@ function addTooltipListeners() {
         let ptsDone=0, ptsProg=0, ptsOpen=0, ptsBlocked=0;
         let unestimated = 0;
         stories.forEach(story => {
-          let teams = (story.team||'').split(',').map(t=>t.trim()).filter(Boolean);
-          if (!teams.length || !teams.some(t=>teamFilters[t])) return;
+          const teams = getStoryTeams(story);
+          if (!matchesTeamFilters(teams)) return;
           let sgrp = statusGroup(story.status);
           if (sgrp==='Done') { statusCounts.done++; ptsDone+=story.points; }
           else if (sgrp==='In Progress') { statusCounts.prog++; ptsProg+=story.points; }
@@ -1156,13 +1244,13 @@ function addTooltipListeners() {
         let probRows = [[50,mc[Math.floor(0.5*mc.length)]],[75,mc[Math.floor(0.75*mc.length)]],[95,mc[Math.floor(0.95*mc.length)]]];
 
         let baseStories = (epicStoriesBaseline[epicKey]||[]).filter(st => {
-          let teams = (st.team||'').split(',').map(t=>t.trim()).filter(Boolean);
-          return teams.length ? teams.some(t=>teamFilters[t]) : false;
+          const teams = getStoryTeams(st);
+          return matchesTeamFilters(teams);
         });
         let baseKeys = new Set(baseStories.map(s=>s.key));
         let currStories = stories.filter(s => {
-          let teams = (s.team||'').split(',').map(t=>t.trim()).filter(Boolean);
-          return teams.length ? teams.some(t=>teamFilters[t]) : false;
+          const teams = getStoryTeams(s);
+          return matchesTeamFilters(teams);
         });
         let currKeys = new Set(currStories.map(s=>s.key));
         const currSprintObj = sprints.find(s => String(s.id) === String(selectedSprintId));
@@ -1176,8 +1264,8 @@ function addTooltipListeners() {
         let removedStories = baseStories.filter(s=>!currKeys.has(s.key));
 
         let baseDone = (epicStories[epicKey]||[]).filter(s=>{
-          let teams = (s.team||'').split(',').map(t=>t.trim()).filter(Boolean);
-          if (!teams.length || !teams.some(t=>teamFilters[t])) return false;
+          const teams = getStoryTeams(s);
+          if (!matchesTeamFilters(teams)) return false;
           let res = s.resolved ? new Date(s.resolved) : null;
           return baselineEnd && res && res <= baselineEnd;
         }).map(s=>s.points).reduce((a,b)=>a+b,0);
