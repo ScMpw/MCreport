@@ -381,29 +381,9 @@ function resetBoardTeams(name) {
 }
 
 function applyDefaultTeamFilters() {
-  const availableTeams = Object.keys(teamFilters || {});
-  if (!availableTeams.length) return;
-  const preferred = (boardTeams || []).filter(Boolean);
-  const normalizedAvailable = new Map();
-  availableTeams.forEach(team => {
-    const key = normalizeTeamKey(team);
-    if (key && !normalizedAvailable.has(key)) {
-      normalizedAvailable.set(key, team);
-    }
+  Object.keys(teamFilters || {}).forEach(team => {
+    teamFilters[team] = false;
   });
-  let applied = false;
-  preferred.forEach(team => {
-    const actual = normalizedAvailable.get(normalizeTeamKey(team));
-    if (actual && teamFilters.hasOwnProperty(actual)) {
-      teamFilters[actual] = true;
-      applied = true;
-    }
-  });
-  if (!applied) {
-    availableTeams.forEach(team => {
-      teamFilters[team] = true;
-    });
-  }
 }
 
 
