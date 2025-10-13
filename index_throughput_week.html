@@ -217,7 +217,7 @@ boardSelect.addEventListener('change', () => {
     : null;
   const selectedEntry = Array.isArray(selected) ? selected[0] : selected;
   selectedBoardName = selectedEntry && selectedEntry.label ? selectedEntry.label.trim() : '';
-  boardTeams = getBoardDefaultTeams(selectedBoardName);
+  resetBoardTeams(selectedBoardName);
   document.getElementById('sprintRow').style.display = 'none';
   document.getElementById('configSection').style.display = 'none';
 });
@@ -268,14 +268,43 @@ function storyMatchesTeamFilters(story, filters = teamFilters) {
   return matchesTeamFilters(getStoryTeams(story), filters);
 }
 
+function normalizeTeamKey(team) {
+  return (team || '')
+    .toString()
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]+/g, '');
+}
+
+function addBoardTeam(team) {
+  const normalized = normalizeTeamKey(team);
+  if (!normalized) return;
+  if (!boardTeams.some(existing => normalizeTeamKey(existing) === normalized)) {
+    boardTeams.push(team);
+  }
+}
+
+function resetBoardTeams(name) {
+  boardTeams = [];
+  getBoardDefaultTeams(name).forEach(addBoardTeam);
+}
+
 function applyDefaultTeamFilters() {
   const availableTeams = Object.keys(teamFilters || {});
   if (!availableTeams.length) return;
   const preferred = (boardTeams || []).filter(Boolean);
+  const normalizedAvailable = new Map();
+  availableTeams.forEach(team => {
+    const key = normalizeTeamKey(team);
+    if (key && !normalizedAvailable.has(key)) {
+      normalizedAvailable.set(key, team);
+    }
+  });
   let applied = false;
   preferred.forEach(team => {
-    if (teamFilters.hasOwnProperty(team)) {
-      teamFilters[team] = true;
+    const actual = normalizedAvailable.get(normalizeTeamKey(team));
+    if (actual && teamFilters.hasOwnProperty(actual)) {
+      teamFilters[actual] = true;
       applied = true;
     }
   });
@@ -777,17 +806,14 @@ function addTooltipListeners() {
     }
 
     async function fetchBoardTeam() {
-      boardTeams = getBoardDefaultTeams(selectedBoardName);
+      resetBoardTeams(selectedBoardName);
       try {
         const boardResp = await fetch(`https://${jiraDomain}/rest/agile/1.0/board/${boardNum}`, { credentials: "include" });
         if (boardResp.ok) {
           const boardInfo = await boardResp.json();
           if (boardInfo && boardInfo.name) {
             selectedBoardName = boardInfo.name.trim();
-            const defaults = getBoardDefaultTeams(selectedBoardName);
-            defaults.forEach(team => {
-              if (team && !boardTeams.includes(team)) boardTeams.push(team);
-            });
+            resetBoardTeams(selectedBoardName);
           }
         }
       } catch (err) {
@@ -810,7 +836,7 @@ function addTooltipListeners() {
           let str = m[1].replace(/[()]/g, '');
           str.split(',').forEach(t => {
             t = t.replace(/"/g, '').trim();
-            if (t && !boardTeams.includes(t)) boardTeams.push(t);
+            addBoardTeam(t);
           });
         }
       } catch (e) {
