@@ -340,7 +340,7 @@ async function jiraSearch(jql, fields = [], options = {}) {
     startAt = nextStart;
   }
 }
-let epicAllocations = {}, epicBacklogs = {}, epicRequiredAlloc = {}, epicRequiredIssues = {},
+let epicAllocations = {}, epicBacklogs = {}, epicTotalIssues = {}, epicRequiredAlloc = {}, epicRequiredIssues = {},
     epicRequiredIssuesPrev = {};
 let epicForecastResults = {};
 let historicData = [];
@@ -1210,24 +1210,31 @@ function addTooltipListeners() {
         ? baselineEndTime
         : (sprintStartTime != null ? sprintStartTime : null);
       epicBacklogs = {};
+      epicTotalIssues = {};
       let totalBacklog = 0;
+      let totalSprintIssues = 0;
       Object.keys(epicStories).forEach(epicKey => {
         let stories = epicStories[epicKey]||[];
         let backlog = 0;
+        let totalIssues = 0;
         stories.forEach(st => {
           if (!validResolution(st.resolution)) return;
           if (!storyMatchesTeamFilters(st)) return;
           if (!storyIncludedAtTime(st, snapshotTime)) return;
+          totalIssues++;
           const grp = statusGroupAtTime(st, snapshotTime);
           if (grp === 'Done') return;
           backlog++;
         });
         epicBacklogs[epicKey] = backlog;
         totalBacklog += backlog;
+        epicTotalIssues[epicKey] = totalIssues;
+        totalSprintIssues += totalIssues;
       });
       epicAllocations = {};
       Object.keys(epicStories).forEach(epicKey => {
-        epicAllocations[epicKey] = totalBacklog ? Math.ceil(100*epicBacklogs[epicKey]/totalBacklog) : 0;
+        const totalIssues = epicTotalIssues[epicKey] || 0;
+        epicAllocations[epicKey] = totalSprintIssues ? Math.ceil(100*totalIssues/totalSprintIssues) : 0;
       });
       if (!skipHistory) updateHistoricTotals();
       renderFilterOptions();
