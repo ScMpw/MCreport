@@ -5,8 +5,8 @@
   <title>Stakeholder PI Status Report – MCW with Allocation</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html-to-image/1.11.11/html-to-image.min.js"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet" data-pdf-ignore="true">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css" data-pdf-ignore="true" />
   <link rel="stylesheet" href="public/tailwind.css">
   <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
   <style>
@@ -115,14 +115,16 @@
     <div style="margin-bottom:10px;">
       <label>Version:
         <select id="versionSelect" onchange="switchVersion(this.value)">
+          <option value="index.html" selected>Velocity</option>
           <option value="index_throughput_week.html">Weekly Throughput</option>
         </select>
       </label>
     </div>
     <div>
-      <label>Jira Domain: <input id="jiraDomain" value="aldi-sued.atlassian.net" size="28"></label>
-      <label>Board Number:
-        <input id="boardNum" size="5">
+      <label>Board:
+        <select id="boardNum">
+          <option value="">Select a board…</option>
+        </select>
       </label>
       <button class="btn" onclick="fetchAllSprints()">Fetch Sprints</button>
     </div>
@@ -149,8 +151,52 @@
       <div id="epicSummary"></div>
     </div>
   </div>
+  <script src="src/jira.js"></script>
   <script>
-let jiraDomain = '', boardNum = '', sprints = [], closedSprintsSorted = [];
+const DEFAULT_JIRA_DOMAIN = 'aldi-sued.atlassian.net';
+let jiraDomain = DEFAULT_JIRA_DOMAIN, boardNum = '', sprints = [], closedSprintsSorted = [];
+const boardSelect = document.getElementById('boardNum');
+let boardChoices = new Choices(boardSelect, {
+  shouldSort: false,
+  itemSelectText: '',
+  searchPlaceholderValue: 'Search boards...'
+});
+
+function createPlaceholder(label = 'Select a board…') {
+  return { value: '', label, disabled: true, selected: true };
+}
+
+async function populateBoards() {
+  boardChoices.clearChoices();
+  boardChoices.setChoices([createPlaceholder()], 'value', 'label', true);
+  try {
+    const boards = await Jira.fetchBoardsByJql(DEFAULT_JIRA_DOMAIN);
+    if (!boards.length) {
+      boardChoices.setChoices([
+        createPlaceholder('No boards available')
+      ], 'value', 'label', true);
+      return;
+    }
+    boardChoices.setChoices([
+      createPlaceholder(),
+      ...boards.map(b => ({ value: String(b.id), label: b.name }))
+    ], 'value', 'label', true);
+  } catch (e) {
+    console.error('Failed to load boards', e);
+    boardChoices.setChoices([
+      createPlaceholder('Failed to load boards')
+    ], 'value', 'label', true);
+  }
+}
+
+populateBoards();
+
+boardSelect.addEventListener('change', () => {
+  boardNum = boardSelect.value;
+  document.getElementById('sprintRow').style.display = 'none';
+  document.getElementById('configSection').style.display = 'none';
+});
+
 let allEpics = {}, epicStories = {}, epicStoriesBaseline = {};
 let velocityArr = [];
 let avgVelocity = 0;
@@ -424,9 +470,9 @@ function addTooltipListeners() {
 
     // --- SPRINT FETCH & SELECTION (paginated, NO sorting after fetch) ---
     async function fetchAllSprints() {
-      jiraDomain = document.getElementById('jiraDomain').value.trim();
-      boardNum = document.getElementById('boardNum').value.trim();
-      if (!jiraDomain || !boardNum) return alert("Enter Jira domain and board number.");
+      jiraDomain = DEFAULT_JIRA_DOMAIN;
+      boardNum = boardSelect.value.trim();
+      if (!boardNum) return alert("Select a board.");
 
       showLoading('Fetching sprints...');
       await fetchBoardTeam();
