@@ -154,32 +154,13 @@
   <script src="src/jira.js"></script>
   <script>
 const DEFAULT_JIRA_DOMAIN = 'aldi-sued.atlassian.net';
-const BOARD_TEAM_DEFAULTS = {
-  'mco the pay-team': ['the_Pay-Team'],
-  'mco synergy': ['Team_Synergy'],
-  'mco sales': ['Team_Sales'],
-  'npsco scrum board tnt': ['SCO_TNT'],
-  'npsco scrum board the till titans': ['SCO_TheTillTitans'],
-  'npsco scrum board two fingered sloth': ['SCO_Two_Fingered_Sloth'],
-  'bf team papillon': ['Team_Papillon'],
-  'bf team vlinder': ['Team_Vlinder'],
-  'gebit engineering': ['Checkout_CHO']
-};
 let jiraDomain = DEFAULT_JIRA_DOMAIN, boardNum = '', sprints = [], closedSprintsSorted = [];
-let selectedBoardName = '';
 const boardSelect = document.getElementById('boardNum');
 let boardChoices = new Choices(boardSelect, {
   shouldSort: false,
   itemSelectText: '',
   searchPlaceholderValue: 'Search boards...'
 });
-
-function getBoardDefaultTeams(name) {
-  if (!name) return [];
-  const key = name.trim().toLowerCase();
-  const defaults = BOARD_TEAM_DEFAULTS[key];
-  return defaults ? [...defaults] : [];
-}
 
 function createPlaceholder(label = 'Select a board…') {
   return { value: '', label, disabled: true, selected: true };
@@ -212,12 +193,6 @@ populateBoards();
 
 boardSelect.addEventListener('change', () => {
   boardNum = boardSelect.value;
-  const selected = boardChoices && typeof boardChoices.getValue === 'function'
-    ? boardChoices.getValue()
-    : null;
-  const selectedEntry = Array.isArray(selected) ? selected[0] : selected;
-  selectedBoardName = selectedEntry && selectedEntry.label ? selectedEntry.label.trim() : '';
-  resetBoardTeams(selectedBoardName);
   document.getElementById('sprintRow').style.display = 'none';
   document.getElementById('configSection').style.display = 'none';
 });
@@ -240,15 +215,6 @@ function deduplicateStoriesByKey(stories) {
   });
 }
 
-function escapeHtml(str = '') {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
 function parseTeamString(teamStr = '') {
   const seen = new Set();
   return teamStr
@@ -266,42 +232,13 @@ function getStoryTeams(story) {
 }
 
 function matchesTeamFilters(teams, filters = teamFilters) {
-  if (!filters || !Object.keys(filters).length) return true;
-  const activeFilters = Object.keys(filters).filter(key => filters[key]);
-  if (!activeFilters.length) return true;
   if (!Array.isArray(teams) || !teams.length) return false;
+  if (!filters || !Object.keys(filters).length) return false;
   return teams.some(t => filters[t]);
 }
 
 function storyMatchesTeamFilters(story, filters = teamFilters) {
   return matchesTeamFilters(getStoryTeams(story), filters);
-}
-
-function normalizeTeamKey(team) {
-  return (team || '')
-    .toString()
-    .trim()
-    .toLowerCase()
-    .replace(/[\s_-]+/g, '');
-}
-
-function addBoardTeam(team) {
-  const normalized = normalizeTeamKey(team);
-  if (!normalized) return;
-  if (!boardTeams.some(existing => normalizeTeamKey(existing) === normalized)) {
-    boardTeams.push(team);
-  }
-}
-
-function resetBoardTeams(name) {
-  boardTeams = [];
-  getBoardDefaultTeams(name).forEach(addBoardTeam);
-}
-
-function applyDefaultTeamFilters() {
-  Object.keys(teamFilters || {}).forEach(team => {
-    teamFilters[team] = false;
-  });
 }
 document.getElementById('versionSelect').value = 'index_throughput_week.html';
 function switchVersion(page) {
@@ -795,19 +732,7 @@ function addTooltipListeners() {
     }
 
     async function fetchBoardTeam() {
-      resetBoardTeams(selectedBoardName);
-      try {
-        const boardResp = await fetch(`https://${jiraDomain}/rest/agile/1.0/board/${boardNum}`, { credentials: "include" });
-        if (boardResp.ok) {
-          const boardInfo = await boardResp.json();
-          if (boardInfo && boardInfo.name) {
-            selectedBoardName = boardInfo.name.trim();
-            resetBoardTeams(selectedBoardName);
-          }
-        }
-      } catch (err) {
-        console.error('Failed to fetch board info', err);
-      }
+      boardTeams = [];
       try {
         const cfgUrl = `https://${jiraDomain}/rest/agile/1.0/board/${boardNum}/configuration`;
         const cfgResp = await fetch(cfgUrl, { credentials: "include" });
@@ -825,7 +750,7 @@ function addTooltipListeners() {
           let str = m[1].replace(/[()]/g, '');
           str.split(',').forEach(t => {
             t = t.replace(/"/g, '').trim();
-            addBoardTeam(t);
+            if (t && !boardTeams.includes(t)) boardTeams.push(t);
           });
         }
       } catch (e) {
@@ -1109,7 +1034,6 @@ function addTooltipListeners() {
       });
       teamFilters = {};
       allTeams.forEach(t => { teamFilters[t] = false; });
-      applyDefaultTeamFilters();
       // --- FETCH HISTORICAL THROUGHPUT FROM JIRA REPORT ---
       throughputArr = await fetchThroughputFromReport(jiraDomain, boardNum, selectedSprintId);
       document.getElementById('configSection').style.display = '';
@@ -1162,14 +1086,7 @@ function addTooltipListeners() {
 
       const teamSelectHtml =
         '<select id="teamSelect" multiple>'+
-        Object.keys(teamFilters)
-          .sort()
-          .map(team => {
-            const option = escapeHtml(team);
-            const selected = teamFilters[team] ? ' selected' : '';
-            return `<option value="${option}"${selected}>${option}</option>`;
-          })
-          .join('')+
+        Object.keys(teamFilters).sort().map(t=>`<option value="${t}" ${teamFilters[t]?'selected':''}>${t}</option>`).join('')+
         '</select>';
 
       document.getElementById('filterOptions').innerHTML =
@@ -1567,19 +1484,12 @@ function addTooltipListeners() {
                       if (newSet.has(st.key)) tags.push('New');
                       if (c==='story-status-current') tags.push('Done now');
                       if (st.issuetype) tags.push(st.issuetype);
-                      const safeTeams = escapeHtml(st.team || '');
-                      const safeKey = escapeHtml(st.key);
-                      const safeSummary = escapeHtml(st.summary);
-                      const safeStatus = escapeHtml(st.status);
-                      const safeAssignee = escapeHtml(st.assignee);
-                      const safeCreated = escapeHtml(st.created ? st.created.substr(0,10) : '');
-                      const safeResolved = escapeHtml(st.resolved ? st.resolved.substr(0,10) : '');
-                      return `<div class="story-card ${c}" data-teams="${safeTeams}">
-                        <div><b>${safeKey}</b> (${st.points} SP)</div>
-                        <div>${safeSummary}</div>
-                        <div class="small">${safeStatus}${st.assignee? ' - '+safeAssignee : (st.team?' - '+safeTeams:'')}</div>
-                        <div class="small">${safeCreated}${st.resolved?' → '+safeResolved:''}</div>
-                        ${tags.length?`<div class="tags">${tags.map(t=>`<span class="story-tag">${escapeHtml(t)}</span>`).join('')}</div>`:''}
+                      return `<div class="story-card ${c}" data-teams="${st.team}">
+                        <div><b>${st.key}</b> (${st.points} SP)</div>
+                        <div>${st.summary}</div>
+                        <div class="small">${st.status}${st.assignee? ' - '+st.assignee : (st.team?' - '+st.team:'')}</div>
+                        <div class="small">${st.created?st.created.substr(0,10):''}${st.resolved?' → '+st.resolved.substr(0,10):''}</div>
+                        ${tags.length?`<div class="tags">${tags.map(t=>`<span class="story-tag">${t}</span>`).join('')}</div>`:''}
                       </div>`;
                     }).join('')}
                   </div>
@@ -1588,13 +1498,7 @@ function addTooltipListeners() {
               ${removedStories.length?`
                 <div class="story-lane removed-lane">
                   <div class="story-lane-header">Removed since last sprint</div>
-                  ${removedStories.map(st=>{
-                    const safeTeams = escapeHtml(st.team || '');
-                    const safeKey = escapeHtml(st.key);
-                    const safeResolution = escapeHtml(st.resolution);
-                    const safeIssueType = escapeHtml(st.issuetype);
-                    return `<div class="story-card story-status-other" data-teams="${safeTeams}"><b>${safeKey}</b> (${st.points} SP)${st.resolution?` - ${safeResolution}`:''}${st.issuetype?`<div class="tags"><span class="story-tag">${safeIssueType}</span></div>`:''}</div>`;
-                  }).join('')}
+                  ${removedStories.map(st=>`<div class="story-card story-status-other" data-teams="${st.team}"><b>${st.key}</b> (${st.points} SP)${st.resolution?` - ${st.resolution}`:''}${st.issuetype?`<div class="tags"><span class="story-tag">${st.issuetype}</span></div>`:''}</div>`).join('')}
                 </div>
               `:''}
             </div>
