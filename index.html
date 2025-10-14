@@ -348,7 +348,7 @@ async function jiraSearch(jql, fields = [], options = {}) {
     startAt = nextStart;
   }
 }
-let epicAllocations = {}, epicBacklogs = {}, epicRequiredAlloc = {}, epicRequiredSP = {},
+let epicAllocations = {}, epicBacklogs = {}, epicSprintTotals = {}, epicRequiredAlloc = {}, epicRequiredSP = {},
     epicRequiredSPPrev = {};
 let epicForecastResults = {};
 let historicData = [];
@@ -831,20 +831,29 @@ function addTooltipListeners() {
       const baselineSprintObj = closedSprintsSorted.find(s=>s.id==baselineSprintId);
       const baselineEnd = baselineSprintObj ? new Date(baselineSprintObj.endDate) : null;
       epicBacklogs = {};
+      epicSprintTotals = {};
       let totalBacklog = 0;
+      let totalSprintPoints = 0;
       Object.keys(epicStories).forEach(epicKey => {
         let stories = epicStories[epicKey]||[];
-        let backlog = stories.filter(st => {
-          if (isDone(st.status)) return false;
-          if (!storyMatchesTeamFilters(st)) return false;
-          return true;
-        }).reduce((a,b)=>a+b.points,0);
+        let backlog = 0;
+        let totalPoints = 0;
+        stories.forEach(st => {
+          if (!storyMatchesTeamFilters(st)) return;
+          const pts = Number(st.points) || 0;
+          totalPoints += pts;
+          if (isDone(st.status)) return;
+          backlog += pts;
+        });
         epicBacklogs[epicKey] = backlog;
         totalBacklog += backlog;
+        epicSprintTotals[epicKey] = totalPoints;
+        totalSprintPoints += totalPoints;
       });
       epicAllocations = {};
       Object.keys(epicStories).forEach(epicKey => {
-        epicAllocations[epicKey] = totalBacklog ? Math.ceil(100*epicBacklogs[epicKey]/totalBacklog) : 0;
+        const totalPoints = epicSprintTotals[epicKey] || 0;
+        epicAllocations[epicKey] = totalSprintPoints ? Math.ceil(100*totalPoints/totalSprintPoints) : 0;
       });
       if (!skipHistory) updateHistoricTotals();
       renderFilterOptions();
