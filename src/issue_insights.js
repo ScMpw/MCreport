@@ -40,15 +40,43 @@
     return `${hours.toFixed(1)}h`;
   }
 
-  function getStoryPoints(issue = {}) {
+  function getStoryPoints(issue = {}, sprintStart) {
     const fields = issue.fields || {};
     const candidates = [
+      fields.customfield_10002,
       fields.storyPoints,
       fields.customfield_10016,
       fields.customfield_10026,
       fields.customfield_10106
     ];
-    const value = candidates.find(v => typeof v === 'number');
+    let value = candidates.find(v => typeof v === 'number');
+
+    const histories = (issue.changelog && issue.changelog.histories) || [];
+    if (histories.length) {
+      const startDate = sprintStart ? new Date(sprintStart) : null;
+      let initialPoints = typeof value === 'number' ? value : null;
+      const sortedHist = histories.slice().sort((a, b) => new Date(a.created) - new Date(b.created));
+      outer: for (const h of sortedHist) {
+        const chDate = new Date(h.created);
+        for (const item of h.items || []) {
+          const fieldName = (item.field || '').toLowerCase();
+          if (fieldName === 'story points' || fieldName === 'customfield_10002') {
+            const toVal = Number(item.toString || item.to);
+            const fromVal = Number(item.fromString || item.from);
+            if (startDate && chDate <= startDate) {
+              if (!isNaN(toVal)) initialPoints = toVal;
+            } else if (startDate) {
+              initialPoints = !isNaN(fromVal) ? fromVal : initialPoints;
+              break outer;
+            } else if (!isNaN(toVal)) {
+              initialPoints = toVal;
+            }
+          }
+        }
+      }
+      if (typeof initialPoints === 'number') value = initialPoints;
+    }
+
     return typeof value === 'number' ? value : null;
   }
 
@@ -191,10 +219,10 @@
     }
   }
 
-  function renderCompletionRates(issues, sprintEnd) {
+  function renderCompletionRates(issues, sprintStart, sprintEnd) {
     const buckets = new Map();
     issues.forEach(issue => {
-      const pts = getStoryPoints(issue);
+      const pts = getStoryPoints(issue, sprintStart);
       const bucket = bucketForPoints(pts);
       if (!buckets.has(bucket)) buckets.set(bucket, { done: 0, total: 0 });
       const data = buckets.get(bucket);
@@ -275,7 +303,7 @@
       }
       const totalStatusTime = Array.from(durations.values()).reduce((a, b) => a + b, 0);
       const summary = issue.fields && issue.fields.summary ? issue.fields.summary : '';
-      const pts = getStoryPoints(issue);
+      const pts = getStoryPoints(issue, sprintStart);
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td>${issue.key}</td>
@@ -518,13 +546,13 @@
     sprintEnd.setHours(23, 59, 59, 999);
     showLoading('Fetching sprint issues and changelogs…');
 
-    const fields = ['summary', 'status', 'issuetype', 'resolution', 'resolutiondate', 'customfield_10016', 'customfield_10106', 'customfield_10026', 'storyPoints'];
+    const fields = ['summary', 'status', 'issuetype', 'resolution', 'resolutiondate', 'customfield_10002', 'customfield_10016', 'customfield_10106', 'customfield_10026', 'storyPoints'];
     const { issues } = await jiraSearch(buildJql(sprintId), fields, { expand: ['changelog'], maxResults: 200 });
     const filteredIssues = filterSupportedIssueTypes(issues);
 
     renderMeta(filteredIssues, sprint);
     renderStatusDurationTable(filteredIssues, sprintStart, sprintEnd);
-    renderCompletionRates(filteredIssues, sprintEnd);
+    renderCompletionRates(filteredIssues, sprintStart, sprintEnd);
     renderIssueDetails(filteredIssues, sprintStart, sprintEnd);
     hideLoading();
   }
