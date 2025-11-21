@@ -249,7 +249,7 @@ function switchVersion(page) {
 // triggers a CORS preflight when issued as POST from GitHub Pages. Prefer GET
 // to avoid the failing preflight and fall back to POST for large queries.
 async function jiraSearch(jql, fields = [], options = {}) {
-  const searchUrl = `https://${jiraDomain}/rest/api/3/search/jql`;
+  const searchUrl = `https://${jiraDomain}/rest/api/3/search`;
   const maxResults = options.maxResults || 500;
   let startAt = options.startAt || 0;
   const collected = [];

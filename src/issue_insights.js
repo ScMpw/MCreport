@@ -293,7 +293,7 @@
   }
 
   async function jiraSearch(jql, fields = [], options = {}) {
-    const searchUrl = `https://${jiraDomain}/rest/api/3/search/jql`;
+    const searchUrl = `https://${jiraDomain}/rest/api/3/search`;
     const maxResults = options.maxResults || 500;
     let startAt = options.startAt || 0;
     const collected = [];
@@ -302,26 +302,17 @@
       ? options.expand.filter(Boolean)
       : (options.expand ? [options.expand] : []);
 
-    const buildPayload = () => {
-      const payload = { jql, startAt, maxResults };
-      if (fieldList.length) payload.fields = fieldList;
-      if (expandList.length) payload.expand = expandList;
-      return payload;
+    const buildQuery = () => {
+      const params = new URLSearchParams({ jql, startAt: String(startAt), maxResults: String(maxResults) });
+      if (fieldList.length) params.set('fields', fieldList.join(','));
+      if (expandList.length) params.set('expand', expandList.join(','));
+      return params.toString();
     };
 
     while (true) {
       let resp;
       try {
-        resp = await fetch(searchUrl, {
-          method: 'POST',
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'X-Atlassian-Token': 'no-check'
-          },
-          body: JSON.stringify(buildPayload())
-        });
+        resp = await fetch(`${searchUrl}?${buildQuery()}`, { credentials: 'include' });
       } catch (err) {
         throw err;
       }

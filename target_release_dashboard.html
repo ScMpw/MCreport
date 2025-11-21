@@ -617,7 +617,7 @@
     }
 
     async function jiraSearch(domain, payload) {
-      const searchUrl = `https://${domain}/rest/api/3/search/jql`;
+      const searchUrl = `https://${domain}/rest/api/3/search`;
       const fieldList = Array.isArray(payload.fields) ? payload.fields.filter(Boolean) : [];
       const expandList = Array.isArray(payload.expand) ? payload.expand.filter(Boolean) : [];
       let useGet = true;
