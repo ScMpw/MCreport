@@ -49,7 +49,9 @@
       fields.customfield_10026,
       fields.customfield_10106
     ];
-    let value = candidates.find(v => typeof v === 'number');
+    let value = candidates
+      .map(v => (typeof v === 'string' ? Number(v) : v))
+      .find(v => typeof v === 'number' && !isNaN(v));
 
     const histories = (issue.changelog && issue.changelog.histories) || [];
     if (histories.length) {
@@ -548,7 +550,14 @@
 
     const fields = ['summary', 'status', 'issuetype', 'resolution', 'resolutiondate', 'customfield_10002', 'customfield_10016', 'customfield_10106', 'customfield_10026', 'storyPoints'];
     const { issues } = await jiraSearch(buildJql(sprintId), fields, { expand: ['changelog'], maxResults: 200 });
-    const filteredIssues = filterSupportedIssueTypes(issues);
+    const uniqueIssues = issues.reduce((acc, issue) => {
+      if (!acc.map.has(issue.key)) {
+        acc.map.set(issue.key, true);
+        acc.list.push(issue);
+      }
+      return acc;
+    }, { list: [], map: new Map() }).list;
+    const filteredIssues = filterSupportedIssueTypes(uniqueIssues);
 
     renderMeta(filteredIssues, sprint);
     renderStatusDurationTable(filteredIssues, sprintStart, sprintEnd);
