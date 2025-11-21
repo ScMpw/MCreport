@@ -17,6 +17,8 @@
   let statusChart;
   let completionChart;
 
+  initJiraDomain();
+
   function showLoading(message) {
     if (!loadingEl) return;
     loadingEl.style.display = 'block';
@@ -292,8 +294,33 @@
     }
   }
 
+  function initJiraDomain() {
+    const params = new URLSearchParams(window.location.search);
+    const urlDomain = params.get('jiraDomain');
+    const host = window.location.hostname || '';
+
+    if (urlDomain) {
+      jiraDomain = urlDomain;
+      return;
+    }
+
+    if (host.includes('atlassian.net')) {
+      jiraDomain = host;
+    }
+  }
+
+  function buildNetworkErrorMessage(err, actionLabel) {
+    const origin = window.location.origin;
+    const reason = err && err.message ? err.message : 'Request failed';
+    const sameHost = origin.includes(jiraDomain);
+    const corsHint = sameHost
+      ? ''
+      : ' This dashboard needs to be opened from your Jira domain or via a proxy that allows cross-origin requests.';
+    return `${actionLabel} – ${reason}.${corsHint}`;
+  }
+
   async function jiraSearch(jql, fields = [], options = {}) {
-    const searchUrl = `https://${jiraDomain}/rest/api/3/search/jql`;
+    const searchUrl = `https://${jiraDomain}/rest/api/3/search`;
     const maxResults = options.maxResults || 500;
     let startAt = options.startAt || 0;
     const collected = [];
@@ -344,7 +371,7 @@
           useGet = false;
           continue;
         }
-        throw err;
+        throw new Error(buildNetworkErrorMessage(err, 'Unable to reach Jira search'));
       }
 
       if (useGet && [405, 413, 414].includes(resp.status)) {
@@ -354,7 +381,10 @@
 
       if (!resp.ok) {
         const text = await resp.text();
-        throw new Error(`Jira search failed (${resp.status}): ${text}`);
+        const hint = [401, 403].includes(resp.status)
+          ? ' Check that you are logged into Jira in this browser and that the page is served from the same domain.'
+          : '';
+        throw new Error(`Jira search failed (${resp.status}): ${text}${hint}`);
       }
 
       const data = await resp.json();
@@ -382,7 +412,7 @@
     if (!boardSelect) return;
     boardSelect.innerHTML = '<option value="">Select a board…</option>';
     try {
-      const boards = await Jira.fetchBoardsByJql(DEFAULT_JIRA_DOMAIN);
+      const boards = await Jira.fetchBoardsByJql(jiraDomain);
       boards.forEach(board => {
         const opt = document.createElement('option');
         opt.value = board.id;
