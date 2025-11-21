@@ -293,7 +293,7 @@
   }
 
   async function jiraSearch(jql, fields = [], options = {}) {
-    const searchUrl = `https://${jiraDomain}/rest/api/3/search/jql`;
+    const searchUrl = `https://${jiraDomain}/rest/api/3/search`;
     const maxResults = options.maxResults || 500;
     let startAt = options.startAt || 0;
     const collected = [];
@@ -462,6 +462,17 @@
     });
   }
 
+  function dedupeIssuesByKey(issues = []) {
+    const byKey = new Map();
+    issues.forEach(issue => {
+      if (!issue || !issue.key) return;
+      if (!byKey.has(issue.key)) {
+        byKey.set(issue.key, issue);
+      }
+    });
+    return Array.from(byKey.values());
+  }
+
   async function loadSprintInsights() {
     const sprintId = sprintSelect.value.trim();
     if (!sprintId) return alert('Select a sprint to analyze.');
@@ -473,7 +484,8 @@
 
     const fields = ['summary', 'status', 'issuetype', 'resolution', 'resolutiondate', 'customfield_10016', 'customfield_10106', 'customfield_10026', 'storyPoints'];
     const { issues } = await jiraSearch(buildJql(sprintId), fields, { expand: ['changelog'], maxResults: 200 });
-    const filteredIssues = filterSupportedIssueTypes(issues);
+    const uniqueIssues = dedupeIssuesByKey(issues);
+    const filteredIssues = filterSupportedIssueTypes(uniqueIssues);
 
     renderMeta(filteredIssues, sprint);
     renderStatusDurationTable(filteredIssues, sprintStart, sprintEnd);
