@@ -331,7 +331,7 @@
   }
 
   async function jiraSearch(jql, fields = [], options = {}) {
-    const searchUrl = `https://${jiraDomain}/rest/api/3/search`;
+    const searchUrl = `https://${jiraDomain}/rest/api/3/search/jql`;
     const maxResults = options.maxResults || 500;
     let startAt = options.startAt || 0;
     const collected = [];
