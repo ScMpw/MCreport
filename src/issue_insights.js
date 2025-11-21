@@ -12,6 +12,10 @@
   const issueTableBody = document.getElementById('issueDetailsBody');
   const metaSummary = document.getElementById('metaSummary');
   const focusStatusEl = document.getElementById('focusStatuses');
+  const statusDurationChartEl = document.getElementById('statusDurationChart');
+  const completionChartEl = document.getElementById('completionChart');
+  let statusChart;
+  let completionChart;
 
   function showLoading(message) {
     if (!loadingEl) return;
@@ -135,10 +139,13 @@
       });
     });
 
-    const rows = Array.from(totals.keys()).map(status => {
-      const avg = totals.get(status) / (counts.get(status) || 1);
-      return { status, avg, total: totals.get(status) };
-    }).sort((a, b) => b.avg - a.avg);
+    const rows = Array.from(totals.keys())
+      .filter(status => String(status).toLowerCase() !== 'closed')
+      .map(status => {
+        const avg = totals.get(status) / (counts.get(status) || 1);
+        return { status, avg, total: totals.get(status) };
+      })
+      .sort((a, b) => b.avg - a.avg);
 
     statusTable.innerHTML = '';
     rows.forEach(row => {
@@ -155,6 +162,29 @@
       const tr = document.createElement('tr');
       tr.innerHTML = '<td colspan="3">No status data found for this sprint.</td>';
       statusTable.appendChild(tr);
+    }
+
+    if (statusDurationChartEl) {
+      if (statusChart) statusChart.destroy();
+      statusChart = new Chart(statusDurationChartEl, {
+        type: 'bar',
+        data: {
+          labels: rows.map(r => r.status),
+          datasets: [{
+            label: 'Average time (hours)',
+            data: rows.map(r => (r.avg / (1000 * 60 * 60)).toFixed(1)),
+            backgroundColor: '#6366f1'
+          }]
+        },
+        options: {
+          scales: {
+            y: {
+              beginAtZero: true,
+              title: { display: true, text: 'Hours' }
+            }
+          }
+        }
+      });
     }
   }
 
@@ -193,6 +223,30 @@
       const tr = document.createElement('tr');
       tr.innerHTML = '<td colspan="3">No completion data available.</td>';
       completionTable.appendChild(tr);
+    }
+
+    if (completionChartEl) {
+      if (completionChart) completionChart.destroy();
+      completionChart = new Chart(completionChartEl, {
+        type: 'bar',
+        data: {
+          labels: rows.map(r => r.bucket),
+          datasets: [{
+            label: 'Completion rate (%)',
+            data: rows.map(r => r.rate),
+            backgroundColor: '#10b981'
+          }]
+        },
+        options: {
+          scales: {
+            y: {
+              beginAtZero: true,
+              max: 100,
+              title: { display: true, text: 'Percent complete' }
+            }
+          }
+        }
+      });
     }
   }
 
@@ -395,7 +449,17 @@
   function renderMeta(issues, sprint) {
     const total = issues.length;
     const done = issues.filter(i => isDone(i, new Date(sprint.endDate || sprint.end || sprint.completeDate || Date.now()))).length;
-    metaSummary.textContent = `${total} issues found – ${done} completed`;    
+    metaSummary.textContent = `${total} issues found – ${done} completed`;
+  }
+
+  function filterSupportedIssueTypes(issues = []) {
+    const allowed = ['story', 'task', 'bug'];
+    return issues.filter(issue => {
+      const type = issue.fields && issue.fields.issuetype;
+      const name = type && typeof type.name === 'string' ? type.name.toLowerCase() : '';
+      const isSubtask = Boolean(type && type.subtask);
+      return allowed.includes(name) && !isSubtask;
+    });
   }
 
   async function loadSprintInsights() {
@@ -409,11 +473,12 @@
 
     const fields = ['summary', 'status', 'issuetype', 'resolution', 'resolutiondate', 'customfield_10016', 'customfield_10106', 'customfield_10026', 'storyPoints'];
     const { issues } = await jiraSearch(buildJql(sprintId), fields, { expand: ['changelog'], maxResults: 200 });
+    const filteredIssues = filterSupportedIssueTypes(issues);
 
-    renderMeta(issues, sprint);
-    renderStatusDurationTable(issues, sprintStart, sprintEnd);
-    renderCompletionRates(issues, sprintEnd);
-    renderIssueDetails(issues, sprintStart, sprintEnd);
+    renderMeta(filteredIssues, sprint);
+    renderStatusDurationTable(filteredIssues, sprintStart, sprintEnd);
+    renderCompletionRates(filteredIssues, sprintEnd);
+    renderIssueDetails(filteredIssues, sprintStart, sprintEnd);
     hideLoading();
   }
 
