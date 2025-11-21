@@ -1,0 +1,436 @@
+(function () {
+  const DEFAULT_JIRA_DOMAIN = 'aldi-sued.atlassian.net';
+  let jiraDomain = DEFAULT_JIRA_DOMAIN;
+  let boardId = '';
+  let sprints = [];
+
+  const boardSelect = document.getElementById('boardSelect');
+  const sprintSelect = document.getElementById('sprintSelect');
+  const loadingEl = document.getElementById('loadingMessage');
+  const statusTable = document.getElementById('statusDurationTable');
+  const completionTable = document.getElementById('completionRateTable');
+  const issueTableBody = document.getElementById('issueDetailsBody');
+  const metaSummary = document.getElementById('metaSummary');
+  const focusStatusEl = document.getElementById('focusStatuses');
+
+  function showLoading(message) {
+    if (!loadingEl) return;
+    loadingEl.style.display = 'block';
+    loadingEl.textContent = message || 'Loading...';
+  }
+
+  function hideLoading() {
+    if (!loadingEl) return;
+    loadingEl.style.display = 'none';
+    loadingEl.textContent = '';
+  }
+
+  function formatDuration(ms) {
+    if (!ms || ms < 0) return '0d';
+    const days = ms / (1000 * 60 * 60 * 24);
+    if (days >= 1) return `${days.toFixed(1)}d`;
+    const hours = ms / (1000 * 60 * 60);
+    return `${hours.toFixed(1)}h`;
+  }
+
+  function getStoryPoints(issue = {}) {
+    const fields = issue.fields || {};
+    const candidates = [
+      fields.storyPoints,
+      fields.customfield_10016,
+      fields.customfield_10026,
+      fields.customfield_10106
+    ];
+    const value = candidates.find(v => typeof v === 'number');
+    return typeof value === 'number' ? value : null;
+  }
+
+  function getStatusHistory(issue = {}) {
+    const histories = (issue.changelog && issue.changelog.histories) || [];
+    const statusChanges = [];
+    histories.forEach(h => {
+      const items = Array.isArray(h.items) ? h.items : [];
+      const statusItem = items.find(i => (i.field || '').toLowerCase() === 'status');
+      if (statusItem) {
+        statusChanges.push({
+          at: new Date(h.created),
+          from: statusItem.fromString || statusItem.from,
+          to: statusItem.toString || statusItem.to
+        });
+      }
+    });
+    statusChanges.sort((a, b) => a.at - b.at);
+    return statusChanges;
+  }
+
+  function statusAtStart(issue, sprintStart) {
+    const changes = getStatusHistory(issue);
+    const start = sprintStart.getTime();
+    let current = (issue.fields && issue.fields.status && issue.fields.status.name) || 'Unknown';
+    changes.forEach(c => {
+      if (c.at.getTime() <= start) {
+        current = c.to || current;
+      }
+    });
+    return current;
+  }
+
+  function calculateStatusDurations(issue, sprintStart, sprintEnd) {
+    const start = sprintStart.getTime();
+    const end = sprintEnd.getTime();
+    const changes = getStatusHistory(issue);
+    const durations = new Map();
+    let currentStatus = statusAtStart(issue, sprintStart);
+    let cursor = start;
+
+    for (const change of changes) {
+      const changeTime = change.at.getTime();
+      if (changeTime < start) continue;
+      if (changeTime > end) break;
+      const elapsed = changeTime - cursor;
+      durations.set(currentStatus, (durations.get(currentStatus) || 0) + elapsed);
+      currentStatus = change.to || currentStatus;
+      cursor = changeTime;
+    }
+
+    if (cursor < end) {
+      durations.set(currentStatus, (durations.get(currentStatus) || 0) + (end - cursor));
+    }
+
+    return durations;
+  }
+
+  function isDone(issue = {}, sprintEnd) {
+    const fields = issue.fields || {};
+    const statusCategory = fields.status && fields.status.statusCategory && fields.status.statusCategory.key;
+    const resolutionDate = fields.resolutiondate ? new Date(fields.resolutiondate) : null;
+    if (statusCategory === 'done' && resolutionDate) {
+      return resolutionDate <= sprintEnd;
+    }
+    if (statusCategory === 'done') return true;
+    if (resolutionDate) return resolutionDate <= sprintEnd;
+    return false;
+  }
+
+  function bucketForPoints(points) {
+    if (points === null || points === undefined) return 'No estimate';
+    if (points <= 1) return '1 or less';
+    if (points <= 2) return '2';
+    if (points <= 3) return '3';
+    if (points <= 5) return '5';
+    if (points <= 8) return '8';
+    if (points <= 13) return '13';
+    return '13+';
+  }
+
+  function renderStatusDurationTable(issues, sprintStart, sprintEnd) {
+    const totals = new Map();
+    const counts = new Map();
+
+    issues.forEach(issue => {
+      const durations = calculateStatusDurations(issue, sprintStart, sprintEnd);
+      durations.forEach((ms, status) => {
+        totals.set(status, (totals.get(status) || 0) + ms);
+        counts.set(status, (counts.get(status) || 0) + 1);
+      });
+    });
+
+    const rows = Array.from(totals.keys()).map(status => {
+      const avg = totals.get(status) / (counts.get(status) || 1);
+      return { status, avg, total: totals.get(status) };
+    }).sort((a, b) => b.avg - a.avg);
+
+    statusTable.innerHTML = '';
+    rows.forEach(row => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${row.status}</td>
+        <td>${formatDuration(row.avg)}</td>
+        <td>${formatDuration(row.total)}</td>
+      `;
+      statusTable.appendChild(tr);
+    });
+
+    if (!rows.length) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td colspan="3">No status data found for this sprint.</td>';
+      statusTable.appendChild(tr);
+    }
+  }
+
+  function renderCompletionRates(issues, sprintEnd) {
+    const buckets = new Map();
+    issues.forEach(issue => {
+      const pts = getStoryPoints(issue);
+      const bucket = bucketForPoints(pts);
+      if (!buckets.has(bucket)) buckets.set(bucket, { done: 0, total: 0 });
+      const data = buckets.get(bucket);
+      data.total += 1;
+      if (isDone(issue, sprintEnd)) data.done += 1;
+    });
+
+    const rows = Array.from(buckets.entries())
+      .map(([bucket, data]) => ({
+        bucket,
+        total: data.total,
+        done: data.done,
+        rate: data.total ? Math.round((data.done / data.total) * 100) : 0
+      }))
+      .sort((a, b) => a.bucket.localeCompare(b.bucket));
+
+    completionTable.innerHTML = '';
+    rows.forEach(row => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${row.bucket}</td>
+        <td>${row.done}/${row.total}</td>
+        <td>${row.rate}%</td>
+      `;
+      completionTable.appendChild(tr);
+    });
+
+    if (!rows.length) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td colspan="3">No completion data available.</td>';
+      completionTable.appendChild(tr);
+    }
+  }
+
+  function renderIssueDetails(issues, sprintStart, sprintEnd) {
+    const focusStatuses = focusStatusEl.value
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean)
+      .map(s => s.toLowerCase());
+
+    issueTableBody.innerHTML = '';
+    const sorted = [...issues].sort((a, b) => (a.key || '').localeCompare(b.key || ''));
+
+    sorted.forEach(issue => {
+      const durations = calculateStatusDurations(issue, sprintStart, sprintEnd);
+      let focusDuration = 0;
+      if (focusStatuses.length) {
+        durations.forEach((ms, status) => {
+          if (focusStatuses.includes(String(status).toLowerCase())) {
+            focusDuration += ms;
+          }
+        });
+      }
+      const totalStatusTime = Array.from(durations.values()).reduce((a, b) => a + b, 0);
+      const summary = issue.fields && issue.fields.summary ? issue.fields.summary : '';
+      const pts = getStoryPoints(issue);
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${issue.key}</td>
+        <td>${summary}</td>
+        <td>${pts === null ? '—' : pts}</td>
+        <td>${formatDuration(totalStatusTime)}</td>
+        <td>${focusStatuses.length ? formatDuration(focusDuration) : '—'}</td>
+        <td>${isDone(issue, sprintEnd) ? 'Completed' : 'Open'}</td>
+      `;
+      issueTableBody.appendChild(tr);
+    });
+
+    if (!sorted.length) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td colspan="6">No issues found for this sprint.</td>';
+      issueTableBody.appendChild(tr);
+    }
+  }
+
+  async function jiraSearch(jql, fields = [], options = {}) {
+    const searchUrl = `https://${jiraDomain}/rest/api/3/search/jql`;
+    const maxResults = options.maxResults || 500;
+    let startAt = options.startAt || 0;
+    const collected = [];
+    const fieldList = Array.isArray(fields) ? fields.filter(Boolean) : (fields ? [fields] : []);
+    const expandList = Array.isArray(options.expand)
+      ? options.expand.filter(Boolean)
+      : (options.expand ? [options.expand] : []);
+    let useGet = true;
+
+    const buildPayload = () => {
+      const payload = { jql, startAt, maxResults };
+      if (fieldList.length) payload.fields = fieldList;
+      if (expandList.length) payload.expand = expandList;
+      return payload;
+    };
+
+    while (true) {
+      let resp;
+      try {
+        if (useGet) {
+          const params = new URLSearchParams();
+          params.set('jql', jql);
+          params.set('startAt', String(startAt));
+          params.set('maxResults', String(maxResults));
+          if (fieldList.length) params.set('fields', fieldList.join(','));
+          if (expandList.length) params.set('expand', expandList.join(','));
+          const url = `${searchUrl}?${params.toString()}`;
+          resp = await fetch(url, {
+            method: 'GET',
+            credentials: 'include',
+            headers: { 'Accept': 'application/json' }
+          });
+        } else {
+          resp = await fetch(searchUrl, {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'X-Atlassian-Token': 'no-check'
+            },
+            body: JSON.stringify(buildPayload())
+          });
+        }
+      } catch (err) {
+        if (useGet) {
+          console.warn('Jira search GET failed, retrying with POST', err);
+          useGet = false;
+          continue;
+        }
+        throw err;
+      }
+
+      if (useGet && [405, 413, 414].includes(resp.status)) {
+        useGet = false;
+        continue;
+      }
+
+      if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(`Jira search failed (${resp.status}): ${text}`);
+      }
+
+      const data = await resp.json();
+      const issues = Array.isArray(data.issues) ? data.issues : [];
+      collected.push(...issues);
+
+      const pageSize = data.maxResults || issues.length || maxResults;
+      const total = typeof data.total === 'number' ? data.total : null;
+      const nextStart = (data.startAt || 0) + pageSize;
+      const receivedAll = !issues.length || (total !== null && collected.length >= total) || issues.length < pageSize;
+
+      if (receivedAll) {
+        return { issues: collected, total: total !== null ? total : collected.length };
+      }
+
+      if (nextStart <= startAt) {
+        return { issues: collected, total: total !== null ? total : collected.length };
+      }
+
+      startAt = nextStart;
+    }
+  }
+
+  async function populateBoards() {
+    if (!boardSelect) return;
+    boardSelect.innerHTML = '<option value="">Select a board…</option>';
+    try {
+      const boards = await Jira.fetchBoardsByJql(DEFAULT_JIRA_DOMAIN);
+      boards.forEach(board => {
+        const opt = document.createElement('option');
+        opt.value = board.id;
+        opt.textContent = board.name;
+        boardSelect.appendChild(opt);
+      });
+    } catch (e) {
+      console.error('Failed to load boards', e);
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = 'Failed to load boards';
+      boardSelect.appendChild(opt);
+    }
+  }
+
+  async function fetchSprints() {
+    boardId = boardSelect.value.trim();
+    if (!boardId) return alert('Select a board first.');
+    showLoading('Fetching sprints…');
+    let all = [];
+    let startAt = 0;
+    const maxResults = 50;
+
+    while (true) {
+      const url = `https://${jiraDomain}/rest/agile/1.0/board/${boardId}/sprint?maxResults=${maxResults}&startAt=${startAt}`;
+      const resp = await fetch(url, { credentials: 'include' });
+      if (!resp.ok) {
+        hideLoading();
+        const text = await resp.text();
+        throw new Error(`Failed to fetch sprints: ${resp.status} ${text}`);
+      }
+      const data = await resp.json();
+      const values = Array.isArray(data.values) ? data.values : [];
+      all = all.concat(values);
+      if (data.isLast || !values.length) break;
+      startAt += values.length;
+    }
+
+    sprints = all;
+    sprintSelect.innerHTML = '';
+    const defaultOpt = document.createElement('option');
+    defaultOpt.value = '';
+    defaultOpt.textContent = 'Select a sprint…';
+    sprintSelect.appendChild(defaultOpt);
+    [...sprints].sort((a, b) => new Date(b.startDate || b.start || 0) - new Date(a.startDate || a.start || 0))
+      .forEach(sp => {
+        const opt = document.createElement('option');
+        opt.value = sp.id;
+        opt.textContent = sp.name;
+        sprintSelect.appendChild(opt);
+      });
+    hideLoading();
+  }
+
+  function buildJql(sprintId) {
+    const additional = document.getElementById('additionalJql').value.trim();
+    let jql = `sprint = ${sprintId}`;
+    if (additional) {
+      jql += ` AND (${additional})`;
+    }
+    return jql;
+  }
+
+  function renderMeta(issues, sprint) {
+    const total = issues.length;
+    const done = issues.filter(i => isDone(i, new Date(sprint.endDate || sprint.end || sprint.completeDate || Date.now()))).length;
+    metaSummary.textContent = `${total} issues found – ${done} completed`;    
+  }
+
+  async function loadSprintInsights() {
+    const sprintId = sprintSelect.value.trim();
+    if (!sprintId) return alert('Select a sprint to analyze.');
+    const sprint = await Jira.fetchSprint(jiraDomain, sprintId);
+    const sprintStart = new Date(sprint.startDate || sprint.start || Date.now());
+    const sprintEnd = new Date(sprint.endDate || sprint.end || Date.now());
+    sprintEnd.setHours(23, 59, 59, 999);
+    showLoading('Fetching sprint issues and changelogs…');
+
+    const fields = ['summary', 'status', 'issuetype', 'resolution', 'resolutiondate', 'customfield_10016', 'customfield_10106', 'customfield_10026', 'storyPoints'];
+    const { issues } = await jiraSearch(buildJql(sprintId), fields, { expand: ['changelog'], maxResults: 200 });
+
+    renderMeta(issues, sprint);
+    renderStatusDurationTable(issues, sprintStart, sprintEnd);
+    renderCompletionRates(issues, sprintEnd);
+    renderIssueDetails(issues, sprintStart, sprintEnd);
+    hideLoading();
+  }
+
+  document.getElementById('fetchSprintsBtn').addEventListener('click', () => {
+    fetchSprints().catch(err => {
+      console.error(err);
+      alert('Could not fetch sprints. See console for details.');
+    });
+  });
+
+  document.getElementById('loadInsightsBtn').addEventListener('click', () => {
+    loadSprintInsights().catch(err => {
+      console.error(err);
+      alert('Failed to load sprint insights. See console for details.');
+      hideLoading();
+    });
+  });
+
+  populateBoards();
+})();
