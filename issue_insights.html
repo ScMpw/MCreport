@@ -1,57 +1,109 @@
-diff --git a/src/jira.js b/src/jira.js
-index 58dd7a420991c7c3b917ee0ad442153b8ce54d69..d1aa0c8731d7cd898d5834899fd259f5da1444c6 100644
---- a/src/jira.js
-+++ b/src/jira.js
-@@ -114,51 +114,51 @@
-     const issueMap = new Map();
-     const keysToFetch = [];
- 
-     for (const key of issueKeys) {
-       const cacheKey = `issue:${jiraDomain}:${key}`;
-       if (forceRefresh) clearCache(cacheKey);
-       const cached = getCached(cacheKey);
-       if (cached) {
-         issueMap.set(key, cached);
-       } else {
-         keysToFetch.push(key);
-       }
-     }
- 
-     for (let i = 0; i < keysToFetch.length; i += BATCH_SIZE) {
-       const batch = keysToFetch.slice(i, i + BATCH_SIZE);
-       const jql = `key in (${batch.join(',')})`;
-       const payload = {
-         jql,
-         maxResults: BATCH_SIZE,
-         startAt: 0,
-         fields: ['*all'],
-         expand: ['changelog']
-       };
-       const data = await fetchWithDedup(`search:${jiraDomain}:${batch.join(',')}`, async () => {
--        const searchUrl = `https://${jiraDomain}/rest/api/3/search/jql`;
-+        const searchUrl = `https://${jiraDomain}/rest/api/3/search`;
-         const fieldList = payload.fields.filter(Boolean);
-         const expandList = payload.expand.filter(Boolean);
- 
-         const buildBody = () => {
-           const body = {
-             jql: payload.jql,
-             startAt: payload.startAt,
-             maxResults: payload.maxResults
-           };
-           if (fieldList.length) body.fields = fieldList;
-           if (expandList.length) body.expand = expandList;
-           return JSON.stringify(body);
-         };
- 
-         let resp;
-         try {
-           resp = await fetch(searchUrl, {
-             method: 'POST',
-             credentials: 'include',
-             headers: {
-               'Content-Type': 'application/json',
-               'Accept': 'application/json',
-               'X-Atlassian-Token': 'no-check'
-             },
-             body: buildBody()
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <title>Sprint Issue Insights Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="public/tailwind.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { background: #f7f8fa; font-family: 'Inter', Arial, sans-serif; margin: 0; padding: 0; }
+    .main { max-width: 1100px; margin: 30px auto 40px auto; background: #fff; border-radius: 18px; box-shadow: 0 2px 12px #d1d5db70; padding: 36px 32px; }
+    h1 { font-size: 2.1em; margin:0 0 0.7em 0; font-weight: 600; }
+    h2 { font-size: 1.2em; margin-top:1.6em; font-weight:600; }
+    .controls { display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:14px; margin: 10px 0 12px 0; }
+    label { font-weight:600; display:block; margin-bottom:4px; color:#374151; }
+    select, input, textarea { width:100%; padding:8px 10px; border-radius:8px; border:1px solid #d1d5db; font-size:0.98em; }
+    button { background: #6366f1; color:#fff; border:none; border-radius:8px; padding:10px 16px; font-size:1em; cursor:pointer; }
+    button.secondary { background:#e5e7eb; color:#111827; }
+    .card { background:#f9fafb; border:1px solid #e5e7eb; border-radius:12px; padding:16px; margin-top:10px; }
+    .chart-wrap { position: relative; height: 280px; margin-top: 10px; }
+    table { border-collapse: collapse; width: 100%; margin-top:10px; }
+    th, td { border:1px solid #e5e7eb; padding:8px 10px; text-align:left; font-size:0.95em; }
+    th { background:#eef2ff; }
+    .helper { color:#4b5563; font-size:0.93em; }
+    #loadingMessage { font-weight:700; color:#111827; margin: 12px 0; display:none; }
+    @media (max-width: 700px) {
+      .main { padding:16px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="main">
+    <h1>Sprint Issue Insights Dashboard</h1>
+    <p class="helper">Drill into how issues flow through a sprint, compare completion rates by estimate, and explore status durations with optional JQL filters.</p>
+    <div class="controls">
+      <div>
+        <label for="boardSelect">Board</label>
+        <select id="boardSelect"></select>
+      </div>
+      <div>
+        <label for="sprintSelect">Sprint</label>
+        <select id="sprintSelect">
+          <option value="">Select a sprint…</option>
+        </select>
+      </div>
+      <div>
+        <label for="additionalJql">Additional JQL filter (optional)</label>
+        <input id="additionalJql" type="text" placeholder="e.g. issuetype in (Story, Bug) and priority = High">
+      </div>
+      <div>
+        <label for="focusStatuses">Focus statuses (comma separated)</label>
+        <input id="focusStatuses" type="text" placeholder="e.g. In Progress, Blocked">
+      </div>
+    </div>
+    <div style="margin-bottom:12px; display:flex; gap:10px; flex-wrap:wrap;">
+      <button id="fetchSprintsBtn">Fetch sprints</button>
+      <button id="loadInsightsBtn">Load sprint insights</button>
+    </div>
+    <div id="loadingMessage">Loading…</div>
+    <div class="card">
+      <h2>Sprint overview</h2>
+      <div id="metaSummary" class="helper" aria-live="polite">No sprint selected.</div>
+      <p class="helper">Use the optional JQL field to narrow the analysis to specific issue types, labels, or assignees for deeper planning insights.</p>
+    </div>
+
+    <div class="card">
+      <h2>Average time in status</h2>
+      <p class="helper">Shows how long, on average, sprint issues spend in each status between the sprint start and end dates. Totals reflect aggregated time across all issues.</p>
+      <div class="chart-wrap">
+        <canvas id="statusDurationChart" aria-label="Average time in status chart"></canvas>
+      </div>
+      <table>
+        <thead>
+          <tr><th>Status</th><th>Average time</th><th>Total time</th></tr>
+        </thead>
+        <tbody id="statusDurationTable"></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Completion rate by estimate</h2>
+      <p class="helper">Groups issues by Story Points buckets to show which estimates complete more reliably within the sprint.</p>
+      <div class="chart-wrap">
+        <canvas id="completionChart" aria-label="Completion rate by estimate chart"></canvas>
+      </div>
+      <table>
+        <thead>
+          <tr><th>Story Points bucket</th><th>Completed / Total</th><th>Completion rate</th></tr>
+        </thead>
+        <tbody id="completionRateTable"></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Issue deep dive</h2>
+      <p class="helper">Highlight time spent in the statuses you care about (set above) and quickly scan which stories stayed in a state the longest.</p>
+      <table>
+        <thead>
+          <tr><th>Issue</th><th>Summary</th><th>Estimate</th><th>Total time in sprint</th><th>Time in focus statuses</th><th>State</th></tr>
+        </thead>
+        <tbody id="issueDetailsBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="src/jira.js"></script>
+  <script src="src/issue_insights.js"></script>
+</body>
+</html>
