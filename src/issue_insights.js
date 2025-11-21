@@ -371,35 +371,37 @@
     let startAt = 0;
     const maxResults = 50;
 
-    while (true) {
-      const url = `https://${jiraDomain}/rest/agile/1.0/board/${boardId}/sprint?maxResults=${maxResults}&startAt=${startAt}`;
-      const resp = await fetch(url, { credentials: 'include' });
-      if (!resp.ok) {
-        hideLoading();
-        const text = await resp.text();
-        throw new Error(`Failed to fetch sprints: ${resp.status} ${text}`);
+    try {
+      while (true) {
+        const url = `https://${jiraDomain}/rest/agile/1.0/board/${boardId}/sprint?maxResults=${maxResults}&startAt=${startAt}`;
+        const resp = await fetch(url, { credentials: 'include' });
+        if (!resp.ok) {
+          const text = await resp.text();
+          throw new Error(`Failed to fetch sprints: ${resp.status} ${text}`);
+        }
+        const data = await resp.json();
+        const values = Array.isArray(data.values) ? data.values : [];
+        all = all.concat(values);
+        if (data.isLast || !values.length) break;
+        startAt += values.length;
       }
-      const data = await resp.json();
-      const values = Array.isArray(data.values) ? data.values : [];
-      all = all.concat(values);
-      if (data.isLast || !values.length) break;
-      startAt += values.length;
-    }
 
-    sprints = all;
-    sprintSelect.innerHTML = '';
-    const defaultOpt = document.createElement('option');
-    defaultOpt.value = '';
-    defaultOpt.textContent = 'Select a sprint…';
-    sprintSelect.appendChild(defaultOpt);
-    [...sprints].sort((a, b) => new Date(b.startDate || b.start || 0) - new Date(a.startDate || a.start || 0))
-      .forEach(sp => {
-        const opt = document.createElement('option');
-        opt.value = sp.id;
-        opt.textContent = sp.name;
-        sprintSelect.appendChild(opt);
-      });
-    hideLoading();
+      sprints = all;
+      sprintSelect.innerHTML = '';
+      const defaultOpt = document.createElement('option');
+      defaultOpt.value = '';
+      defaultOpt.textContent = 'Select a sprint…';
+      sprintSelect.appendChild(defaultOpt);
+      [...sprints].sort((a, b) => new Date(b.startDate || b.start || 0) - new Date(a.startDate || a.start || 0))
+        .forEach(sp => {
+          const opt = document.createElement('option');
+          opt.value = sp.id;
+          opt.textContent = sp.name;
+          sprintSelect.appendChild(opt);
+        });
+    } finally {
+      hideLoading();
+    }
   }
 
   function buildJql(sprintId) {
