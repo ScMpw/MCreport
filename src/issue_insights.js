@@ -293,7 +293,7 @@
   }
 
   async function jiraSearch(jql, fields = [], options = {}) {
-    const searchUrl = `https://${jiraDomain}/rest/api/3/search`;
+    const searchUrl = `https://${jiraDomain}/rest/api/3/search/jql`;
     const maxResults = options.maxResults || 500;
     let startAt = options.startAt || 0;
     const collected = [];
@@ -301,30 +301,55 @@
     const expandList = Array.isArray(options.expand)
       ? options.expand.filter(Boolean)
       : (options.expand ? [options.expand] : []);
+    let useGet = true;
 
-    const buildBody = () => ({
-      jql,
-      startAt,
-      maxResults,
-      fields: fieldList,
-      expand: expandList
-    });
+    const buildPayload = () => {
+      const payload = { jql, startAt, maxResults };
+      if (fieldList.length) payload.fields = fieldList;
+      if (expandList.length) payload.expand = expandList;
+      return payload;
+    };
 
     while (true) {
       let resp;
       try {
-        resp = await fetch(searchUrl, {
-          method: 'POST',
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'X-Atlassian-Token': 'no-check'
-          },
-          body: JSON.stringify(buildBody())
-        });
+        if (useGet) {
+          const params = new URLSearchParams();
+          params.set('jql', jql);
+          params.set('startAt', String(startAt));
+          params.set('maxResults', String(maxResults));
+          if (fieldList.length) params.set('fields', fieldList.join(','));
+          if (expandList.length) params.set('expand', expandList.join(','));
+          const url = `${searchUrl}?${params.toString()}`;
+          resp = await fetch(url, {
+            method: 'GET',
+            credentials: 'include',
+            headers: { 'Accept': 'application/json' }
+          });
+        } else {
+          resp = await fetch(searchUrl, {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'X-Atlassian-Token': 'no-check'
+            },
+            body: JSON.stringify(buildPayload())
+          });
+        }
       } catch (err) {
+        if (useGet) {
+          console.warn('Jira search GET failed, retrying with POST', err);
+          useGet = false;
+          continue;
+        }
         throw err;
+      }
+
+      if (useGet && [405, 413, 414].includes(resp.status)) {
+        useGet = false;
+        continue;
       }
 
       if (!resp.ok) {
@@ -381,37 +406,35 @@
     let startAt = 0;
     const maxResults = 50;
 
-    try {
-      while (true) {
-        const url = `https://${jiraDomain}/rest/agile/1.0/board/${boardId}/sprint?maxResults=${maxResults}&startAt=${startAt}`;
-        const resp = await fetch(url, { credentials: 'include' });
-        if (!resp.ok) {
-          const text = await resp.text();
-          throw new Error(`Failed to fetch sprints: ${resp.status} ${text}`);
-        }
-        const data = await resp.json();
-        const values = Array.isArray(data.values) ? data.values : [];
-        all = all.concat(values);
-        if (data.isLast || !values.length) break;
-        startAt += values.length;
+    while (true) {
+      const url = `https://${jiraDomain}/rest/agile/1.0/board/${boardId}/sprint?maxResults=${maxResults}&startAt=${startAt}`;
+      const resp = await fetch(url, { credentials: 'include' });
+      if (!resp.ok) {
+        hideLoading();
+        const text = await resp.text();
+        throw new Error(`Failed to fetch sprints: ${resp.status} ${text}`);
       }
-
-      sprints = all;
-      sprintSelect.innerHTML = '';
-      const defaultOpt = document.createElement('option');
-      defaultOpt.value = '';
-      defaultOpt.textContent = 'Select a sprint…';
-      sprintSelect.appendChild(defaultOpt);
-      [...sprints].sort((a, b) => new Date(b.startDate || b.start || 0) - new Date(a.startDate || a.start || 0))
-        .forEach(sp => {
-          const opt = document.createElement('option');
-          opt.value = sp.id;
-          opt.textContent = sp.name;
-          sprintSelect.appendChild(opt);
-        });
-    } finally {
-      hideLoading();
+      const data = await resp.json();
+      const values = Array.isArray(data.values) ? data.values : [];
+      all = all.concat(values);
+      if (data.isLast || !values.length) break;
+      startAt += values.length;
     }
+
+    sprints = all;
+    sprintSelect.innerHTML = '';
+    const defaultOpt = document.createElement('option');
+    defaultOpt.value = '';
+    defaultOpt.textContent = 'Select a sprint…';
+    sprintSelect.appendChild(defaultOpt);
+    [...sprints].sort((a, b) => new Date(b.startDate || b.start || 0) - new Date(a.startDate || a.start || 0))
+      .forEach(sp => {
+        const opt = document.createElement('option');
+        opt.value = sp.id;
+        opt.textContent = sp.name;
+        sprintSelect.appendChild(opt);
+      });
+    hideLoading();
   }
 
   function buildJql(sprintId) {
@@ -439,17 +462,6 @@
     });
   }
 
-  function dedupeIssuesByKey(issues = []) {
-    const byKey = new Map();
-    issues.forEach(issue => {
-      if (!issue || !issue.key) return;
-      if (!byKey.has(issue.key)) {
-        byKey.set(issue.key, issue);
-      }
-    });
-    return Array.from(byKey.values());
-  }
-
   async function loadSprintInsights() {
     const sprintId = sprintSelect.value.trim();
     if (!sprintId) return alert('Select a sprint to analyze.');
@@ -461,8 +473,7 @@
 
     const fields = ['summary', 'status', 'issuetype', 'resolution', 'resolutiondate', 'customfield_10016', 'customfield_10106', 'customfield_10026', 'storyPoints'];
     const { issues } = await jiraSearch(buildJql(sprintId), fields, { expand: ['changelog'], maxResults: 200 });
-    const uniqueIssues = dedupeIssuesByKey(issues);
-    const filteredIssues = filterSupportedIssueTypes(uniqueIssues);
+    const filteredIssues = filterSupportedIssueTypes(issues);
 
     renderMeta(filteredIssues, sprint);
     renderStatusDurationTable(filteredIssues, sprintStart, sprintEnd);
