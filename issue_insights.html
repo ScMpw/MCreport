@@ -1,10 +1,11 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Sprint Issue Insights Dashboard</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="public/tailwind.css">
+  <head>
+    <meta charset="UTF-8">
+    <title>Sprint Issue Insights Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="public/tailwind.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body { background: #f7f8fa; font-family: 'Inter', Arial, sans-serif; margin: 0; padding: 0; }
     .main { max-width: 1100px; margin: 30px auto 40px auto; background: #fff; border-radius: 18px; box-shadow: 0 2px 12px #d1d5db70; padding: 36px 32px; }
@@ -16,6 +17,7 @@
     button { background: #6366f1; color:#fff; border:none; border-radius:8px; padding:10px 16px; font-size:1em; cursor:pointer; }
     button.secondary { background:#e5e7eb; color:#111827; }
     .card { background:#f9fafb; border:1px solid #e5e7eb; border-radius:12px; padding:16px; margin-top:10px; }
+    .chart-wrap { position: relative; height: 280px; margin-top: 10px; }
     table { border-collapse: collapse; width: 100%; margin-top:10px; }
     th, td { border:1px solid #e5e7eb; padding:8px 10px; text-align:left; font-size:0.95em; }
     th { background:#eef2ff; }
@@ -64,6 +66,9 @@
     <div class="card">
       <h2>Average time in status</h2>
       <p class="helper">Shows how long, on average, sprint issues spend in each status between the sprint start and end dates. Totals reflect aggregated time across all issues.</p>
+      <div class="chart-wrap">
+        <canvas id="statusDurationChart" aria-label="Average time in status chart"></canvas>
+      </div>
       <table>
         <thead>
           <tr><th>Status</th><th>Average time</th><th>Total time</th></tr>
@@ -74,10 +79,13 @@
 
     <div class="card">
       <h2>Completion rate by estimate</h2>
-      <p class="helper">Groups issues by story-point buckets to show which estimates complete more reliably within the sprint.</p>
+      <p class="helper">Groups issues by Story Points buckets to show which estimates complete more reliably within the sprint.</p>
+      <div class="chart-wrap">
+        <canvas id="completionChart" aria-label="Completion rate by estimate chart"></canvas>
+      </div>
       <table>
         <thead>
-          <tr><th>Estimate bucket</th><th>Completed / Total</th><th>Completion rate</th></tr>
+          <tr><th>Story Points bucket</th><th>Completed / Total</th><th>Completion rate</th></tr>
         </thead>
         <tbody id="completionRateTable"></tbody>
       </table>
