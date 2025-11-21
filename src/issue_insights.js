@@ -293,7 +293,7 @@
   }
 
   async function jiraSearch(jql, fields = [], options = {}) {
-    const searchUrl = `https://${jiraDomain}/rest/api/3/search/jql`;
+    const searchUrl = `https://${jiraDomain}/rest/api/3/search`;
     const maxResults = options.maxResults || 500;
     let startAt = options.startAt || 0;
     const collected = [];
@@ -316,7 +316,11 @@
         resp = await fetch(searchUrl, {
           method: 'POST',
           credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-Atlassian-Token': 'no-check'
+          },
           body: JSON.stringify(buildBody())
         });
       } catch (err) {
