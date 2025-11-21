@@ -7,6 +7,7 @@
   const boardSelect = document.getElementById('boardSelect');
   const sprintSelect = document.getElementById('sprintSelect');
   const loadingEl = document.getElementById('loadingMessage');
+  const domainInput = document.getElementById('jiraDomain');
   const statusTable = document.getElementById('statusDurationTable');
   const completionTable = document.getElementById('completionRateTable');
   const issueTableBody = document.getElementById('issueDetailsBody');
@@ -294,19 +295,29 @@
     }
   }
 
+  function syncDomainInput(domain) {
+    jiraDomain = domain || DEFAULT_JIRA_DOMAIN;
+    if (domainInput) {
+      domainInput.value = jiraDomain;
+    }
+  }
+
   function initJiraDomain() {
     const params = new URLSearchParams(window.location.search);
     const urlDomain = params.get('jiraDomain');
     const host = window.location.hostname || '';
 
     if (urlDomain) {
-      jiraDomain = urlDomain;
+      syncDomainInput(urlDomain);
       return;
     }
 
     if (host.includes('atlassian.net')) {
-      jiraDomain = host;
+      syncDomainInput(host);
+      return;
     }
+
+    syncDomainInput(DEFAULT_JIRA_DOMAIN);
   }
 
   function buildNetworkErrorMessage(err, actionLabel) {
@@ -410,7 +421,10 @@
 
   async function populateBoards() {
     if (!boardSelect) return;
+    const domain = (domainInput && domainInput.value.trim()) || jiraDomain;
+    syncDomainInput(domain);
     boardSelect.innerHTML = '<option value="">Select a board…</option>';
+    showLoading('Loading boards…');
     try {
       const boards = await Jira.fetchBoardsByJql(jiraDomain);
       boards.forEach(board => {
@@ -419,12 +433,15 @@
         opt.textContent = board.name;
         boardSelect.appendChild(opt);
       });
+      hideLoading();
     } catch (e) {
       console.error('Failed to load boards', e);
       const opt = document.createElement('option');
       opt.value = '';
       opt.textContent = 'Failed to load boards';
       boardSelect.appendChild(opt);
+      loadingEl.textContent = buildNetworkErrorMessage(e, 'Unable to load boards');
+      loadingEl.style.display = 'block';
     }
   }
 
@@ -526,6 +543,17 @@
       hideLoading();
     });
   });
+
+  if (domainInput) {
+    domainInput.addEventListener('change', () => {
+      const domain = domainInput.value.trim() || DEFAULT_JIRA_DOMAIN;
+      syncDomainInput(domain);
+      populateBoards().catch(err => {
+        console.error(err);
+        alert('Could not refresh boards. See console for details.');
+      });
+    });
+  }
 
   populateBoards();
 })();
