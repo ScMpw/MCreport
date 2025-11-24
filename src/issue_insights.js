@@ -420,7 +420,10 @@
   }
 
   async function jiraSearch(jql, fields = [], options = {}) {
-    const searchUrl = `https://${jiraDomain}/rest/api/3/search/jql`;
+    // Use the supported search endpoint instead of the deprecated `/search/jql`
+    // path, which can trigger CORS rejections and unbounded query errors when
+    // called from the dashboard.
+    const searchUrl = `https://${jiraDomain}/rest/api/3/search`;
     const maxResults = options.maxResults || 500;
     let startAt = options.startAt || 0;
     const collected = [];
