@@ -365,7 +365,7 @@
   }
 
   async function jiraSearch(jql, fields = [], options = {}) {
-    const searchUrl = `https://${jiraDomain}/rest/api/3/search/jql`;
+    const searchUrl = `https://${jiraDomain}/rest/api/3/search`;
     const maxResults = options.maxResults || 500;
     let startAt = options.startAt || 0;
     const collected = [];
@@ -382,17 +382,21 @@
       return payload;
     };
 
+    const buildParams = () => {
+      const params = new URLSearchParams();
+      params.set('jql', jql);
+      params.set('startAt', String(startAt));
+      params.set('maxResults', String(maxResults));
+      if (fieldList.length) params.set('fields', fieldList.join(','));
+      if (expandList.length) params.set('expand', expandList.join(','));
+      return params.toString();
+    };
+
     while (true) {
       let resp;
       try {
         if (useGet) {
-          const params = new URLSearchParams();
-          params.set('jql', jql);
-          params.set('startAt', String(startAt));
-          params.set('maxResults', String(maxResults));
-          if (fieldList.length) params.set('fields', fieldList.join(','));
-          if (expandList.length) params.set('expand', expandList.join(','));
-          const url = `${searchUrl}?${params.toString()}`;
+          const url = `${searchUrl}?${buildParams()}`;
           resp = await fetch(url, {
             method: 'GET',
             credentials: 'include',
