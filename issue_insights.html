@@ -48,6 +48,10 @@
         </select>
       </div>
       <div>
+        <label for="projectFilter">Project filter (optional)</label>
+        <input id="projectFilter" type="text" placeholder="e.g. XYZ or XYZ,ABC">
+      </div>
+      <div>
         <label for="additionalJql">Additional JQL filter (optional)</label>
         <input id="additionalJql" type="text" placeholder="e.g. issuetype in (Story, Bug) and priority = High">
       </div>
@@ -65,6 +69,7 @@
     <div class="card">
       <h2>Sprint overview</h2>
       <div id="metaSummary" class="helper" aria-live="polite">No sprint selected.</div>
+      <div id="metaWarnings" class="helper" style="color:#b45309; display:none;"></div>
       <p class="helper">Use the optional JQL field to narrow the analysis to specific issue types, labels, or assignees for deeper planning insights.</p>
     </div>
 
