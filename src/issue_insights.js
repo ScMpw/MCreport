@@ -15,10 +15,24 @@
   const focusStatusEl = document.getElementById('focusStatuses');
   const statusDurationChartEl = document.getElementById('statusDurationChart');
   const completionChartEl = document.getElementById('completionChart');
+  const logPanel = document.getElementById('logPanel');
   let statusChart;
   let completionChart;
 
   initJiraDomain();
+
+  function appendLog(level, args) {
+    if (!logPanel) return;
+    const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+    logPanel.textContent += `[${level}] ${msg}\n`;
+    logPanel.scrollTop = logPanel.scrollHeight;
+    logPanel.style.display = '';
+  }
+
+  if (typeof Logger !== 'undefined') {
+    Logger.setLevel('info');
+    Logger.setListener((level, args) => appendLog(level, args));
+  }
 
   function showLoading(message) {
     if (!loadingEl) return;
@@ -407,6 +421,14 @@
     }
 
     syncDomainInput(DEFAULT_JIRA_DOMAIN);
+
+    if (typeof window !== 'undefined' && window.location && !window.location.origin.includes(jiraDomain)) {
+      appendLog('warn', [
+        'The dashboard is being loaded from a different origin than',
+        jiraDomain,
+        '- Jira will only allow requests when opened from the Jira domain or a proxy that forwards credentials.'
+      ]);
+    }
   }
 
   function buildNetworkErrorMessage(err, actionLabel) {
@@ -519,6 +541,7 @@
     showLoading('Loading boards…');
     try {
       const boards = await Jira.fetchBoardsByJql(jiraDomain);
+      Logger.info('Boards fetched', boards.length);
       boards.forEach(board => {
         const opt = document.createElement('option');
         opt.value = board.id;
@@ -540,24 +563,31 @@
   async function fetchSprints() {
     boardId = boardSelect.value.trim();
     if (!boardId) return alert('Select a board first.');
+    Logger.info('Fetching sprints for board', boardId);
     showLoading('Fetching sprints…');
     let all = [];
     let startAt = 0;
     const maxResults = 50;
 
-    while (true) {
-      const url = `https://${jiraDomain}/rest/agile/1.0/board/${boardId}/sprint?maxResults=${maxResults}&startAt=${startAt}`;
-      const resp = await fetch(url, { credentials: 'include' });
-      if (!resp.ok) {
-        hideLoading();
-        const text = await resp.text();
-        throw new Error(`Failed to fetch sprints: ${resp.status} ${text}`);
+    try {
+      while (true) {
+        const url = `https://${jiraDomain}/rest/agile/1.0/board/${boardId}/sprint?maxResults=${maxResults}&startAt=${startAt}`;
+        const resp = await fetch(url, { credentials: 'include' });
+        if (!resp.ok) {
+          const text = await resp.text();
+          throw new Error(`Failed to fetch sprints: ${resp.status} ${text}`);
+        }
+        const data = await resp.json();
+        const values = Array.isArray(data.values) ? data.values : [];
+        all = all.concat(values);
+        if (data.isLast || !values.length) break;
+        startAt += values.length;
       }
-      const data = await resp.json();
-      const values = Array.isArray(data.values) ? data.values : [];
-      all = all.concat(values);
-      if (data.isLast || !values.length) break;
-      startAt += values.length;
+    } catch (err) {
+      const msg = buildNetworkErrorMessage(err, 'Unable to load sprints');
+      Logger.error(msg);
+      loadingEl.textContent = msg;
+      return;
     }
 
     sprints = all;
@@ -602,12 +632,17 @@
 
   async function fetchSprintIssueKeys(boardId, sprintId) {
     const url = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/sprintreport?rapidViewId=${boardId}&sprintId=${sprintId}`;
-    const resp = await fetch(url, { credentials: 'include' });
-    if (!resp.ok) {
-      const text = await resp.text();
-      throw new Error(`Failed to fetch sprint contents (${resp.status}): ${text}`);
+    let data;
+    try {
+      const resp = await fetch(url, { credentials: 'include' });
+      if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(`Failed to fetch sprint contents (${resp.status}): ${text}`);
+      }
+      data = await resp.json();
+    } catch (err) {
+      throw new Error(buildNetworkErrorMessage(err, 'Unable to load sprint contents'));
     }
-    const data = await resp.json();
     const contents = data && data.contents ? data.contents : {};
     const keys = [];
 
@@ -639,13 +674,30 @@
     if (!boardId) return alert('Fetch sprints for a board first.');
 
     showLoading('Fetching sprint contents…');
-    const sprint = await Jira.fetchSprint(jiraDomain, sprintId);
+    let sprint;
+    let sprintKeys = [];
+    try {
+      sprint = await Jira.fetchSprint(jiraDomain, sprintId);
+      sprintKeys = await fetchSprintIssueKeys(boardId, sprintId);
+    } catch (err) {
+      const msg = buildNetworkErrorMessage(err, 'Unable to load sprint details');
+      Logger.error(msg);
+      loadingEl.textContent = msg;
+      return;
+    }
     const sprintStart = new Date(sprint.startDate || sprint.start || Date.now());
     const sprintEnd = new Date(sprint.endDate || sprint.end || Date.now());
     sprintEnd.setHours(23, 59, 59, 999);
 
-    const sprintKeys = await fetchSprintIssueKeys(boardId, sprintId);
-    const filteredKeys = await applyAdditionalFilter(sprintKeys, sprintId);
+    let filteredKeys = [];
+    try {
+      filteredKeys = await applyAdditionalFilter(sprintKeys, sprintId);
+    } catch (err) {
+      const msg = buildNetworkErrorMessage(err, 'Unable to apply additional JQL filter');
+      Logger.error(msg);
+      loadingEl.textContent = msg;
+      return;
+    }
 
     if (!filteredKeys.length) {
       statusTable.innerHTML = '<tr><td colspan="3">No issues found for this sprint.</td></tr>';
