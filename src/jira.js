@@ -135,25 +135,10 @@
         fields: ['*all'],
         expand: ['changelog']
       };
-
       const data = await fetchWithDedup(`search:${jiraDomain}:${batch.join(',')}`, async () => {
-        // Prefer GET requests to avoid CORS preflight failures when the
-        // dashboard is opened from a different origin. Fall back to POST only
-        // when Jira explicitly rejects the GET (e.g., payload too large).
-        const searchUrl = `https://${jiraDomain}/rest/api/3/search/jql`;
+        const searchUrl = `https://${jiraDomain}/rest/api/3/search`;
         const fieldList = payload.fields.filter(Boolean);
         const expandList = payload.expand.filter(Boolean);
-        let useGet = true;
-
-        const buildQuery = () => {
-          const params = new URLSearchParams();
-          params.set('jql', payload.jql);
-          params.set('startAt', String(payload.startAt));
-          params.set('maxResults', String(payload.maxResults));
-          if (fieldList.length) params.set('fields', fieldList.join(','));
-          if (expandList.length) params.set('expand', expandList.join(','));
-          return params;
-        };
 
         const buildBody = () => {
           const body = {
@@ -166,55 +151,33 @@
           return JSON.stringify(body);
         };
 
-        while (true) {
-          let resp;
-          try {
-            if (useGet) {
-              const params = buildQuery();
-              resp = await fetch(`${searchUrl}?${params.toString()}`, {
-                method: 'GET',
-                credentials: 'include',
-                headers: { 'Accept': 'application/json' }
-              });
-            } else {
-              resp = await fetch(searchUrl, {
-                method: 'POST',
-                credentials: 'include',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Accept': 'application/json',
-                  'X-Atlassian-Token': 'no-check'
-                },
-                body: buildBody()
-              });
-            }
-          } catch (err) {
-            if (useGet) {
-              logger.warn('Jira search GET request failed, retrying with POST', err);
-              useGet = false;
-              continue;
-            }
-            throw err;
-          }
-
-          if (useGet && [405, 410, 413, 414].includes(resp.status)) {
-            logger.warn(`Jira search GET returned status ${resp.status}, retrying with POST.`);
-            useGet = false;
-            continue;
-          }
-
-          if (!resp.ok) {
-            let text = '';
-            try {
-              text = await resp.text();
-            } catch (e) {
-              logger.warn('Failed to read Jira search error response', e);
-            }
-            throw new Error(`Failed to fetch search results ${resp.status} ${text}`);
-          }
-
-          return resp.json();
+        let resp;
+        try {
+          resp = await fetch(searchUrl, {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'X-Atlassian-Token': 'no-check'
+            },
+            body: buildBody()
+          });
+        } catch (err) {
+          throw err;
         }
+
+        if (!resp.ok) {
+          let text = '';
+          try {
+            text = await resp.text();
+          } catch (e) {
+            logger.warn('Failed to read Jira search error response', e);
+          }
+          throw new Error(`Failed to fetch search results ${resp.status} ${text}`);
+        }
+
+        return resp.json();
       });
       (data.issues || []).forEach(issue => {
         const cacheKey = `issue:${jiraDomain}:${issue.key}`;
