@@ -12,29 +12,13 @@
   const completionTable = document.getElementById('completionRateTable');
   const issueTableBody = document.getElementById('issueDetailsBody');
   const metaSummary = document.getElementById('metaSummary');
-  const metaWarnings = document.getElementById('metaWarnings');
   const focusStatusEl = document.getElementById('focusStatuses');
   const statusDurationChartEl = document.getElementById('statusDurationChart');
   const completionChartEl = document.getElementById('completionChart');
-  const projectFilter = document.getElementById('projectFilter');
-  const logPanel = document.getElementById('logPanel');
   let statusChart;
   let completionChart;
 
   initJiraDomain();
-
-  function appendLog(level, args) {
-    if (!logPanel) return;
-    const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
-    logPanel.textContent += `[${level}] ${msg}\n`;
-    logPanel.scrollTop = logPanel.scrollHeight;
-    logPanel.style.display = '';
-  }
-
-  if (typeof Logger !== 'undefined') {
-    Logger.setLevel('info');
-    Logger.setListener((level, args) => appendLog(level, args));
-  }
 
   function showLoading(message) {
     if (!loadingEl) return;
@@ -128,59 +112,12 @@
     return current;
   }
 
-  function extractSprintIds(value) {
-    if (!value) return [];
-    if (Array.isArray(value)) {
-      return value.flatMap(v => extractSprintIds(v));
-    }
-    if (typeof value === 'object') {
-      return value.id ? [Number(value.id)] : [];
-    }
-    const matches = String(value).match(/\d+/g);
-    return matches ? matches.map(n => Number(n)) : [];
-  }
-
-  function getSprintMembershipWindow(issue, sprintId, sprintStart, sprintEnd) {
-    const startMs = sprintStart.getTime();
-    const endMs = sprintEnd.getTime();
-    const targetId = Number(sprintId);
-    const containsSprint = value => extractSprintIds(value).includes(targetId);
-
-    const histories = (issue.changelog && issue.changelog.histories) || [];
-    const sorted = histories.slice().sort((a, b) => new Date(a.created) - new Date(b.created));
-    let joinedAt = containsSprint(issue.fields && (issue.fields.sprint || issue.fields.customfield_10020))
-      ? startMs
-      : null;
-    let exitedAt = endMs;
-
-    sorted.forEach(history => {
-      const item = (history.items || []).find(i => (i.field || '').toLowerCase() === 'sprint');
-      if (!item) return;
-      const at = new Date(history.created).getTime();
-      const fromHas = containsSprint(item.from || item.fromString);
-      const toHas = containsSprint(item.to || item.toString);
-
-      if (!fromHas && toHas) {
-        joinedAt = at <= startMs ? startMs : (joinedAt === null || joinedAt === startMs ? at : joinedAt);
-      }
-
-      if (fromHas && !toHas && at >= startMs) {
-        exitedAt = Math.min(exitedAt, at);
-      }
-    });
-
-    if (joinedAt === null) return null;
-    return { start: joinedAt, end: Math.max(joinedAt, Math.min(exitedAt, endMs)) };
-  }
-
-  function calculateStatusDurations(issue, sprintId, sprintStart, sprintEnd) {
-    const window = getSprintMembershipWindow(issue, sprintId, sprintStart, sprintEnd);
-    if (!window) return new Map();
-    const { start, end } = window;
-    const membershipStart = new Date(start);
+  function calculateStatusDurations(issue, sprintStart, sprintEnd) {
+    const start = sprintStart.getTime();
+    const end = sprintEnd.getTime();
     const changes = getStatusHistory(issue);
     const durations = new Map();
-    let currentStatus = statusAtStart(issue, membershipStart);
+    let currentStatus = statusAtStart(issue, sprintStart);
     let cursor = start;
 
     for (const change of changes) {
@@ -223,12 +160,12 @@
     return '13+';
   }
 
-  function renderStatusDurationTable(issues, sprintId, sprintStart, sprintEnd) {
+  function renderStatusDurationTable(issues, sprintStart, sprintEnd) {
     const totals = new Map();
     const counts = new Map();
 
     issues.forEach(issue => {
-      const durations = calculateStatusDurations(issue, sprintId, sprintStart, sprintEnd);
+      const durations = calculateStatusDurations(issue, sprintStart, sprintEnd);
       durations.forEach((ms, status) => {
         totals.set(status, (totals.get(status) || 0) + ms);
         counts.set(status, (counts.get(status) || 0) + 1);
@@ -236,6 +173,7 @@
     });
 
     const rows = Array.from(totals.keys())
+      .filter(status => String(status).toLowerCase() !== 'closed')
       .map(status => {
         const avg = totals.get(status) / (counts.get(status) || 1);
         return { status, avg, total: totals.get(status) };
@@ -345,7 +283,7 @@
     }
   }
 
-  function renderIssueDetails(issues, sprintId, sprintStart, sprintEnd) {
+  function renderIssueDetails(issues, sprintStart, sprintEnd) {
     const focusStatuses = focusStatusEl.value
       .split(',')
       .map(s => s.trim())
@@ -356,7 +294,7 @@
     const sorted = [...issues].sort((a, b) => (a.key || '').localeCompare(b.key || ''));
 
     sorted.forEach(issue => {
-      const durations = calculateStatusDurations(issue, sprintId, sprintStart, sprintEnd);
+      const durations = calculateStatusDurations(issue, sprintStart, sprintEnd);
       let focusDuration = 0;
       if (focusStatuses.length) {
         durations.forEach((ms, status) => {
@@ -365,9 +303,6 @@
           }
         });
       }
-      const sortedDurations = Array.from(durations.entries())
-        .map(([status, ms]) => ({ status, ms }))
-        .sort((a, b) => b.ms - a.ms);
       const totalStatusTime = Array.from(durations.values()).reduce((a, b) => a + b, 0);
       const summary = issue.fields && issue.fields.summary ? issue.fields.summary : '';
       const pts = getStoryPoints(issue, sprintStart);
@@ -378,17 +313,7 @@
         <td>${pts === null ? '—' : pts}</td>
         <td>${formatDuration(totalStatusTime)}</td>
         <td>${focusStatuses.length ? formatDuration(focusDuration) : '—'}</td>
-        <td>
-          ${isDone(issue, sprintEnd) ? 'Completed' : 'Open'}
-          <details style="margin-top:6px;">
-            <summary style="cursor:pointer; color:#4f46e5;">Status time breakdown</summary>
-            <div style="padding-top:6px;">
-              ${sortedDurations
-                .map(d => `<div style="display:flex; justify-content:space-between; gap:8px;"><span>${d.status}</span><span>${formatDuration(d.ms)}</span></div>`)
-                .join('')}
-            </div>
-          </details>
-        </td>
+        <td>${isDone(issue, sprintEnd) ? 'Completed' : 'Open'}</td>
       `;
       issueTableBody.appendChild(tr);
     });
@@ -423,14 +348,6 @@
     }
 
     syncDomainInput(DEFAULT_JIRA_DOMAIN);
-
-    if (typeof window !== 'undefined' && window.location && !window.location.origin.includes(jiraDomain)) {
-      appendLog('warn', [
-        'The dashboard is being loaded from a different origin than',
-        jiraDomain,
-        '- Jira will only allow requests when opened from the Jira domain or a proxy that forwards credentials.'
-      ]);
-    }
   }
 
   function buildNetworkErrorMessage(err, actionLabel) {
@@ -444,8 +361,6 @@
   }
 
   async function jiraSearch(jql, fields = [], options = {}) {
-    // Use the supported search endpoint that replaces the removed `/search`
-    // path. Jira now expects requests to go through `/rest/api/3/search/jql`.
     const searchUrl = `https://${jiraDomain}/rest/api/3/search/jql`;
     const maxResults = options.maxResults || 500;
     let startAt = options.startAt || 0;
@@ -500,7 +415,7 @@
         throw new Error(buildNetworkErrorMessage(err, 'Unable to reach Jira search'));
       }
 
-      if (useGet && [405, 410, 413, 414].includes(resp.status)) {
+      if (useGet && [405, 413, 414].includes(resp.status)) {
         useGet = false;
         continue;
       }
@@ -542,7 +457,6 @@
     showLoading('Loading boards…');
     try {
       const boards = await Jira.fetchBoardsByJql(jiraDomain);
-      Logger.info('Boards fetched', boards.length);
       boards.forEach(board => {
         const opt = document.createElement('option');
         opt.value = board.id;
@@ -564,31 +478,24 @@
   async function fetchSprints() {
     boardId = boardSelect.value.trim();
     if (!boardId) return alert('Select a board first.');
-    Logger.info('Fetching sprints for board', boardId);
     showLoading('Fetching sprints…');
     let all = [];
     let startAt = 0;
     const maxResults = 50;
 
-    try {
-      while (true) {
-        const url = `https://${jiraDomain}/rest/agile/1.0/board/${boardId}/sprint?maxResults=${maxResults}&startAt=${startAt}`;
-        const resp = await fetch(url, { credentials: 'include' });
-        if (!resp.ok) {
-          const text = await resp.text();
-          throw new Error(`Failed to fetch sprints: ${resp.status} ${text}`);
-        }
-        const data = await resp.json();
-        const values = Array.isArray(data.values) ? data.values : [];
-        all = all.concat(values);
-        if (data.isLast || !values.length) break;
-        startAt += values.length;
+    while (true) {
+      const url = `https://${jiraDomain}/rest/agile/1.0/board/${boardId}/sprint?maxResults=${maxResults}&startAt=${startAt}`;
+      const resp = await fetch(url, { credentials: 'include' });
+      if (!resp.ok) {
+        hideLoading();
+        const text = await resp.text();
+        throw new Error(`Failed to fetch sprints: ${resp.status} ${text}`);
       }
-    } catch (err) {
-      const msg = buildNetworkErrorMessage(err, 'Unable to load sprints');
-      Logger.error(msg);
-      loadingEl.textContent = msg;
-      return;
+      const data = await resp.json();
+      const values = Array.isArray(data.values) ? data.values : [];
+      all = all.concat(values);
+      if (data.isLast || !values.length) break;
+      startAt += values.length;
     }
 
     sprints = all;
@@ -607,31 +514,19 @@
     hideLoading();
   }
 
+  function buildJql(sprintId) {
+    const additional = document.getElementById('additionalJql').value.trim();
+    let jql = `sprint = ${sprintId}`;
+    if (additional) {
+      jql += ` AND (${additional})`;
+    }
+    return jql;
+  }
+
   function renderMeta(issues, sprint) {
     const total = issues.length;
     const done = issues.filter(i => isDone(i, new Date(sprint.endDate || sprint.end || sprint.completeDate || Date.now()))).length;
-    const open = Math.max(total - done, 0);
-    const sprintName = sprint && sprint.name ? sprint.name : 'Sprint';
-    const start = sprint && (sprint.startDate || sprint.start) ? new Date(sprint.startDate || sprint.start) : null;
-    const end = sprint && (sprint.completeDate || sprint.endDate || sprint.end)
-      ? new Date(sprint.completeDate || sprint.endDate || sprint.end)
-      : null;
-    const dateLabel = start && end
-      ? ` (${start.toLocaleDateString()} – ${end.toLocaleDateString()})`
-      : '';
-    metaSummary.textContent = `${sprintName}${dateLabel}: ${total} issues found – ${done} closed, ${open} open`;
-  }
-
-  function renderWarnings(issues, sprintStart) {
-    if (!metaWarnings) return;
-    const unestimated = issues.filter(issue => getStoryPoints(issue, sprintStart) === null).length;
-    if (unestimated > 0) {
-      metaWarnings.textContent = `${unestimated} issue${unestimated === 1 ? '' : 's'} have no Story Points. Add estimates to improve planning insights.`;
-      metaWarnings.style.display = 'block';
-    } else {
-      metaWarnings.textContent = '';
-      metaWarnings.style.display = 'none';
-    }
+    metaSummary.textContent = `${total} issues found – ${done} completed`;
   }
 
   function filterSupportedIssueTypes(issues = []) {
@@ -644,121 +539,30 @@
     });
   }
 
-  function filterByProject(keys = []) {
-    if (!projectFilter) return keys;
-    const value = projectFilter.value.trim();
-    if (!value) return keys;
-    const projects = value
-      .split(',')
-      .map(p => p.trim().toUpperCase())
-      .filter(Boolean);
-    if (!projects.length) return keys;
-    return keys.filter(k => {
-      const prefix = String(k).split('-')[0].toUpperCase();
-      return projects.includes(prefix);
-    });
-  }
-
-  async function fetchSprintIssueKeys(boardId, sprintId) {
-    const url = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/sprintreport?rapidViewId=${boardId}&sprintId=${sprintId}`;
-    let data;
-    try {
-      const resp = await fetch(url, { credentials: 'include' });
-      if (!resp.ok) {
-        const text = await resp.text();
-        throw new Error(`Failed to fetch sprint contents (${resp.status}): ${text}`);
-      }
-      data = await resp.json();
-    } catch (err) {
-      throw new Error(buildNetworkErrorMessage(err, 'Unable to load sprint contents'));
-    }
-    const contents = data && data.contents ? data.contents : {};
-    const keys = [];
-
-    const collect = list => {
-      (list || []).forEach(item => item && item.key && keys.push(item.key));
-    };
-
-    collect(contents.completedIssues);
-    collect(contents.issuesNotCompletedInCurrentSprint);
-    collect(contents.puntedIssues);
-    (contents.issueKeysRemovedFromSprint || []).forEach(k => k && keys.push(k));
-
-    return Array.from(new Set(keys));
-  }
-
-  async function applyAdditionalFilter(keys, sprintId) {
-    const additional = document.getElementById('additionalJql').value.trim();
-    if (!additional) return keys;
-
-    const jql = `sprint = ${sprintId} AND (${additional})`;
-    const { issues } = await jiraSearch(jql, ['key'], { maxResults: 300 });
-    const allowed = new Set((issues || []).map(i => i.key));
-    return keys.filter(k => allowed.has(k));
-  }
-
   async function loadSprintInsights() {
     const sprintId = sprintSelect.value.trim();
     if (!sprintId) return alert('Select a sprint to analyze.');
-    if (!boardId) return alert('Fetch sprints for a board first.');
-
-    showLoading('Fetching sprint contents…');
-    let sprint;
-    let sprintKeys = [];
-    try {
-      sprint = await Jira.fetchSprint(jiraDomain, sprintId);
-      sprintKeys = await fetchSprintIssueKeys(boardId, sprintId);
-    } catch (err) {
-      const msg = buildNetworkErrorMessage(err, 'Unable to load sprint details');
-      Logger.error(msg);
-      loadingEl.textContent = msg;
-      return;
-    }
+    const sprint = await Jira.fetchSprint(jiraDomain, sprintId);
     const sprintStart = new Date(sprint.startDate || sprint.start || Date.now());
     const sprintEnd = new Date(sprint.endDate || sprint.end || Date.now());
     sprintEnd.setHours(23, 59, 59, 999);
-
-    let filteredKeys = [];
-    try {
-      filteredKeys = await applyAdditionalFilter(sprintKeys, sprintId);
-      filteredKeys = filterByProject(filteredKeys);
-    } catch (err) {
-      const msg = buildNetworkErrorMessage(err, 'Unable to apply additional JQL filter');
-      Logger.error(msg);
-      loadingEl.textContent = msg;
-      return;
-    }
-
-    if (!filteredKeys.length) {
-      statusTable.innerHTML = '<tr><td colspan="3">No issues found for this sprint.</td></tr>';
-      completionTable.innerHTML = '<tr><td colspan="3">No issues found for this sprint.</td></tr>';
-      issueTableBody.innerHTML = '<tr><td colspan="6">No issues found for this sprint.</td></tr>';
-      renderMeta([], sprint);
-      renderWarnings([], sprintStart);
-      hideLoading();
-      return;
-    }
-
     showLoading('Fetching sprint issues and changelogs…');
-    let issueMap;
-    try {
-      issueMap = await Jira.fetchIssuesBatch(jiraDomain, filteredKeys, { forceRefresh: true });
-    } catch (err) {
-      const msg = buildNetworkErrorMessage(err, 'Unable to load sprint issues');
-      Logger.error(msg);
-      loadingEl.textContent = msg;
-      return;
-    }
-    const issues = Array.from(issueMap.values());
 
-    const filteredIssues = filterSupportedIssueTypes(issues);
-    const sprintIssues = filteredIssues.filter(issue => getSprintMembershipWindow(issue, sprintId, sprintStart, sprintEnd));
+    const fields = ['summary', 'status', 'issuetype', 'resolution', 'resolutiondate', 'customfield_10002', 'customfield_10016', 'customfield_10106', 'customfield_10026', 'storyPoints'];
+    const { issues } = await jiraSearch(buildJql(sprintId), fields, { expand: ['changelog'], maxResults: 200 });
+    const uniqueIssues = issues.reduce((acc, issue) => {
+      if (!acc.map.has(issue.key)) {
+        acc.map.set(issue.key, true);
+        acc.list.push(issue);
+      }
+      return acc;
+    }, { list: [], map: new Map() }).list;
+    const filteredIssues = filterSupportedIssueTypes(uniqueIssues);
 
-    renderMeta(sprintIssues, sprint);
-    renderWarnings(sprintIssues, sprintStart);
-    renderStatusDurationTable(sprintIssues, sprintId, sprintStart, sprintEnd);
-    renderCompletionRates(sprintIssues, sprintStart, sprintEnd);
-    renderIssueDetails(sprintIssues, sprintId, sprintStart, sprintEnd);
+    renderMeta(filteredIssues, sprint);
+    renderStatusDurationTable(filteredIssues, sprintStart, sprintEnd);
+    renderCompletionRates(filteredIssues, sprintStart, sprintEnd);
+    renderIssueDetails(filteredIssues, sprintStart, sprintEnd);
     hideLoading();
   }
 
