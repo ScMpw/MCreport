@@ -12,9 +12,11 @@
   const completionTable = document.getElementById('completionRateTable');
   const issueTableBody = document.getElementById('issueDetailsBody');
   const metaSummary = document.getElementById('metaSummary');
+  const metaWarnings = document.getElementById('metaWarnings');
   const focusStatusEl = document.getElementById('focusStatuses');
   const statusDurationChartEl = document.getElementById('statusDurationChart');
   const completionChartEl = document.getElementById('completionChart');
+  const projectFilter = document.getElementById('projectFilter');
   const logPanel = document.getElementById('logPanel');
   let statusChart;
   let completionChart;
@@ -609,6 +611,7 @@
   function renderMeta(issues, sprint) {
     const total = issues.length;
     const done = issues.filter(i => isDone(i, new Date(sprint.endDate || sprint.end || sprint.completeDate || Date.now()))).length;
+    const open = Math.max(total - done, 0);
     const sprintName = sprint && sprint.name ? sprint.name : 'Sprint';
     const start = sprint && (sprint.startDate || sprint.start) ? new Date(sprint.startDate || sprint.start) : null;
     const end = sprint && (sprint.completeDate || sprint.endDate || sprint.end)
@@ -617,7 +620,19 @@
     const dateLabel = start && end
       ? ` (${start.toLocaleDateString()} – ${end.toLocaleDateString()})`
       : '';
-    metaSummary.textContent = `${sprintName}${dateLabel}: ${total} issues found – ${done} completed`;
+    metaSummary.textContent = `${sprintName}${dateLabel}: ${total} issues found – ${done} closed, ${open} open`;
+  }
+
+  function renderWarnings(issues, sprintStart) {
+    if (!metaWarnings) return;
+    const unestimated = issues.filter(issue => getStoryPoints(issue, sprintStart) === null).length;
+    if (unestimated > 0) {
+      metaWarnings.textContent = `${unestimated} issue${unestimated === 1 ? '' : 's'} have no Story Points. Add estimates to improve planning insights.`;
+      metaWarnings.style.display = 'block';
+    } else {
+      metaWarnings.textContent = '';
+      metaWarnings.style.display = 'none';
+    }
   }
 
   function filterSupportedIssueTypes(issues = []) {
@@ -627,6 +642,21 @@
       const name = type && typeof type.name === 'string' ? type.name.toLowerCase() : '';
       const isSubtask = Boolean(type && type.subtask);
       return allowed.includes(name) && !isSubtask;
+    });
+  }
+
+  function filterByProject(keys = []) {
+    if (!projectFilter) return keys;
+    const value = projectFilter.value.trim();
+    if (!value) return keys;
+    const projects = value
+      .split(',')
+      .map(p => p.trim().toUpperCase())
+      .filter(Boolean);
+    if (!projects.length) return keys;
+    return keys.filter(k => {
+      const prefix = String(k).split('-')[0].toUpperCase();
+      return projects.includes(prefix);
     });
   }
 
@@ -692,6 +722,7 @@
     let filteredKeys = [];
     try {
       filteredKeys = await applyAdditionalFilter(sprintKeys, sprintId);
+      filteredKeys = filterByProject(filteredKeys);
     } catch (err) {
       const msg = buildNetworkErrorMessage(err, 'Unable to apply additional JQL filter');
       Logger.error(msg);
@@ -704,6 +735,7 @@
       completionTable.innerHTML = '<tr><td colspan="3">No issues found for this sprint.</td></tr>';
       issueTableBody.innerHTML = '<tr><td colspan="6">No issues found for this sprint.</td></tr>';
       renderMeta([], sprint);
+      renderWarnings([], sprintStart);
       hideLoading();
       return;
     }
@@ -724,6 +756,7 @@
     const sprintIssues = filteredIssues.filter(issue => getSprintMembershipWindow(issue, sprintId, sprintStart, sprintEnd));
 
     renderMeta(sprintIssues, sprint);
+    renderWarnings(sprintIssues, sprintStart);
     renderStatusDurationTable(sprintIssues, sprintId, sprintStart, sprintEnd);
     renderCompletionRates(sprintIssues, sprintStart, sprintEnd);
     renderIssueDetails(sprintIssues, sprintId, sprintStart, sprintEnd);
