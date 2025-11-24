@@ -40,7 +40,7 @@
     return `${hours.toFixed(1)}h`;
   }
 
-  function getStoryPoints(issue = {}, sprintStart) {
+  function getStoryPoints(issue = {}, sprintStart, fallbackPoints = null) {
     const fields = issue.fields || {};
     const candidates = [
       fields.customfield_10002,
@@ -77,6 +77,10 @@
         }
       }
       if (typeof initialPoints === 'number') value = initialPoints;
+    }
+
+    if (value === null || value === undefined) {
+      value = fallbackPoints;
     }
 
     return typeof value === 'number' ? value : null;
@@ -221,10 +225,10 @@
     }
   }
 
-  function renderCompletionRates(issues, sprintStart, sprintEnd) {
+  function renderCompletionRates(issues, sprintStart, sprintEnd, defaultPoints = new Map()) {
     const buckets = new Map();
     issues.forEach(issue => {
-      const pts = getStoryPoints(issue, sprintStart);
+      const pts = getStoryPoints(issue, sprintStart, defaultPoints.get(issue.key));
       const bucket = bucketForPoints(pts);
       if (!buckets.has(bucket)) buckets.set(bucket, { done: 0, total: 0 });
       const data = buckets.get(bucket);
@@ -283,7 +287,7 @@
     }
   }
 
-  function renderIssueDetails(issues, sprintStart, sprintEnd) {
+  function renderIssueDetails(issues, sprintStart, sprintEnd, defaultPoints = new Map()) {
     const focusStatuses = focusStatusEl.value
       .split(',')
       .map(s => s.trim())
@@ -305,7 +309,7 @@
       }
       const totalStatusTime = Array.from(durations.values()).reduce((a, b) => a + b, 0);
       const summary = issue.fields && issue.fields.summary ? issue.fields.summary : '';
-      const pts = getStoryPoints(issue, sprintStart);
+      const pts = getStoryPoints(issue, sprintStart, defaultPoints.get(issue.key));
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td>${issue.key}</td>
@@ -529,6 +533,32 @@
     metaSummary.textContent = `${total} issues found – ${done} completed`;
   }
 
+  function collectIssuesFromSprintReport(reportData = {}) {
+    const issues = [];
+    const pushIssue = (item = {}) => {
+      if (!item.key) return;
+      issues.push({
+        key: item.key,
+        estimate: item.estimateStatistic?.statFieldValue?.value
+      });
+    };
+
+    const contents = reportData.contents || {};
+    (contents.completedIssues || []).forEach(pushIssue);
+    (contents.issuesNotCompletedInCurrentSprint || []).forEach(pushIssue);
+    (contents.puntedIssues || []).forEach(pushIssue);
+    (contents.issueKeysRemovedFromSprint || []).forEach(key => pushIssue({ key }));
+
+    const unique = new Map();
+    issues.forEach(it => {
+      if (!unique.has(it.key)) {
+        unique.set(it.key, it);
+      }
+    });
+
+    return Array.from(unique.values());
+  }
+
   function filterSupportedIssueTypes(issues = []) {
     const allowed = ['story', 'task', 'bug'];
     return issues.filter(issue => {
@@ -542,27 +572,43 @@
   async function loadSprintInsights() {
     const sprintId = sprintSelect.value.trim();
     if (!sprintId) return alert('Select a sprint to analyze.');
+    if (!boardId) return alert('Fetch and select a board first.');
     const sprint = await Jira.fetchSprint(jiraDomain, sprintId);
     const sprintStart = new Date(sprint.startDate || sprint.start || Date.now());
     const sprintEnd = new Date(sprint.endDate || sprint.end || Date.now());
     sprintEnd.setHours(23, 59, 59, 999);
     showLoading('Fetching sprint issues and changelogs…');
 
-    const fields = ['summary', 'status', 'issuetype', 'resolution', 'resolutiondate', 'customfield_10002', 'customfield_10016', 'customfield_10106', 'customfield_10026', 'storyPoints'];
-    const { issues } = await jiraSearch(buildJql(sprintId), fields, { expand: ['changelog'], maxResults: 200 });
-    const uniqueIssues = issues.reduce((acc, issue) => {
-      if (!acc.map.has(issue.key)) {
-        acc.map.set(issue.key, true);
-        acc.list.push(issue);
-      }
-      return acc;
-    }, { list: [], map: new Map() }).list;
-    const filteredIssues = filterSupportedIssueTypes(uniqueIssues);
+    const reportUrl = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/sprintreport?rapidViewId=${boardId}&sprintId=${sprintId}`;
+    const reportResp = await fetch(reportUrl, { credentials: 'include' });
+    if (!reportResp.ok) {
+      hideLoading();
+      const text = await reportResp.text();
+      throw new Error(`Failed to fetch sprint report: ${reportResp.status} ${text}`);
+    }
+
+    const reportData = await reportResp.json();
+    const reportIssues = collectIssuesFromSprintReport(reportData);
+    const defaultPoints = new Map(reportIssues.map(it => [it.key, it.estimate]));
+    let issueKeys = reportIssues.map(it => it.key);
+
+    const additional = document.getElementById('additionalJql').value.trim();
+    if (additional) {
+      const { issues: filtered } = await jiraSearch(buildJql(sprintId), ['key'], { maxResults: 500 });
+      const allowed = new Set(filtered.map(i => i.key));
+      issueKeys = issueKeys.filter(k => allowed.has(k));
+    }
+
+    const issueMap = await Jira.fetchIssuesBatch(jiraDomain, issueKeys, { forceRefresh: true });
+    const fetchedIssues = issueKeys
+      .map(k => issueMap.get(k))
+      .filter(Boolean);
+    const filteredIssues = filterSupportedIssueTypes(fetchedIssues);
 
     renderMeta(filteredIssues, sprint);
     renderStatusDurationTable(filteredIssues, sprintStart, sprintEnd);
-    renderCompletionRates(filteredIssues, sprintStart, sprintEnd);
-    renderIssueDetails(filteredIssues, sprintStart, sprintEnd);
+    renderCompletionRates(filteredIssues, sprintStart, sprintEnd, defaultPoints);
+    renderIssueDetails(filteredIssues, sprintStart, sprintEnd, defaultPoints);
     hideLoading();
   }
 
