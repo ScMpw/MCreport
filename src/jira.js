@@ -140,7 +140,7 @@
         // Prefer GET requests to avoid CORS preflight failures when the
         // dashboard is opened from a different origin. Fall back to POST only
         // when Jira explicitly rejects the GET (e.g., payload too large).
-        const searchUrl = `https://${jiraDomain}/rest/api/3/search`;
+        const searchUrl = `https://${jiraDomain}/rest/api/3/search/jql`;
         const fieldList = payload.fields.filter(Boolean);
         const expandList = payload.expand.filter(Boolean);
         let useGet = true;
@@ -197,7 +197,7 @@
             throw err;
           }
 
-          if (useGet && [405, 413, 414].includes(resp.status)) {
+          if (useGet && [405, 410, 413, 414].includes(resp.status)) {
             logger.warn(`Jira search GET returned status ${resp.status}, retrying with POST.`);
             useGet = false;
             continue;

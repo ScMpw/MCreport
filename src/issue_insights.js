@@ -444,10 +444,9 @@
   }
 
   async function jiraSearch(jql, fields = [], options = {}) {
-    // Use the supported search endpoint instead of the deprecated `/search/jql`
-    // path, which can trigger CORS rejections and unbounded query errors when
-    // called from the dashboard.
-    const searchUrl = `https://${jiraDomain}/rest/api/3/search`;
+    // Use the supported search endpoint that replaces the removed `/search`
+    // path. Jira now expects requests to go through `/rest/api/3/search/jql`.
+    const searchUrl = `https://${jiraDomain}/rest/api/3/search/jql`;
     const maxResults = options.maxResults || 500;
     let startAt = options.startAt || 0;
     const collected = [];
@@ -501,7 +500,7 @@
         throw new Error(buildNetworkErrorMessage(err, 'Unable to reach Jira search'));
       }
 
-      if (useGet && [405, 413, 414].includes(resp.status)) {
+      if (useGet && [405, 410, 413, 414].includes(resp.status)) {
         useGet = false;
         continue;
       }
