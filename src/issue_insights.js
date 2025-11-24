@@ -573,19 +573,18 @@
     hideLoading();
   }
 
-  function buildJql(sprintId) {
-    const additional = document.getElementById('additionalJql').value.trim();
-    let jql = `sprint = ${sprintId}`;
-    if (additional) {
-      jql += ` AND (${additional})`;
-    }
-    return jql;
-  }
-
   function renderMeta(issues, sprint) {
     const total = issues.length;
     const done = issues.filter(i => isDone(i, new Date(sprint.endDate || sprint.end || sprint.completeDate || Date.now()))).length;
-    metaSummary.textContent = `${total} issues found – ${done} completed`;
+    const sprintName = sprint && sprint.name ? sprint.name : 'Sprint';
+    const start = sprint && (sprint.startDate || sprint.start) ? new Date(sprint.startDate || sprint.start) : null;
+    const end = sprint && (sprint.completeDate || sprint.endDate || sprint.end)
+      ? new Date(sprint.completeDate || sprint.endDate || sprint.end)
+      : null;
+    const dateLabel = start && end
+      ? ` (${start.toLocaleDateString()} – ${end.toLocaleDateString()})`
+      : '';
+    metaSummary.textContent = `${sprintName}${dateLabel}: ${total} issues found – ${done} completed`;
   }
 
   function filterSupportedIssueTypes(issues = []) {
@@ -598,25 +597,67 @@
     });
   }
 
+  async function fetchSprintIssueKeys(boardId, sprintId) {
+    const url = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/sprintreport?rapidViewId=${boardId}&sprintId=${sprintId}`;
+    const resp = await fetch(url, { credentials: 'include' });
+    if (!resp.ok) {
+      const text = await resp.text();
+      throw new Error(`Failed to fetch sprint contents (${resp.status}): ${text}`);
+    }
+    const data = await resp.json();
+    const contents = data && data.contents ? data.contents : {};
+    const keys = [];
+
+    const collect = list => {
+      (list || []).forEach(item => item && item.key && keys.push(item.key));
+    };
+
+    collect(contents.completedIssues);
+    collect(contents.issuesNotCompletedInCurrentSprint);
+    collect(contents.puntedIssues);
+    (contents.issueKeysRemovedFromSprint || []).forEach(k => k && keys.push(k));
+
+    return Array.from(new Set(keys));
+  }
+
+  async function applyAdditionalFilter(keys, sprintId) {
+    const additional = document.getElementById('additionalJql').value.trim();
+    if (!additional) return keys;
+
+    const jql = `sprint = ${sprintId} AND (${additional})`;
+    const { issues } = await jiraSearch(jql, ['key'], { maxResults: 300 });
+    const allowed = new Set((issues || []).map(i => i.key));
+    return keys.filter(k => allowed.has(k));
+  }
+
   async function loadSprintInsights() {
     const sprintId = sprintSelect.value.trim();
     if (!sprintId) return alert('Select a sprint to analyze.');
+    if (!boardId) return alert('Fetch sprints for a board first.');
+
+    showLoading('Fetching sprint contents…');
     const sprint = await Jira.fetchSprint(jiraDomain, sprintId);
     const sprintStart = new Date(sprint.startDate || sprint.start || Date.now());
     const sprintEnd = new Date(sprint.endDate || sprint.end || Date.now());
     sprintEnd.setHours(23, 59, 59, 999);
-    showLoading('Fetching sprint issues and changelogs…');
 
-    const fields = ['summary', 'status', 'issuetype', 'resolution', 'resolutiondate', 'customfield_10002', 'customfield_10016', 'customfield_10106', 'customfield_10026', 'storyPoints', 'sprint', 'customfield_10020'];
-    const { issues } = await jiraSearch(buildJql(sprintId), fields, { expand: ['changelog'], maxResults: 200 });
-    const uniqueIssues = issues.reduce((acc, issue) => {
-      if (!acc.map.has(issue.key)) {
-        acc.map.set(issue.key, true);
-        acc.list.push(issue);
-      }
-      return acc;
-    }, { list: [], map: new Map() }).list;
-    const filteredIssues = filterSupportedIssueTypes(uniqueIssues);
+    const sprintKeys = await fetchSprintIssueKeys(boardId, sprintId);
+    const filteredKeys = await applyAdditionalFilter(sprintKeys, sprintId);
+
+    if (!filteredKeys.length) {
+      statusTable.innerHTML = '<tr><td colspan="3">No issues found for this sprint.</td></tr>';
+      completionTable.innerHTML = '<tr><td colspan="3">No issues found for this sprint.</td></tr>';
+      issueTableBody.innerHTML = '<tr><td colspan="6">No issues found for this sprint.</td></tr>';
+      renderMeta([], sprint);
+      hideLoading();
+      return;
+    }
+
+    showLoading('Fetching sprint issues and changelogs…');
+    const issueMap = await Jira.fetchIssuesBatch(jiraDomain, filteredKeys, { forceRefresh: true });
+    const issues = Array.from(issueMap.values());
+
+    const filteredIssues = filterSupportedIssueTypes(issues);
     const sprintIssues = filteredIssues.filter(issue => getSprintMembershipWindow(issue, sprintId, sprintStart, sprintEnd));
 
     renderMeta(sprintIssues, sprint);
