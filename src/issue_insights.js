@@ -173,7 +173,6 @@
     });
 
     const rows = Array.from(totals.keys())
-      .filter(status => String(status).toLowerCase() !== 'closed')
       .map(status => {
         const avg = totals.get(status) / (counts.get(status) || 1);
         return { status, avg, total: totals.get(status) };
@@ -303,6 +302,9 @@
           }
         });
       }
+      const sortedDurations = Array.from(durations.entries())
+        .map(([status, ms]) => ({ status, ms }))
+        .sort((a, b) => b.ms - a.ms);
       const totalStatusTime = Array.from(durations.values()).reduce((a, b) => a + b, 0);
       const summary = issue.fields && issue.fields.summary ? issue.fields.summary : '';
       const pts = getStoryPoints(issue, sprintStart);
@@ -313,7 +315,17 @@
         <td>${pts === null ? '—' : pts}</td>
         <td>${formatDuration(totalStatusTime)}</td>
         <td>${focusStatuses.length ? formatDuration(focusDuration) : '—'}</td>
-        <td>${isDone(issue, sprintEnd) ? 'Completed' : 'Open'}</td>
+        <td>
+          ${isDone(issue, sprintEnd) ? 'Completed' : 'Open'}
+          <details style="margin-top:6px;">
+            <summary style="cursor:pointer; color:#4f46e5;">Status time breakdown</summary>
+            <div style="padding-top:6px;">
+              ${sortedDurations
+                .map(d => `<div style="display:flex; justify-content:space-between; gap:8px;"><span>${d.status}</span><span>${formatDuration(d.ms)}</span></div>`)
+                .join('')}
+            </div>
+          </details>
+        </td>
       `;
       issueTableBody.appendChild(tr);
     });
