@@ -61,6 +61,7 @@
       <button id="loadInsightsBtn">Load sprint insights</button>
     </div>
     <div id="loadingMessage">Loading…</div>
+    <div id="logPanel" style="display:none; white-space:pre-wrap; font-size:0.9em; background:#f3f4f6; border:1px solid #e5e7eb; padding:6px; margin:10px 0; max-height:150px; overflow:auto;"></div>
     <div class="card">
       <h2>Sprint overview</h2>
       <div id="metaSummary" class="helper" aria-live="polite">No sprint selected.</div>
@@ -107,6 +108,7 @@
     </div>
   </div>
 
+  <script src="src/logger.js"></script>
   <script src="src/jira.js"></script>
   <script src="src/issue_insights.js"></script>
 </body>
