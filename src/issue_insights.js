@@ -112,12 +112,59 @@
     return current;
   }
 
-  function calculateStatusDurations(issue, sprintStart, sprintEnd) {
-    const start = sprintStart.getTime();
-    const end = sprintEnd.getTime();
+  function extractSprintIds(value) {
+    if (!value) return [];
+    if (Array.isArray(value)) {
+      return value.flatMap(v => extractSprintIds(v));
+    }
+    if (typeof value === 'object') {
+      return value.id ? [Number(value.id)] : [];
+    }
+    const matches = String(value).match(/\d+/g);
+    return matches ? matches.map(n => Number(n)) : [];
+  }
+
+  function getSprintMembershipWindow(issue, sprintId, sprintStart, sprintEnd) {
+    const startMs = sprintStart.getTime();
+    const endMs = sprintEnd.getTime();
+    const targetId = Number(sprintId);
+    const containsSprint = value => extractSprintIds(value).includes(targetId);
+
+    const histories = (issue.changelog && issue.changelog.histories) || [];
+    const sorted = histories.slice().sort((a, b) => new Date(a.created) - new Date(b.created));
+    let joinedAt = containsSprint(issue.fields && (issue.fields.sprint || issue.fields.customfield_10020))
+      ? startMs
+      : null;
+    let exitedAt = endMs;
+
+    sorted.forEach(history => {
+      const item = (history.items || []).find(i => (i.field || '').toLowerCase() === 'sprint');
+      if (!item) return;
+      const at = new Date(history.created).getTime();
+      const fromHas = containsSprint(item.from || item.fromString);
+      const toHas = containsSprint(item.to || item.toString);
+
+      if (!fromHas && toHas) {
+        joinedAt = at <= startMs ? startMs : (joinedAt === null || joinedAt === startMs ? at : joinedAt);
+      }
+
+      if (fromHas && !toHas && at >= startMs) {
+        exitedAt = Math.min(exitedAt, at);
+      }
+    });
+
+    if (joinedAt === null) return null;
+    return { start: joinedAt, end: Math.max(joinedAt, Math.min(exitedAt, endMs)) };
+  }
+
+  function calculateStatusDurations(issue, sprintId, sprintStart, sprintEnd) {
+    const window = getSprintMembershipWindow(issue, sprintId, sprintStart, sprintEnd);
+    if (!window) return new Map();
+    const { start, end } = window;
+    const membershipStart = new Date(start);
     const changes = getStatusHistory(issue);
     const durations = new Map();
-    let currentStatus = statusAtStart(issue, sprintStart);
+    let currentStatus = statusAtStart(issue, membershipStart);
     let cursor = start;
 
     for (const change of changes) {
@@ -160,12 +207,12 @@
     return '13+';
   }
 
-  function renderStatusDurationTable(issues, sprintStart, sprintEnd) {
+  function renderStatusDurationTable(issues, sprintId, sprintStart, sprintEnd) {
     const totals = new Map();
     const counts = new Map();
 
     issues.forEach(issue => {
-      const durations = calculateStatusDurations(issue, sprintStart, sprintEnd);
+      const durations = calculateStatusDurations(issue, sprintId, sprintStart, sprintEnd);
       durations.forEach((ms, status) => {
         totals.set(status, (totals.get(status) || 0) + ms);
         counts.set(status, (counts.get(status) || 0) + 1);
@@ -282,7 +329,7 @@
     }
   }
 
-  function renderIssueDetails(issues, sprintStart, sprintEnd) {
+  function renderIssueDetails(issues, sprintId, sprintStart, sprintEnd) {
     const focusStatuses = focusStatusEl.value
       .split(',')
       .map(s => s.trim())
@@ -293,7 +340,7 @@
     const sorted = [...issues].sort((a, b) => (a.key || '').localeCompare(b.key || ''));
 
     sorted.forEach(issue => {
-      const durations = calculateStatusDurations(issue, sprintStart, sprintEnd);
+      const durations = calculateStatusDurations(issue, sprintId, sprintStart, sprintEnd);
       let focusDuration = 0;
       if (focusStatuses.length) {
         durations.forEach((ms, status) => {
@@ -560,7 +607,7 @@
     sprintEnd.setHours(23, 59, 59, 999);
     showLoading('Fetching sprint issues and changelogs…');
 
-    const fields = ['summary', 'status', 'issuetype', 'resolution', 'resolutiondate', 'customfield_10002', 'customfield_10016', 'customfield_10106', 'customfield_10026', 'storyPoints'];
+    const fields = ['summary', 'status', 'issuetype', 'resolution', 'resolutiondate', 'customfield_10002', 'customfield_10016', 'customfield_10106', 'customfield_10026', 'storyPoints', 'sprint', 'customfield_10020'];
     const { issues } = await jiraSearch(buildJql(sprintId), fields, { expand: ['changelog'], maxResults: 200 });
     const uniqueIssues = issues.reduce((acc, issue) => {
       if (!acc.map.has(issue.key)) {
@@ -570,11 +617,12 @@
       return acc;
     }, { list: [], map: new Map() }).list;
     const filteredIssues = filterSupportedIssueTypes(uniqueIssues);
+    const sprintIssues = filteredIssues.filter(issue => getSprintMembershipWindow(issue, sprintId, sprintStart, sprintEnd));
 
-    renderMeta(filteredIssues, sprint);
-    renderStatusDurationTable(filteredIssues, sprintStart, sprintEnd);
-    renderCompletionRates(filteredIssues, sprintStart, sprintEnd);
-    renderIssueDetails(filteredIssues, sprintStart, sprintEnd);
+    renderMeta(sprintIssues, sprint);
+    renderStatusDurationTable(sprintIssues, sprintId, sprintStart, sprintEnd);
+    renderCompletionRates(sprintIssues, sprintStart, sprintEnd);
+    renderIssueDetails(sprintIssues, sprintId, sprintStart, sprintEnd);
     hideLoading();
   }
 
