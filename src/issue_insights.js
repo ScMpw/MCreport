@@ -709,7 +709,15 @@
     }
 
     showLoading('Fetching sprint issues and changelogs…');
-    const issueMap = await Jira.fetchIssuesBatch(jiraDomain, filteredKeys, { forceRefresh: true });
+    let issueMap;
+    try {
+      issueMap = await Jira.fetchIssuesBatch(jiraDomain, filteredKeys, { forceRefresh: true });
+    } catch (err) {
+      const msg = buildNetworkErrorMessage(err, 'Unable to load sprint issues');
+      Logger.error(msg);
+      loadingEl.textContent = msg;
+      return;
+    }
     const issues = Array.from(issueMap.values());
 
     const filteredIssues = filterSupportedIssueTypes(issues);
