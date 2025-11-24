@@ -137,7 +137,9 @@
       };
 
       const data = await fetchWithDedup(`search:${jiraDomain}:${batch.join(',')}`, async () => {
-        const searchUrl = `https://${jiraDomain}/rest/api/3/search/jql`;
+        // Use the supported Jira search endpoint to avoid CORS failures that
+        // occur when hitting the deprecated `/search/jql` path.
+        const searchUrl = `https://${jiraDomain}/rest/api/3/search`;
         const fieldList = payload.fields.filter(Boolean);
         const expandList = payload.expand.filter(Boolean);
 
