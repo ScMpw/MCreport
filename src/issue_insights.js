@@ -361,7 +361,7 @@
   }
 
   async function jiraSearch(jql, fields = [], options = {}) {
-    const searchUrl = `https://${jiraDomain}/rest/api/3/search/jql`;
+    const searchUrl = `https://${jiraDomain}/rest/api/3/search`;
     const maxResults = options.maxResults || 500;
     let startAt = options.startAt || 0;
     const collected = [];
@@ -369,6 +369,7 @@
     const expandList = Array.isArray(options.expand)
       ? options.expand.filter(Boolean)
       : (options.expand ? [options.expand] : []);
+    let useGet = true;
 
     const buildPayload = () => {
       const payload = { jql, startAt, maxResults };
@@ -380,18 +381,46 @@
     while (true) {
       let resp;
       try {
-        resp = await fetch(searchUrl, {
-          method: 'POST',
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'X-Atlassian-Token': 'no-check'
-          },
-          body: JSON.stringify(buildPayload())
-        });
+        if (useGet) {
+          const params = new URLSearchParams();
+          params.set('jql', jql);
+          params.set('startAt', String(startAt));
+          params.set('maxResults', String(maxResults));
+          if (fieldList.length) params.set('fields', fieldList.join(','));
+          if (expandList.length) params.set('expand', expandList.join(','));
+          const url = `${searchUrl}?${params.toString()}`;
+          resp = await fetch(url, {
+            method: 'GET',
+            credentials: 'include',
+            headers: {
+              'Accept': 'application/json'
+            }
+          });
+        } else {
+          resp = await fetch(searchUrl, {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'X-Atlassian-Token': 'no-check'
+            },
+            body: JSON.stringify(buildPayload())
+          });
+        }
       } catch (err) {
+        if (useGet) {
+          console.warn('Jira search GET request failed, retrying with POST', err);
+          useGet = false;
+          continue;
+        }
         throw new Error(buildNetworkErrorMessage(err, 'Unable to reach Jira search'));
+      }
+
+      if (useGet && [405, 413, 414].includes(resp.status)) {
+        console.warn(`Jira search GET returned status ${resp.status}, retrying with POST.`);
+        useGet = false;
+        continue;
       }
 
       if (!resp.ok) {
