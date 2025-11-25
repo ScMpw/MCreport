@@ -369,7 +369,6 @@
     const expandList = Array.isArray(options.expand)
       ? options.expand.filter(Boolean)
       : (options.expand ? [options.expand] : []);
-    let useGet = true;
 
     const buildPayload = () => {
       const payload = { jql, startAt, maxResults };
@@ -381,43 +380,18 @@
     while (true) {
       let resp;
       try {
-        if (useGet) {
-          const params = new URLSearchParams();
-          params.set('jql', jql);
-          params.set('startAt', String(startAt));
-          params.set('maxResults', String(maxResults));
-          if (fieldList.length) params.set('fields', fieldList.join(','));
-          if (expandList.length) params.set('expand', expandList.join(','));
-          const url = `${searchUrl}?${params.toString()}`;
-          resp = await fetch(url, {
-            method: 'GET',
-            credentials: 'include',
-            headers: { 'Accept': 'application/json' }
-          });
-        } else {
-          resp = await fetch(searchUrl, {
-            method: 'POST',
-            credentials: 'include',
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-              'X-Atlassian-Token': 'no-check'
-            },
-            body: JSON.stringify(buildPayload())
-          });
-        }
+        resp = await fetch(searchUrl, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-Atlassian-Token': 'no-check'
+          },
+          body: JSON.stringify(buildPayload())
+        });
       } catch (err) {
-        if (useGet) {
-          console.warn('Jira search GET failed, retrying with POST', err);
-          useGet = false;
-          continue;
-        }
         throw new Error(buildNetworkErrorMessage(err, 'Unable to reach Jira search'));
-      }
-
-      if (useGet && [405, 413, 414].includes(resp.status)) {
-        useGet = false;
-        continue;
       }
 
       if (!resp.ok) {
@@ -447,6 +421,36 @@
 
       startAt = nextStart;
     }
+  }
+
+  async function fetchSprintIssueKeys() {
+    if (!boardId) {
+      throw new Error('Select a board and load its sprints before fetching insights.');
+    }
+    const url = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/sprintreport?rapidViewId=${boardId}&sprintId=${sprintSelect.value.trim()}`;
+    const resp = await fetch(url, { credentials: 'include' });
+    if (!resp.ok) {
+      const text = await resp.text();
+      throw new Error(`Failed to load sprint report: ${resp.status} ${text}`);
+    }
+    const data = await resp.json();
+    const contents = data.contents || {};
+    const buckets = [
+      contents.completedIssues,
+      contents.issuesNotCompletedInCurrentSprint,
+      contents.puntedIssues,
+      contents.issuesCompletedInAnotherSprint
+    ];
+    const keys = new Set();
+    buckets.forEach(list => {
+      if (Array.isArray(list)) {
+        list.forEach(item => item && item.key && keys.add(item.key));
+      }
+    });
+    (contents.issueKeysAddedDuringSprint || []).forEach(k => {
+      if (typeof k === 'string' && k.trim()) keys.add(k.trim());
+    });
+    return [...keys];
   }
 
   async function populateBoards() {
@@ -514,9 +518,12 @@
     hideLoading();
   }
 
-  function buildJql(sprintId) {
+  function buildJqlFromKeys(issueKeys = []) {
     const additional = document.getElementById('additionalJql').value.trim();
-    let jql = `sprint = ${sprintId}`;
+    let jql = issueKeys.length ? `key in (${issueKeys.join(',')})` : '';
+    if (!jql) {
+      throw new Error('No sprint issues found to analyze.');
+    }
     if (additional) {
       jql += ` AND (${additional})`;
     }
@@ -548,8 +555,10 @@
     sprintEnd.setHours(23, 59, 59, 999);
     showLoading('Fetching sprint issues and changelogs…');
 
+    const issueKeys = await fetchSprintIssueKeys();
     const fields = ['summary', 'status', 'issuetype', 'resolution', 'resolutiondate', 'customfield_10002', 'customfield_10016', 'customfield_10106', 'customfield_10026', 'storyPoints'];
-    const { issues } = await jiraSearch(buildJql(sprintId), fields, { expand: ['changelog'], maxResults: 200 });
+    const jql = buildJqlFromKeys(issueKeys);
+    const { issues } = await jiraSearch(jql, fields, { expand: ['changelog'], maxResults: 200 });
     const uniqueIssues = issues.reduce((acc, issue) => {
       if (!acc.map.has(issue.key)) {
         acc.map.set(issue.key, true);
