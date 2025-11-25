@@ -434,7 +434,8 @@
 
       const pageSize = data.maxResults || issues.length || maxResults;
       const total = typeof data.total === 'number' ? data.total : null;
-      const nextStart = (data.startAt || 0) + pageSize;
+      const currentStart = typeof data.startAt === 'number' ? data.startAt : startAt;
+      const nextStart = currentStart + pageSize;
       const receivedAll = !issues.length || (total !== null && collected.length >= total) || issues.length < pageSize;
 
       if (receivedAll) {
