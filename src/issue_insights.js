@@ -447,7 +447,16 @@
         list.forEach(item => item && item.key && keys.add(item.key));
       }
     });
-    (contents.issueKeysAddedDuringSprint || []).forEach(k => {
+    const added = contents.issueKeysAddedDuringSprint;
+    const addedKeys = Array.isArray(added)
+      ? added
+      : added && typeof added === 'object'
+        ? Object.values(added).flatMap(v => Array.isArray(v) ? v : [v])
+        : typeof added === 'string'
+          ? [added]
+          : [];
+
+    addedKeys.forEach(k => {
       if (typeof k === 'string' && k.trim()) keys.add(k.trim());
     });
     return [...keys];
