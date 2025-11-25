@@ -447,14 +447,16 @@
         list.forEach(item => item && item.key && keys.add(item.key));
       }
     });
-    const added = contents.issueKeysAddedDuringSprint;
-    const addedKeys = Array.isArray(added)
-      ? added
-      : added && typeof added === 'object'
-        ? Object.values(added).flatMap(v => Array.isArray(v) ? v : [v])
-        : typeof added === 'string'
-          ? [added]
-          : [];
+    const normalizeAdded = value => {
+      if (Array.isArray(value)) return value;
+      if (value && typeof value === 'object') {
+        return Object.values(value).flatMap(normalizeAdded);
+      }
+      if (typeof value === 'string') return [value];
+      return [];
+    };
+
+    const addedKeys = normalizeAdded(contents.issueKeysAddedDuringSprint);
 
     addedKeys.forEach(k => {
       if (typeof k === 'string' && k.trim()) keys.add(k.trim());
