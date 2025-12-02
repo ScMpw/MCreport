@@ -674,6 +674,47 @@
         chartInstances: [],
         boardChoices: null
       };
+      
+      /**
+       * Append log message to log panel
+       */
+      const appendLog = (level, args) => {
+        try {
+          if (!elements.logPanel) return;
+
+          const message = args
+            .map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg))
+            .join(' ');
+
+          elements.logPanel.textContent += `[${level}] ${message}\n`;
+          elements.logPanel.scrollTop = elements.logPanel.scrollHeight;
+          
+          // Show log panel when there are messages
+          elements.logPanel.classList.remove('hidden');
+        } catch (error) {
+          console.error('Failed to append log:', error);
+        }
+      };
+      
+      // Logger utility
+      const logger = {
+        debug: (...args) => {
+          console.debug(...args);
+          appendLog('DEBUG', args);
+        },
+        info: (...args) => {
+          console.info(...args);
+          appendLog('INFO', args);
+        },
+        warn: (...args) => {
+          console.warn(...args);
+          appendLog('WARN', args);
+        },
+        error: (...args) => {
+          console.error(...args);
+          appendLog('ERROR', args);
+        }
+      };
 
       // DOM Elements
       const elements = {
@@ -819,15 +860,15 @@
           
           // Add predefined board options for demo/testing
           const predefinedBoards = [
-            { value: '4133', label: 'SCO Board 1 (4133)', selected: false },
-            { value: '4132', label: 'SCO Board 2 (4132)', selected: false },
-            { value: '4131', label: 'SCO Board 3 (4131)', selected: false },
-            { value: '2796', label: 'MCO Board 1 (2796)', selected: false },
-            { value: '2526', label: 'MCO Board 2 (2526)', selected: false },
-            { value: '6346', label: 'MCO Board 3 (6346)', selected: false },
-            { value: '6347', label: 'Butterfly Board 1 (6347)', selected: false },
-            { value: '6390', label: 'Butterfly Board 2 (6390)', selected: false },
-            { value: '4894', label: 'ACOSS Board (4894)', selected: false }
+            { value: '4133', label: 'SCO Board 4133', selected: false },
+            { value: '4132', label: 'SCO Board 4132', selected: false },
+            { value: '4131', label: 'SCO Board 4131', selected: false },
+            { value: '2796', label: 'MCO Board 2796', selected: false },
+            { value: '2526', label: 'MCO Board 2526', selected: false },
+            { value: '6346', label: 'MCO Board 6346', selected: false },
+            { value: '6347', label: 'Butterfly Board 6347', selected: false },
+            { value: '6390', label: 'Butterfly Board 6390', selected: false },
+            { value: '4894', label: 'ACOSS Board 4894', selected: false }
           ];
           
           state.boardChoices.setChoices(predefinedBoards, 'value', 'label', true);
@@ -846,15 +887,15 @@
         elements.boardNum.innerHTML = '';
         
         const boards = [
-          { id: '4133', name: 'SCO Board 1' },
-          { id: '4132', name: 'SCO Board 2' },
-          { id: '4131', name: 'SCO Board 3' },
-          { id: '2796', name: 'MCO Board 1' },
-          { id: '2526', name: 'MCO Board 2' },
-          { id: '6346', name: 'MCO Board 3' },
-          { id: '6347', name: 'Butterfly Board 1' },
-          { id: '6390', name: 'Butterfly Board 2' },
-          { id: '4894', name: 'ACOSS Board' }
+          { id: '4133', name: 'SCO Board 4133' },
+          { id: '4132', name: 'SCO Board 4132' },
+          { id: '4131', name: 'SCO Board 4131' },
+          { id: '2796', name: 'MCO Board 2796' },
+          { id: '2526', name: 'MCO Board 2526' },
+          { id: '6346', name: 'MCO Board 6346' },
+          { id: '6347', name: 'Butterfly Board 6347' },
+          { id: '6390', name: 'Butterfly Board 6390' },
+          { id: '4894', name: 'ACOSS Board 4894' }
         ];
         
         boards.forEach(board => {
@@ -926,27 +967,6 @@
       };
 
       /**
-       * Append log message to log panel
-       */
-      const appendLog = (level, args) => {
-        try {
-          if (!elements.logPanel) return;
-
-          const message = args
-            .map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg))
-            .join(' ');
-
-          elements.logPanel.textContent += `[${level}] ${message}\n`;
-          elements.logPanel.scrollTop = elements.logPanel.scrollHeight;
-          
-          // Show log panel when there are messages
-          elements.logPanel.classList.remove('hidden');
-        } catch (error) {
-          console.error('Failed to append log:', error);
-        }
-      };
-
-      /**
        * Load data from selected boards (demo implementation)
        */
       const loadData = () => {
@@ -958,14 +978,14 @@
             return;
           }
           
-          logger.info('Loading data for boards:', selectedBoards);
+          console.info('Loading data for boards:', selectedBoards);
           showError(`Demo: Would load data for boards: ${selectedBoards.join(', ')}`);
           
           // Generate sample data for demo
           generateSampleData(selectedBoards);
           
         } catch (error) {
-          logger.error('Failed to load data:', error);
+          console.error('Failed to load data:', error);
           showError('Failed to load data. Please try again.');
         }
       };
@@ -1018,13 +1038,13 @@
           state.sprints = sampleSprints.slice(-CONFIG.DISPLAY_SPRINT_COUNT);
           state.allSprints = sampleSprints;
           
-          logger.info('Sample data generated:', { sprints: sampleSprints.length });
+          console.info('Sample data generated:', { sprints: sampleSprints.length });
           
           // Render the report
           renderDisruptionReport();
           
         } catch (error) {
-          logger.error('Failed to generate sample data:', error);
+          console.error('Failed to generate sample data:', error);
           showError('Failed to generate sample data');
         }
       };
@@ -1034,15 +1054,15 @@
        */
       const getBoardName = (boardId) => {
         const boardNames = {
-          '4133': 'SCO Board 1',
-          '4132': 'SCO Board 2', 
-          '4131': 'SCO Board 3',
-          '2796': 'MCO Board 1',
-          '2526': 'MCO Board 2',
-          '6346': 'MCO Board 3',
-          '6347': 'Butterfly Board 1',
-          '6390': 'Butterfly Board 2',
-          '4894': 'ACOSS Board'
+          '4133': 'SCO Board 4133',
+          '4132': 'SCO Board 4132', 
+          '4131': 'SCO Board 4131',
+          '2796': 'MCO Board 2796',
+          '2526': 'MCO Board 2526',
+          '6346': 'MCO Board 6346',
+          '6347': 'Butterfly Board 6347',
+          '6390': 'Butterfly Board 6390',
+          '4894': 'ACOSS Board 4894'
         };
         return boardNames[boardId] || `Board ${boardId}`;
       };
