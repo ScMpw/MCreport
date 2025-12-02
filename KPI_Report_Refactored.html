@@ -1,0 +1,1285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stakeholder PI Status Report – KPI Report</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css">
+  <link rel="stylesheet" href="public/tailwind.css">
+  <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/svg2pdf.js@2.2.3/dist/svg2pdf.min.js"></script>
+  
+  <style>
+    :root {
+      /* Color System */
+      --color-background: #f7f8fa;
+      --color-surface: #ffffff;
+      --color-border: #e5e7eb;
+      --color-border-light: #d1d5db70;
+      --color-text-primary: #1f2937;
+      --color-text-secondary: #6b7280;
+      --color-table-header: #e0e7ef;
+      --color-table-row: #e5e7eb;
+      --color-primary: #6366f1;
+      --color-log-background: #f3f4f6;
+      
+      /* Rating Zone Colors */
+      --color-bloated: rgba(254, 249, 195, 0.5);
+      --color-lively: rgba(34, 197, 94, 0.5);
+      --color-spot-on: rgba(21, 128, 61, 0.5);
+      --color-healthy: rgba(34, 197, 94, 0.5);
+      --color-concerning: rgba(254, 249, 195, 0.5);
+      --color-alarming: rgba(254, 202, 202, 0.5);
+      
+      /* Spacing */
+      --spacing-xs: 4px;
+      --spacing-sm: 6px;
+      --spacing-md: 10px;
+      --spacing-lg: 18px;
+      --spacing-xl: 20px;
+      --spacing-2xl: 30px;
+      --spacing-3xl: 36px;
+      
+      /* Border Radius */
+      --radius-sm: 4px;
+      --radius-md: 6px;
+      --radius-lg: 18px;
+      
+      /* Shadows */
+      --shadow-card: 0 2px 12px var(--color-border-light);
+      
+      /* Typography */
+      --font-family-base: 'Inter', Arial, sans-serif;
+      --font-size-xs: 0.85em;
+      --font-size-sm: 0.9em;
+      --font-size-base: 0.95em;
+      --font-size-lg: 1em;
+    }
+
+    /* Base Styles */
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      background: var(--color-background);
+    }
+
+    body {
+      background: var(--color-background);
+      font-family: var(--font-family-base);
+      margin: 0;
+      padding: 0;
+      color: var(--color-text-primary);
+      line-height: 1.6;
+    }
+
+    /* Layout Components */
+    .main-container {
+      max-width: 950px;
+      margin: var(--spacing-2xl) auto;
+      background: var(--color-surface);
+      border-radius: var(--radius-lg);
+      padding: var(--spacing-3xl) 32px;
+      box-shadow: var(--shadow-card);
+    }
+
+    /* Typography */
+    h1 {
+      margin: 0 0 var(--spacing-xl) 0;
+      color: var(--color-text-primary);
+      font-weight: 600;
+    }
+
+    h2 {
+      margin: var(--spacing-xl) 0 var(--spacing-md) 0;
+      color: var(--color-text-primary);
+      font-weight: 600;
+    }
+
+    /* Form Controls */
+    .form-group {
+      margin-bottom: var(--spacing-xl);
+    }
+
+    .form-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--spacing-md);
+      align-items: center;
+    }
+
+    label {
+      font-weight: 500;
+      color: var(--color-text-primary);
+    }
+
+    input[type="text"], 
+    select {
+      padding: var(--spacing-sm) var(--spacing-md);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      font-family: var(--font-family-base);
+      font-size: var(--font-size-base);
+    }
+
+    input[type="text"]:focus, 
+    select:focus {
+      outline: none;
+      border-color: var(--color-primary);
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+    }
+
+    /* Buttons */
+    .btn {
+      background: var(--color-primary);
+      color: var(--color-surface);
+      border: none;
+      border-radius: var(--radius-md);
+      padding: 7px var(--spacing-lg);
+      cursor: pointer;
+      font-size: var(--font-size-lg);
+      font-family: var(--font-family-base);
+      transition: background-color 0.2s ease;
+    }
+
+    .btn:hover {
+      background: #5855eb;
+    }
+
+    .btn:focus {
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.3);
+    }
+
+    .btn:disabled {
+      background: var(--color-text-secondary);
+      cursor: not-allowed;
+    }
+
+    /* Checkbox Groups */
+    .checkbox-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--spacing-md);
+      align-items: center;
+    }
+
+    .checkbox-item {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-xs);
+    }
+
+    /* Tables */
+    .table-wrapper {
+      overflow-x: auto;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--color-border);
+    }
+
+    .data-table {
+      border-collapse: collapse;
+      min-width: 100%;
+      margin: 0;
+      background: var(--color-surface);
+    }
+
+    .data-table th, 
+    .data-table td {
+      border: 1px solid var(--color-border);
+      padding: var(--spacing-sm) var(--spacing-md);
+      text-align: left;
+      font-size: var(--font-size-base);
+      vertical-align: top;
+    }
+
+    .data-table th {
+      background: var(--color-table-header);
+      font-weight: 600;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .data-table tbody tr:nth-child(even) {
+      background: rgba(0, 0, 0, 0.02);
+    }
+
+    .data-table tbody tr:hover {
+      background: rgba(99, 102, 241, 0.05);
+    }
+
+    /* Story Tables */
+    .story-table {
+      border-collapse: collapse;
+      width: 100%;
+      margin: var(--spacing-sm) 0 var(--spacing-lg) 0;
+      font-size: var(--font-size-base);
+    }
+
+    .story-table th, 
+    .story-table td {
+      border: 1px solid var(--color-border);
+      padding: var(--spacing-xs) 7px;
+      text-align: left;
+    }
+
+    .story-table th {
+      background: var(--color-table-header);
+      font-weight: 600;
+    }
+
+    /* Details Toggle */
+    .details-toggle {
+      margin: var(--spacing-md) 0 var(--spacing-sm) 0;
+    }
+
+    .toggle-button {
+      background: none;
+      border: none;
+      color: var(--color-primary);
+      cursor: pointer;
+      padding: var(--spacing-xs);
+      font-size: var(--font-size-base);
+      text-decoration: underline;
+    }
+
+    .toggle-button:hover {
+      color: #5855eb;
+    }
+
+    /* Chart Section */
+    .chart-section {
+      margin-top: var(--spacing-2xl);
+      overflow-x: auto;
+    }
+
+    .chart-container {
+      margin: var(--spacing-xl) 0;
+      background: var(--color-surface);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+    }
+
+    .chart-section canvas {
+      margin-top: var(--spacing-xl);
+      background: var(--color-surface);
+      display: block;
+    }
+
+    /* Rating Zone Descriptions */
+    .rating-zone-description {
+      margin-top: var(--spacing-md);
+      font-size: var(--font-size-sm);
+    }
+
+    .rating-zone-toggle {
+      cursor: pointer;
+      user-select: none;
+      padding: var(--spacing-xs);
+      border-radius: var(--radius-sm);
+      transition: background-color 0.2s ease;
+    }
+
+    .rating-zone-toggle:hover {
+      background: rgba(99, 102, 241, 0.05);
+    }
+
+    .rating-zone-details {
+      margin-top: var(--spacing-xs);
+      padding: var(--spacing-md);
+      background: rgba(0, 0, 0, 0.02);
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--color-border);
+    }
+
+    .rating-zone-details > div {
+      margin: var(--spacing-xs) 0;
+      display: flex;
+      align-items: flex-start;
+      gap: var(--spacing-sm);
+    }
+
+    .rating-zone-indicator {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border-radius: 2px;
+      margin-top: 2px;
+      flex-shrink: 0;
+    }
+
+    /* Sprint Items */
+    .sprint-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--spacing-sm);
+      margin-top: var(--spacing-xs);
+    }
+
+    .sprint-item {
+      background: var(--color-table-row);
+      border-radius: var(--radius-sm);
+      padding: 2px var(--spacing-sm);
+      font-size: var(--font-size-sm);
+      white-space: nowrap;
+    }
+
+    /* Log Panel */
+    .log-panel {
+      display: none;
+      white-space: pre-wrap;
+      font-size: var(--font-size-xs);
+      font-family: 'Monaco', 'Menlo', monospace;
+      background: var(--color-log-background);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      padding: var(--spacing-sm);
+      margin: var(--spacing-md) 0;
+      max-height: 150px;
+      overflow: auto;
+    }
+
+    /* Table Descriptions */
+    .table-description {
+      margin-top: var(--spacing-sm);
+      font-size: var(--font-size-sm);
+      color: var(--color-text-secondary);
+    }
+
+    /* Utility Classes */
+    .hidden {
+      display: none !important;
+    }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    /* Responsive Design */
+    @media (max-width: 768px) {
+      .main-container {
+        margin: var(--spacing-md);
+        padding: var(--spacing-xl) var(--spacing-md);
+      }
+
+      .form-row {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .checkbox-group {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <main class="main-container">
+    <header>
+      <h1>KPI Report</h1>
+    </header>
+
+    <!-- Version Selection -->
+    <section class="form-group">
+      <div class="form-row">
+        <label for="versionSelect">Version:</label>
+        <select id="versionSelect" aria-label="Select report version">
+          <option value="index.html">Velocity</option>
+          <option value="index_throughput.html">Throughput</option>
+          <option value="index_throughput_week.html">Weekly Throughput</option>
+          <option value="index_disruption.html">Disruption</option>
+          <option value="KPI_Report.html" selected>KPI Report</option>
+          <option value="target_release_dashboard.html">PI &amp; Target-Release Dashboard</option>
+        </select>
+      </div>
+    </section>
+
+    <!-- Configuration Controls -->
+    <section class="form-group">
+      <div class="form-row">
+        <label for="jiraDomain">Jira Domain:</label>
+        <input 
+          type="text" 
+          id="jiraDomain" 
+          value="aldi-sued.atlassian.net" 
+          size="28"
+          aria-describedby="jiraDomainHelp"
+        >
+        
+        <label id="boardLabel" class="hidden" for="boardNum">Please select a Board:</label>
+        <select 
+          id="boardNum" 
+          multiple 
+          aria-label="Select boards for analysis"
+          class="hidden"
+        ></select>
+        
+        <button 
+          id="loadBtn" 
+          class="btn hidden" 
+          type="button"
+          aria-label="Load disruption data"
+        >
+          Load Data
+        </button>
+        
+        <button 
+          class="btn" 
+          type="button" 
+          onclick="kpiReport.exportPDF()"
+          aria-label="Export report as PDF"
+        >
+          Download PDF
+        </button>
+      </div>
+      <small id="jiraDomainHelp" class="table-description">
+        Enter your Jira domain to connect and fetch board data
+      </small>
+    </section>
+
+    <!-- PDF Export Options -->
+    <section id="pdfOptions" class="form-group">
+      <fieldset>
+        <legend>Include in PDF:</legend>
+        <div class="checkbox-group">
+          <label class="checkbox-item">
+            <input type="checkbox" id="includePi" checked aria-describedby="piHelp">
+            Initially Planned &amp; Completed
+          </label>
+          <label class="checkbox-item">
+            <input type="checkbox" id="includeDisruption" checked aria-describedby="disruptionHelp">
+            Disruption Chart
+          </label>
+          <label class="checkbox-item">
+            <input type="checkbox" id="includeRating" checked aria-describedby="ratingHelp">
+            Rating Zone Chart
+          </label>
+          <label class="checkbox-item">
+            <input type="checkbox" id="includeThroughput" checked aria-describedby="throughputHelp">
+            Throughput Chart
+          </label>
+          <label class="checkbox-item">
+            <input type="checkbox" id="includeCycle" checked aria-describedby="cycleHelp">
+            Cycle Time Chart
+          </label>
+        </div>
+      </fieldset>
+    </section>
+
+    <!-- Sprint Information -->
+    <section id="sprintRow" class="form-group hidden">
+      <div class="form-row">
+        <span>Sprints:</span>
+        <div id="sprintList" class="sprint-list" role="list" aria-label="Sprint list"></div>
+      </div>
+    </section>
+
+    <!-- Debug Log Panel -->
+    <section 
+      id="logPanel" 
+      class="log-panel" 
+      role="log" 
+      aria-live="polite" 
+      aria-label="Debug log output"
+    ></section>
+
+    <!-- Report Content -->
+    <section id="pdfContent" role="main" aria-label="KPI Report Content">
+      <!-- Main Metrics Table -->
+      <div class="table-wrapper">
+        <table class="data-table" role="table" aria-label="Sprint metrics data">
+          <thead>
+            <tr>
+              <th scope="col">Sprint</th>
+              <th scope="col">Initially Planned (SP)</th>
+              <th scope="col">Completed (SP)</th>
+              <th scope="col">Pulled In (SP / Issues)</th>
+              <th scope="col">Blocked Days (Days / Issues)</th>
+              <th scope="col">Moved Out (SP / Issues)</th>
+              <th scope="col">Spillover (SP / Issues)</th>
+              <th scope="col">PI Completed (Issues)</th>
+              <th scope="col">PI Not Completed (Issues)</th>
+              <th scope="col">Other Completed (Issues)</th>
+              <th scope="col">Other Not Completed (Issues)</th>
+              <th scope="col">Details</th>
+            </tr>
+          </thead>
+          <tbody id="metricsBody"></tbody>
+        </table>
+      </div>
+
+      <!-- Velocity Statistics -->
+      <div id="velocityStats" aria-label="Velocity statistics"></div>
+
+      <!-- Charts Section -->
+      <div id="chartSection" class="chart-section" aria-label="Analytics charts"></div>
+    </section>
+
+    <!-- Rating Zone Template -->
+    <template id="ratingZoneTemplate">
+      <div class="rating-zone-description">
+        <div class="rating-zone-toggle" tabindex="0" role="button" aria-expanded="false">
+          <strong>Rating zones (show)</strong>
+        </div>
+        <div class="rating-zone-details hidden" role="region" aria-label="Rating zone descriptions">
+          <div>
+            <span class="rating-zone-indicator" style="background: var(--color-bloated);"></span>
+            <div>
+              <strong>Bloated: AV+2SD…∞.</strong> A significant share of this exceedingly high output probably comes from other effects than team performance alone. Analysis is advised because possibly there's something to be learned.
+            </div>
+          </div>
+          <div>
+            <span class="rating-zone-indicator" style="background: var(--color-lively);"></span>
+            <div>
+              <strong>Lively: AV+1SD…AV+2SD.</strong> The team's performance was outstanding, pushing the envelope on the brink of an unsustainable pace.
+            </div>
+          </div>
+          <div>
+            <span class="rating-zone-indicator" style="background: var(--color-spot-on);"></span>
+            <div>
+              <strong>Spot-on: AV…AV+1SD.</strong> The team performed very well while also managing to increase the stability of their long-term output.
+            </div>
+          </div>
+          <div>
+            <span class="rating-zone-indicator" style="background: var(--color-healthy);"></span>
+            <div>
+              <strong>Healthy: AV-1SD…AV.</strong> Things cannot always go up, so going down within the team's usual range of performance is perfectly normal.
+            </div>
+          </div>
+          <div>
+            <span class="rating-zone-indicator" style="background: var(--color-concerning);"></span>
+            <div>
+              <strong>Concerning: AV-2SD…AV-1SD.</strong> Something went considerably wrong, but we're still seeing a robust core performance. Analysis is needed and also some learning that may result in adjustments.
+            </div>
+          </div>
+          <div>
+            <span class="rating-zone-indicator" style="background: var(--color-alarming);"></span>
+            <div>
+              <strong>Alarming: 0…AV-2SD.</strong> The major share of this plummeting output was probably caused by factors beyond the team's influence. Thorough analysis is needed which will lead to profound learning and change.
+            </div>
+          </div>
+        </div>
+      </div>
+    </template>
+  </main>
+
+  <!-- External Scripts -->
+  <script src="src/logger.js"></script>
+  <script src="src/jira.js"></script>
+  <script src="src/disruption.js"></script>
+  <script src="src/kpis.js"></script>
+
+  <!-- Application Script -->
+  <script>
+    'use strict';
+
+    /**
+     * KPI Report Application
+     * Modern implementation of Agile/Scrum analytics dashboard
+     */
+    const kpiReport = (() => {
+      // Configuration Constants
+      const CONFIG = {
+        BOARD_GROUPS: {
+          'SCO': ['4133', '4132', '4131'],
+          'MCO': ['2796', '2526', '6346'],
+          'Butterfly': ['6347', '6390'],
+          'ACOSS': ['2796', '2526', '6346', '4133', '4132', '4131', '6347', '6390', '4894']
+        },
+        DISPLAY_SPRINT_COUNT: 6,
+        RATING_WINDOW: 4,
+        CYCLE_TIME_START: new Date('2025-06-09'),
+        REGEX: {
+          PI_LABEL: /\b(?:BF_)?\d{4}_PI\d+_committ?ed\b/i,
+          SPRINT_KEY: /\b(?:\d{4}[-_ ]?)?\(?(?:PI)?(\d+)[-_ ]?(\d+)(?:[|/](\d+))?\)?\b/i
+        }
+      };
+
+      // Application State
+      const state = {
+        sprints: [],
+        allSprints: [],
+        epicCache: new Map(),
+        boardLabels: {},
+        chartInstances: [],
+        boardChoices: null
+      };
+
+      // DOM Elements
+      const elements = {
+        versionSelect: null,
+        jiraDomain: null,
+        boardNum: null,
+        boardLabel: null,
+        loadBtn: null,
+        logPanel: null,
+        metricsBody: null,
+        velocityStats: null,
+        chartSection: null,
+        sprintRow: null,
+        sprintList: null,
+        pdfOptions: {
+          includePi: null,
+          includeDisruption: null,
+          includeRating: null,
+          includeThroughput: null,
+          includeCycle: null
+        }
+      };
+
+      /**
+       * Initialize the application
+       */
+      const init = () => {
+        try {
+          initializeElements();
+          initializeLogger();
+          initializeEventListeners();
+          initializeChartJs();
+          initializeBoardSelector();
+          
+          // Set initial version
+          elements.versionSelect.value = 'KPI_Report.html';
+          
+          console.log('KPI Report initialized successfully');
+        } catch (error) {
+          console.error('Failed to initialize KPI Report:', error);
+          showError('Failed to initialize application. Please refresh the page.');
+        }
+      };
+
+      /**
+       * Cache DOM elements for performance
+       */
+      const initializeElements = () => {
+        elements.versionSelect = document.getElementById('versionSelect');
+        elements.jiraDomain = document.getElementById('jiraDomain');
+        elements.boardNum = document.getElementById('boardNum');
+        elements.boardLabel = document.getElementById('boardLabel');
+        elements.loadBtn = document.getElementById('loadBtn');
+        elements.logPanel = document.getElementById('logPanel');
+        elements.metricsBody = document.getElementById('metricsBody');
+        elements.velocityStats = document.getElementById('velocityStats');
+        elements.chartSection = document.getElementById('chartSection');
+        elements.sprintRow = document.getElementById('sprintRow');
+        elements.sprintList = document.getElementById('sprintList');
+        
+        // PDF options
+        elements.pdfOptions.includePi = document.getElementById('includePi');
+        elements.pdfOptions.includeDisruption = document.getElementById('includeDisruption');
+        elements.pdfOptions.includeRating = document.getElementById('includeRating');
+        elements.pdfOptions.includeThroughput = document.getElementById('includeThroughput');
+        elements.pdfOptions.includeCycle = document.getElementById('includeCycle');
+
+        // Validate required elements
+        const requiredElements = [
+          'versionSelect', 'jiraDomain', 'boardNum', 'logPanel', 
+          'metricsBody', 'velocityStats', 'chartSection'
+        ];
+        
+        for (const elementName of requiredElements) {
+          if (!elements[elementName]) {
+            throw new Error(`Required element not found: ${elementName}`);
+          }
+        }
+      };
+
+      /**
+       * Initialize logging system
+       */
+      const initializeLogger = () => {
+        if (typeof Logger !== 'undefined') {
+          Logger.setLevel('debug');
+          Logger.setListener((level, args) => {
+            appendLog(level, args);
+          });
+        }
+      };
+
+      /**
+       * Set up event listeners
+       */
+      const initializeEventListeners = () => {
+        // Version selector
+        elements.versionSelect.addEventListener('change', (e) => {
+          switchVersion(e.target.value);
+        });
+
+        // Load button (if disruption functionality is available)
+        if (elements.loadBtn && typeof loadDisruption === 'function') {
+          elements.loadBtn.addEventListener('click', loadDisruption);
+        }
+
+        // Rating zone toggles (delegated event handling)
+        document.addEventListener('click', (e) => {
+          if (e.target.closest('.rating-zone-toggle')) {
+            handleRatingZoneToggle(e.target.closest('.rating-zone-toggle'));
+          }
+        });
+
+        // Keyboard accessibility for rating zone toggles
+        document.addEventListener('keydown', (e) => {
+          if (e.target.matches('.rating-zone-toggle') && (e.key === 'Enter' || e.key === ' ')) {
+            e.preventDefault();
+            handleRatingZoneToggle(e.target);
+          }
+        });
+      };
+
+      /**
+       * Initialize Chart.js
+       */
+      const initializeChartJs = () => {
+        if (typeof Chart !== 'undefined' && typeof ChartDataLabels !== 'undefined') {
+          Chart.register(ChartDataLabels);
+        }
+      };
+
+      /**
+       * Initialize board selector with Choices.js
+       */
+      const initializeBoardSelector = () => {
+        if (typeof Choices !== 'undefined' && elements.boardNum) {
+          state.boardChoices = new Choices(elements.boardNum, { 
+            removeItemButton: true,
+            placeholder: true,
+            placeholderValue: 'Select boards...',
+            searchEnabled: true
+          });
+        }
+      };
+
+      /**
+       * Handle version switching
+       */
+      const switchVersion = (version) => {
+        try {
+          window.location.href = version;
+        } catch (error) {
+          console.error('Failed to switch version:', error);
+          showError('Failed to switch version. Please try again.');
+        }
+      };
+
+      /**
+       * Handle rating zone toggle clicks
+       */
+      const handleRatingZoneToggle = (toggleElement) => {
+        try {
+          const container = toggleElement.closest('.rating-zone-description');
+          if (!container) return;
+
+          const details = container.querySelector('.rating-zone-details');
+          if (!details) return;
+
+          const isHidden = details.classList.contains('hidden');
+          
+          if (isHidden) {
+            details.classList.remove('hidden');
+            toggleElement.innerHTML = '<strong>Rating zones (hide)</strong>';
+            toggleElement.setAttribute('aria-expanded', 'true');
+          } else {
+            details.classList.add('hidden');
+            toggleElement.innerHTML = '<strong>Rating zones (show)</strong>';
+            toggleElement.setAttribute('aria-expanded', 'false');
+          }
+        } catch (error) {
+          console.error('Failed to toggle rating zone:', error);
+        }
+      };
+
+      /**
+       * Create rating zone information component
+       */
+      const createRatingZoneInfo = () => {
+        try {
+          const template = document.getElementById('ratingZoneTemplate');
+          if (!template) return null;
+
+          const fragment = template.content.cloneNode(true);
+          const info = fragment.querySelector('.rating-zone-description');
+          
+          if (!info) return null;
+
+          // The event listeners are handled through delegation in initializeEventListeners
+          return fragment;
+        } catch (error) {
+          console.error('Failed to create rating zone info:', error);
+          return null;
+        }
+      };
+
+      /**
+       * Append log message to log panel
+       */
+      const appendLog = (level, args) => {
+        try {
+          if (!elements.logPanel) return;
+
+          const message = args
+            .map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg))
+            .join(' ');
+
+          elements.logPanel.textContent += `[${level}] ${message}\n`;
+          elements.logPanel.scrollTop = elements.logPanel.scrollHeight;
+          
+          // Show log panel when there are messages
+          elements.logPanel.classList.remove('hidden');
+        } catch (error) {
+          console.error('Failed to append log:', error);
+        }
+      };
+
+      /**
+       * Show error message to user
+       */
+      const showError = (message) => {
+        // This could be enhanced with a proper notification system
+        alert(message);
+      };
+
+      /**
+       * Extract sprint key from name using regex
+       */
+      const extractSprintKey = (name) => {
+        if (!name) return null;
+        
+        const match = name.match(CONFIG.REGEX.SPRINT_KEY);
+        if (!match) return null;
+
+        const [, pi, sprint, week] = match;
+        return week ? `${pi}.${sprint}|${week}` : `${pi}.${sprint}`;
+      };
+
+      /**
+       * Render sprint list display
+       */
+      const renderSprintList = () => {
+        try {
+          if (!elements.sprintList) return;
+
+          elements.sprintList.innerHTML = '';
+          
+          state.sprints.forEach(sprint => {
+            const sprintElement = document.createElement('div');
+            sprintElement.className = 'sprint-item';
+            sprintElement.textContent = sprint.name || 'Unknown Sprint';
+            sprintElement.setAttribute('role', 'listitem');
+            elements.sprintList.appendChild(sprintElement);
+          });
+
+          // Show/hide sprint row based on data availability
+          if (elements.sprintRow) {
+            if (state.sprints.length > 0) {
+              elements.sprintRow.classList.remove('hidden');
+            } else {
+              elements.sprintRow.classList.add('hidden');
+            }
+          }
+        } catch (error) {
+          console.error('Failed to render sprint list:', error);
+        }
+      };
+
+      /**
+       * Cleanup chart instances to prevent memory leaks
+       */
+      const cleanupCharts = () => {
+        try {
+          state.chartInstances.forEach(chart => {
+            if (chart && typeof chart.destroy === 'function') {
+              chart.destroy();
+            }
+          });
+          state.chartInstances = [];
+        } catch (error) {
+          console.error('Failed to cleanup charts:', error);
+        }
+      };
+
+      /**
+       * Render velocity statistics
+       */
+      const renderVelocityStats = (sprintsData) => {
+        try {
+          if (!elements.velocityStats || !Array.isArray(sprintsData)) return;
+
+          // Implementation would depend on the actual data structure
+          // This is a placeholder for the velocity statistics rendering
+          if (typeof window.renderVelocityStats === 'function') {
+            window.renderVelocityStats(sprintsData);
+          }
+        } catch (error) {
+          console.error('Failed to render velocity stats:', error);
+        }
+      };
+
+      /**
+       * Render charts section
+       */
+      const renderCharts = (sprintsData, allSprintsData) => {
+        try {
+          cleanupCharts();
+          
+          if (!elements.chartSection) return;
+
+          // Implementation would depend on the actual charting logic
+          // This is a placeholder for the charts rendering
+          if (typeof window.renderCharts === 'function') {
+            const chartInstances = window.renderCharts(sprintsData, allSprintsData);
+            if (Array.isArray(chartInstances)) {
+              state.chartInstances = chartInstances;
+            }
+          }
+        } catch (error) {
+          console.error('Failed to render charts:', error);
+        }
+      };
+
+      /**
+       * Canvas optimization utilities
+       */
+      const canvasUtils = {
+        /**
+         * Draw chart to temporary high-quality canvas
+         */
+        drawToTempCanvas: (sourceCanvas) => {
+          try {
+            const maxDim = Math.max(sourceCanvas.width || 0, sourceCanvas.height || 0) || 1;
+            const targetMax = 1600;
+            const scale = Math.max(1, Math.min(2, targetMax / maxDim));
+            
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = Math.round(sourceCanvas.width * scale);
+            tempCanvas.height = Math.round(sourceCanvas.height * scale);
+            
+            const ctx = tempCanvas.getContext('2d');
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            ctx.drawImage(sourceCanvas, 0, 0, tempCanvas.width, tempCanvas.height);
+            
+            return tempCanvas;
+          } catch (error) {
+            console.error('Failed to draw to temp canvas:', error);
+            return sourceCanvas;
+          }
+        },
+
+        /**
+         * Convert canvas to optimized data URL
+         */
+        toOptimizedDataURL: (canvas) => {
+          try {
+            const tempCanvas = canvasUtils.drawToTempCanvas(canvas);
+            return tempCanvas.toDataURL('image/png');
+          } catch (error) {
+            console.error('Failed to convert canvas to data URL:', error);
+            return canvas.toDataURL('image/png');
+          }
+        },
+
+        /**
+         * Convert canvas to SVG for better PDF quality
+         */
+        toSVG: (canvas) => {
+          try {
+            const tempCanvas = canvasUtils.drawToTempCanvas(canvas);
+            const { width, height } = tempCanvas;
+
+            const svgNS = 'http://www.w3.org/2000/svg';
+            const xlinkNS = 'http://www.w3.org/1999/xlink';
+            
+            const svg = document.createElementNS(svgNS, 'svg');
+            svg.setAttribute('xmlns', svgNS);
+            svg.setAttribute('xmlns:xlink', xlinkNS);
+            svg.setAttribute('width', width);
+            svg.setAttribute('height', height);
+            svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+
+            // Background
+            const rect = document.createElementNS(svgNS, 'rect');
+            rect.setAttribute('width', '100%');
+            rect.setAttribute('height', '100%');
+            rect.setAttribute('fill', '#ffffff');
+            svg.appendChild(rect);
+
+            // Canvas content as image
+            const image = document.createElementNS(svgNS, 'image');
+            const dataUrl = tempCanvas.toDataURL('image/png');
+            image.setAttributeNS(xlinkNS, 'xlink:href', dataUrl);
+            image.setAttribute('href', dataUrl);
+            image.setAttribute('x', '0');
+            image.setAttribute('y', '0');
+            image.setAttribute('width', width);
+            image.setAttribute('height', height);
+            image.setAttribute('preserveAspectRatio', 'none');
+            svg.appendChild(image);
+
+            return new XMLSerializer().serializeToString(svg);
+          } catch (error) {
+            console.error('Failed to convert canvas to SVG:', error);
+            return null;
+          }
+        }
+      };
+
+      /**
+       * Export report as PDF
+       */
+      const exportPDF = async () => {
+        if (typeof window.jspdf === 'undefined') {
+          showError('PDF export functionality is not available.');
+          return;
+        }
+
+        try {
+          const { jsPDF } = window.jspdf;
+          const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
+          
+          // Prepare charts for export
+          const charts = [...state.chartInstances];
+          
+          // Configure charts for better PDF output
+          charts.forEach(chart => {
+            if (!chart) return;
+            
+            try {
+              // Store original legend filter
+              const legend = chart.options.plugins?.legend || (chart.options.plugins.legend = {});
+              const labels = legend.labels || (legend.labels = {});
+              chart._origLegendFilter = labels.filter;
+              labels.filter = item => item.text && !item.hidden;
+              
+              // Enable data labels for PDF
+              if (chart.options.plugins?.datalabels) {
+                chart.options.plugins.datalabels.display = true;
+              }
+              
+              chart.update();
+            } catch (error) {
+              console.error('Failed to configure chart for PDF:', error);
+            }
+          });
+
+          // Get PDF options
+          const pdfOptions = {
+            includePi: elements.pdfOptions.includePi?.checked ?? true,
+            includeDisruption: elements.pdfOptions.includeDisruption?.checked ?? true,
+            includeRating: elements.pdfOptions.includeRating?.checked ?? true,
+            includeThroughput: elements.pdfOptions.includeThroughput?.checked ?? true,
+            includeCycle: elements.pdfOptions.includeCycle?.checked ?? true
+          };
+
+          // PDF layout constants
+          const pageWidth = pdf.internal.pageSize.getWidth();
+          const pageHeight = pdf.internal.pageSize.getHeight();
+          const margin = 20;
+          let yPosition = margin;
+
+          // Process charts
+          const chartSection = elements.chartSection;
+          const children = chartSection ? Array.from(chartSection.children) : [];
+          
+          for (let i = 0; i < children.length; i += 2) {
+            const boardTitleElement = children[i];
+            const wrapper = children[i + 1];
+            const boardTitle = boardTitleElement?.textContent?.trim() || '';
+            const elements = wrapper ? Array.from(wrapper.children) : [];
+            
+            for (let j = 0; j < elements.length;) {
+              const chartTitleElement = elements[j];
+              if (!chartTitleElement || chartTitleElement.tagName !== 'H2') {
+                j += 1;
+                continue;
+              }
+              
+              // Find associated canvas
+              let canvas = null;
+              let nextIndex = j + 1;
+              while (nextIndex < elements.length) {
+                const candidate = elements[nextIndex];
+                nextIndex += 1;
+                if (candidate && candidate.tagName === 'CANVAS') {
+                  canvas = candidate;
+                  break;
+                }
+              }
+              j = nextIndex;
+              
+              if (!canvas) continue;
+              
+              // Check if this chart type should be included
+              const chartType = canvas.dataset.type;
+              const shouldInclude = (
+                (chartType === 'pi' && pdfOptions.includePi) ||
+                (chartType === 'disruption' && pdfOptions.includeDisruption) ||
+                (chartType === 'rating' && pdfOptions.includeRating) ||
+                (chartType === 'throughput' && pdfOptions.includeThroughput) ||
+                (chartType === 'cycle' && pdfOptions.includeCycle) ||
+                !chartType // Include charts without specific type
+              );
+              
+              if (!shouldInclude) continue;
+              
+              // Calculate dimensions
+              const availableWidth = pageWidth - margin * 2;
+              const chartHeight = canvas.height * availableWidth / canvas.width;
+              
+              // Add new page if needed
+              if (yPosition + 14 + chartHeight > pageHeight - margin) {
+                pdf.addPage();
+                yPosition = margin;
+              }
+              
+              // Add chart title
+              pdf.setFontSize(12);
+              pdf.text(`${boardTitle} - ${chartTitleElement.textContent.trim()}`, margin, yPosition);
+              yPosition += 14;
+              
+              // Add chart
+              let rendered = false;
+              
+              // Try SVG rendering first (better quality)
+              if (window.svg2pdf) {
+                try {
+                  const svgString = canvasUtils.toSVG(canvas);
+                  if (svgString) {
+                    const parser = new DOMParser();
+                    const svgDoc = parser.parseFromString(svgString, 'image/svg+xml');
+                    const svgElement = svgDoc.documentElement;
+                    await window.svg2pdf(svgElement, pdf, { 
+                      x: margin, 
+                      y: yPosition, 
+                      width: availableWidth, 
+                      height: chartHeight 
+                    });
+                    rendered = true;
+                  }
+                } catch (error) {
+                  console.warn('SVG conversion failed, falling back to JPEG:', error);
+                }
+              }
+              
+              // Fallback to JPEG
+              if (!rendered) {
+                const dataUrl = canvasUtils.toOptimizedDataURL(canvas);
+                pdf.addImage(dataUrl, 'JPEG', margin, yPosition, availableWidth, chartHeight);
+              }
+              
+              yPosition += chartHeight + 10;
+            }
+          }
+          
+          // Generate filename with current date
+          const dateString = new Date().toISOString().split('T')[0];
+          pdf.save(`KPI_Report_${dateString}.pdf`);
+          
+        } catch (error) {
+          console.error('Failed to export PDF:', error);
+          showError('Failed to export PDF. Please try again.');
+        } finally {
+          // Restore original chart configuration
+          const charts = [...state.chartInstances];
+          charts.forEach(chart => {
+            if (!chart) return;
+            
+            try {
+              const legendLabels = chart.options.plugins?.legend?.labels;
+              if (legendLabels && chart._origLegendFilter !== undefined) {
+                legendLabels.filter = chart._origLegendFilter;
+                delete chart._origLegendFilter;
+              }
+              
+              if (chart.options.plugins?.datalabels) {
+                chart.options.plugins.datalabels.display = false;
+              }
+              
+              chart.update();
+            } catch (error) {
+              console.error('Failed to restore chart configuration:', error);
+            }
+          });
+        }
+      };
+
+      /**
+       * Render disruption report (main render function)
+       */
+      const renderDisruptionReport = () => {
+        try {
+          renderSprintList();
+          
+          if (elements.sprintRow) {
+            if (state.sprints.length > 0) {
+              elements.sprintRow.classList.remove('hidden');
+            } else {
+              elements.sprintRow.classList.add('hidden');
+            }
+          }
+          
+          renderVelocityStats(state.allSprints);
+          renderCharts(state.sprints, state.allSprints);
+          
+          if (typeof Logger !== 'undefined') {
+            Logger.info('Disruption report rendered');
+          }
+        } catch (error) {
+          console.error('Failed to render disruption report:', error);
+          showError('Failed to render report. Please try again.');
+        }
+      };
+
+      // Public API
+      return {
+        init,
+        switchVersion,
+        createRatingZoneInfo,
+        exportPDF,
+        renderDisruptionReport,
+        extractSprintKey,
+        
+        // State accessors (for external scripts)
+        getState: () => ({ ...state }),
+        setState: (newState) => { Object.assign(state, newState); },
+        getConfig: () => ({ ...CONFIG }),
+        getElements: () => ({ ...elements })
+      };
+    })();
+
+    // Initialize application when DOM is ready
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', kpiReport.init);
+    } else {
+      kpiReport.init();
+    }
+
+    // Expose global functions for backward compatibility with external scripts
+    window.switchVersion = kpiReport.switchVersion;
+    window.createRatingZoneInfo = kpiReport.createRatingZoneInfo;
+    window.exportPDF = kpiReport.exportPDF;
+    window.extractSprintKey = kpiReport.extractSprintKey;
+    window.renderDisruptionReport = kpiReport.renderDisruptionReport;
+
+    // Expose kpiReport object for advanced usage
+    window.kpiReport = kpiReport;
+  </script>
+</body>
+</html>
