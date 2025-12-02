@@ -441,18 +441,18 @@
           aria-describedby="jiraDomainHelp"
         >
         
-        <label id="boardLabel" class="hidden" for="boardNum">Please select a Board:</label>
+        <label for="boardNum">Please select a Board:</label>
         <select 
           id="boardNum" 
           multiple 
           aria-label="Select boards for analysis"
-          class="hidden"
         ></select>
         
         <button 
           id="loadBtn" 
-          class="btn hidden" 
+          class="btn" 
           type="button"
+          onclick="loadData()"
           aria-label="Load disruption data"
         >
           Load Data
@@ -816,7 +816,53 @@
             placeholderValue: 'Select boards...',
             searchEnabled: true
           });
+          
+          // Add predefined board options for demo/testing
+          const predefinedBoards = [
+            { value: '4133', label: 'SCO Board 1 (4133)', selected: false },
+            { value: '4132', label: 'SCO Board 2 (4132)', selected: false },
+            { value: '4131', label: 'SCO Board 3 (4131)', selected: false },
+            { value: '2796', label: 'MCO Board 1 (2796)', selected: false },
+            { value: '2526', label: 'MCO Board 2 (2526)', selected: false },
+            { value: '6346', label: 'MCO Board 3 (6346)', selected: false },
+            { value: '6347', label: 'Butterfly Board 1 (6347)', selected: false },
+            { value: '6390', label: 'Butterfly Board 2 (6390)', selected: false },
+            { value: '4894', label: 'ACOSS Board (4894)', selected: false }
+          ];
+          
+          state.boardChoices.setChoices(predefinedBoards, 'value', 'label', true);
+        } else {
+          // Fallback for when Choices.js is not available
+          populateBoardSelectFallback();
         }
+      };
+      
+      /**
+       * Fallback board population when Choices.js is not available
+       */
+      const populateBoardSelectFallback = () => {
+        if (!elements.boardNum) return;
+        
+        elements.boardNum.innerHTML = '';
+        
+        const boards = [
+          { id: '4133', name: 'SCO Board 1' },
+          { id: '4132', name: 'SCO Board 2' },
+          { id: '4131', name: 'SCO Board 3' },
+          { id: '2796', name: 'MCO Board 1' },
+          { id: '2526', name: 'MCO Board 2' },
+          { id: '6346', name: 'MCO Board 3' },
+          { id: '6347', name: 'Butterfly Board 1' },
+          { id: '6390', name: 'Butterfly Board 2' },
+          { id: '4894', name: 'ACOSS Board' }
+        ];
+        
+        boards.forEach(board => {
+          const option = document.createElement('option');
+          option.value = board.id;
+          option.textContent = `${board.name} (${board.id})`;
+          elements.boardNum.appendChild(option);
+        });
       };
 
       /**
@@ -901,8 +947,105 @@
       };
 
       /**
-       * Show error message to user
+       * Load data from selected boards (demo implementation)
        */
+      const loadData = () => {
+        try {
+          const selectedBoards = getSelectedBoards();
+          
+          if (selectedBoards.length === 0) {
+            showError('Please select at least one board');
+            return;
+          }
+          
+          logger.info('Loading data for boards:', selectedBoards);
+          showError(`Demo: Would load data for boards: ${selectedBoards.join(', ')}`);
+          
+          // Generate sample data for demo
+          generateSampleData(selectedBoards);
+          
+        } catch (error) {
+          logger.error('Failed to load data:', error);
+          showError('Failed to load data. Please try again.');
+        }
+      };
+      
+      /**
+       * Get selected board IDs
+       */
+      const getSelectedBoards = () => {
+        if (state.boardChoices) {
+          return state.boardChoices.getValue(true);
+        } else {
+          // Fallback for native select
+          return Array.from(elements.boardNum.selectedOptions).map(option => option.value);
+        }
+      };
+      
+      /**
+       * Generate sample data for demonstration
+       */
+      const generateSampleData = (boardIds) => {
+        try {
+          // Generate sample sprint data
+          const sampleSprints = [];
+          
+          boardIds.forEach((boardId, boardIndex) => {
+            for (let i = 1; i <= 6; i++) {
+              const sprint = {
+                id: `${boardId}_${i}`,
+                name: `Sprint ${i}`,
+                boardId: boardId,
+                boardName: getBoardName(boardId),
+                metrics: {
+                  initiallyPlanned: 20 + Math.floor(Math.random() * 10),
+                  completed: 15 + Math.floor(Math.random() * 8),
+                  pulledIn: { storyPoints: Math.floor(Math.random() * 5), issues: Math.floor(Math.random() * 3) },
+                  blockedDays: { days: Math.floor(Math.random() * 3), issues: Math.floor(Math.random() * 2) },
+                  movedOut: { storyPoints: Math.floor(Math.random() * 4), issues: Math.floor(Math.random() * 2) },
+                  spillover: { storyPoints: Math.floor(Math.random() * 5), issues: Math.floor(Math.random() * 3) },
+                  piCompleted: Math.floor(Math.random() * 8) + 5,
+                  piNotCompleted: Math.floor(Math.random() * 3),
+                  otherCompleted: Math.floor(Math.random() * 10) + 8,
+                  otherNotCompleted: Math.floor(Math.random() * 4)
+                }
+              };
+              sampleSprints.push(sprint);
+            }
+          });
+          
+          // Update application state
+          state.sprints = sampleSprints.slice(-CONFIG.DISPLAY_SPRINT_COUNT);
+          state.allSprints = sampleSprints;
+          
+          logger.info('Sample data generated:', { sprints: sampleSprints.length });
+          
+          // Render the report
+          renderDisruptionReport();
+          
+        } catch (error) {
+          logger.error('Failed to generate sample data:', error);
+          showError('Failed to generate sample data');
+        }
+      };
+      
+      /**
+       * Get board name by ID
+       */
+      const getBoardName = (boardId) => {
+        const boardNames = {
+          '4133': 'SCO Board 1',
+          '4132': 'SCO Board 2', 
+          '4131': 'SCO Board 3',
+          '2796': 'MCO Board 1',
+          '2526': 'MCO Board 2',
+          '6346': 'MCO Board 3',
+          '6347': 'Butterfly Board 1',
+          '6390': 'Butterfly Board 2',
+          '4894': 'ACOSS Board'
+        };
+        return boardNames[boardId] || `Board ${boardId}`;
+      };
       const showError = (message) => {
         // This could be enhanced with a proper notification system
         alert(message);
@@ -972,13 +1115,50 @@
        */
       const renderVelocityStats = (sprintsData) => {
         try {
-          if (!elements.velocityStats || !Array.isArray(sprintsData)) return;
-
-          // Implementation would depend on the actual data structure
-          // This is a placeholder for the velocity statistics rendering
-          if (typeof window.renderVelocityStats === 'function') {
-            window.renderVelocityStats(sprintsData);
+          if (!elements.velocityStats || !Array.isArray(sprintsData) || sprintsData.length === 0) {
+            if (elements.velocityStats) {
+              elements.velocityStats.innerHTML = '';
+            }
+            return;
           }
+
+          // Calculate velocity statistics
+          const velocities = sprintsData.map(sprint => sprint.metrics?.completed || 0);
+          const average = velocities.reduce((a, b) => a + b, 0) / velocities.length;
+          const min = Math.min(...velocities);
+          const max = Math.max(...velocities);
+          const standardDeviation = Math.sqrt(
+            velocities.reduce((sum, v) => sum + Math.pow(v - average, 2), 0) / velocities.length
+          );
+
+          elements.velocityStats.innerHTML = `
+            <h2>Velocity Statistics</h2>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin: 1rem 0;">
+              <div style="background: #f9fafb; padding: 1rem; border-radius: 6px; border: 1px solid #e5e7eb;">
+                <div style="color: #6b7280; font-size: 0.875rem; margin-bottom: 0.5rem;">Average Velocity</div>
+                <div style="font-size: 1.75rem; font-weight: 600; color: #1f2937;">${average.toFixed(1)}</div>
+                <div style="color: #6b7280; font-size: 0.75rem;">Story Points</div>
+              </div>
+              <div style="background: #f9fafb; padding: 1rem; border-radius: 6px; border: 1px solid #e5e7eb;">
+                <div style="color: #6b7280; font-size: 0.875rem; margin-bottom: 0.5rem;">Min Velocity</div>
+                <div style="font-size: 1.75rem; font-weight: 600; color: #ef4444;">${min}</div>
+                <div style="color: #6b7280; font-size: 0.75rem;">Story Points</div>
+              </div>
+              <div style="background: #f9fafb; padding: 1rem; border-radius: 6px; border: 1px solid #e5e7eb;">
+                <div style="color: #6b7280; font-size: 0.875rem; margin-bottom: 0.5rem;">Max Velocity</div>
+                <div style="font-size: 1.75rem; font-weight: 600; color: #10b981;">${max}</div>
+                <div style="color: #6b7280; font-size: 0.75rem;">Story Points</div>
+              </div>
+              <div style="background: #f9fafb; padding: 1rem; border-radius: 6px; border: 1px solid #e5e7eb;">
+                <div style="color: #6b7280; font-size: 0.875rem; margin-bottom: 0.5rem;">Std Deviation</div>
+                <div style="font-size: 1.75rem; font-weight: 600; color: #6366f1;">${standardDeviation.toFixed(1)}</div>
+                <div style="color: #6b7280; font-size: 0.75rem;">Story Points</div>
+              </div>
+            </div>
+            <div style="margin: 1rem 0; padding: 1rem; background: #fef3c7; border-radius: 6px; border: 1px solid #f59e0b;">
+              <strong>Note:</strong> This is sample data for demonstration. Connect to your Jira instance using the API version for real metrics.
+            </div>
+          `;
         } catch (error) {
           console.error('Failed to render velocity stats:', error);
         }
@@ -991,18 +1171,181 @@
         try {
           cleanupCharts();
           
-          if (!elements.chartSection) return;
-
-          // Implementation would depend on the actual charting logic
-          // This is a placeholder for the charts rendering
-          if (typeof window.renderCharts === 'function') {
-            const chartInstances = window.renderCharts(sprintsData, allSprintsData);
-            if (Array.isArray(chartInstances)) {
-              state.chartInstances = chartInstances;
+          if (!elements.chartSection || !Array.isArray(sprintsData) || sprintsData.length === 0) {
+            if (elements.chartSection) {
+              elements.chartSection.innerHTML = '<h2>Charts</h2><p style="color: #6b7280;">No data available for charts. Load sprint data to see visualizations.</p>';
             }
+            return;
           }
+
+          elements.chartSection.innerHTML = '<h2>Sprint Analytics</h2>';
+          
+          // Group data by board
+          const boardData = {};
+          sprintsData.forEach(sprint => {
+            if (!boardData[sprint.boardId]) {
+              boardData[sprint.boardId] = {
+                name: sprint.boardName,
+                sprints: []
+              };
+            }
+            boardData[sprint.boardId].sprints.push(sprint);
+          });
+
+          // Render charts for each board
+          Object.values(boardData).forEach(board => {
+            const boardSection = document.createElement('div');
+            boardSection.style.marginTop = '2rem';
+            
+            const boardTitle = document.createElement('h3');
+            boardTitle.textContent = board.name;
+            boardSection.appendChild(boardTitle);
+            
+            // Create velocity chart if Chart.js is available
+            if (typeof Chart !== 'undefined') {
+              try {
+                const chartContainer = document.createElement('div');
+                chartContainer.style.marginTop = '1rem';
+                
+                const canvas = document.createElement('canvas');
+                canvas.width = 600;
+                canvas.height = 300;
+                canvas.dataset.type = 'velocity';
+                
+                const ctx = canvas.getContext('2d');
+                
+                const chart = new Chart(ctx, {
+                  type: 'line',
+                  data: {
+                    labels: board.sprints.map(s => s.name),
+                    datasets: [{
+                      label: 'Completed Story Points',
+                      data: board.sprints.map(s => s.metrics.completed),
+                      borderColor: '#6366f1',
+                      backgroundColor: 'rgba(99, 102, 241, 0.1)',
+                      borderWidth: 2,
+                      tension: 0.3,
+                      fill: true,
+                      pointBackgroundColor: '#6366f1',
+                      pointBorderColor: '#ffffff',
+                      pointBorderWidth: 2,
+                      pointRadius: 4
+                    }]
+                  },
+                  options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                      title: {
+                        display: true,
+                        text: `${board.name} - Velocity Trend`,
+                        font: { size: 16, weight: 'bold' }
+                      },
+                      legend: {
+                        display: true,
+                        position: 'top'
+                      }
+                    },
+                    scales: {
+                      y: {
+                        beginAtZero: true,
+                        title: {
+                          display: true,
+                          text: 'Story Points'
+                        },
+                        grid: {
+                          color: 'rgba(0, 0, 0, 0.1)'
+                        }
+                      },
+                      x: {
+                        title: {
+                          display: true,
+                          text: 'Sprint'
+                        },
+                        grid: {
+                          color: 'rgba(0, 0, 0, 0.1)'
+                        }
+                      }
+                    },
+                    elements: {
+                      point: {
+                        hoverRadius: 6
+                      }
+                    },
+                    interaction: {
+                      intersect: false,
+                      mode: 'index'
+                    }
+                  }
+                });
+                
+                state.chartInstances.push(chart);
+                chartContainer.appendChild(canvas);
+                boardSection.appendChild(chartContainer);
+                
+              } catch (error) {
+                console.warn('Failed to create chart for board', board.name, error);
+                
+                // Fallback: simple data table
+                const fallbackDiv = document.createElement('div');
+                fallbackDiv.innerHTML = `
+                  <h4>Velocity Data</h4>
+                  <table style="width: 100%; border-collapse: collapse; margin: 1rem 0;">
+                    <thead>
+                      <tr style="background: #f3f4f6;">
+                        <th style="padding: 0.5rem; border: 1px solid #e5e7eb;">Sprint</th>
+                        <th style="padding: 0.5rem; border: 1px solid #e5e7eb;">Completed SP</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${board.sprints.map(sprint => `
+                        <tr>
+                          <td style="padding: 0.5rem; border: 1px solid #e5e7eb;">${sprint.name}</td>
+                          <td style="padding: 0.5rem; border: 1px solid #e5e7eb; text-align: center;">${sprint.metrics.completed}</td>
+                        </tr>
+                      `).join('')}
+                    </tbody>
+                  </table>
+                `;
+                boardSection.appendChild(fallbackDiv);
+              }
+            } else {
+              // No Chart.js available, show data table
+              const fallbackDiv = document.createElement('div');
+              fallbackDiv.innerHTML = `
+                <h4>Sprint Metrics</h4>
+                <table style="width: 100%; border-collapse: collapse; margin: 1rem 0;">
+                  <thead>
+                    <tr style="background: #f3f4f6;">
+                      <th style="padding: 0.5rem; border: 1px solid #e5e7eb;">Sprint</th>
+                      <th style="padding: 0.5rem; border: 1px solid #e5e7eb;">Planned</th>
+                      <th style="padding: 0.5rem; border: 1px solid #e5e7eb;">Completed</th>
+                      <th style="padding: 0.5rem; border: 1px solid #e5e7eb;">PI Completed</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${board.sprints.map(sprint => `
+                      <tr>
+                        <td style="padding: 0.5rem; border: 1px solid #e5e7eb;">${sprint.name}</td>
+                        <td style="padding: 0.5rem; border: 1px solid #e5e7eb; text-align: center;">${sprint.metrics.initiallyPlanned}</td>
+                        <td style="padding: 0.5rem; border: 1px solid #e5e7eb; text-align: center; font-weight: bold;">${sprint.metrics.completed}</td>
+                        <td style="padding: 0.5rem; border: 1px solid #e5e7eb; text-align: center;">${sprint.metrics.piCompleted}</td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              `;
+              boardSection.appendChild(fallbackDiv);
+            }
+            
+            elements.chartSection.appendChild(boardSection);
+          });
+          
         } catch (error) {
           console.error('Failed to render charts:', error);
+          if (elements.chartSection) {
+            elements.chartSection.innerHTML = '<h2>Charts</h2><p style="color: #ef4444;">Failed to render charts. Please try again.</p>';
+          }
         }
       };
 
@@ -1279,6 +1622,7 @@
        */
       const renderDisruptionReport = () => {
         try {
+          renderMetricsTable();
           renderSprintList();
           
           if (elements.sprintRow) {
@@ -1300,6 +1644,87 @@
           showError('Failed to render report. Please try again.');
         }
       };
+      
+      /**
+       * Render metrics table with actual data
+       */
+      const renderMetricsTable = () => {
+        try {
+          if (!elements.metricsBody) return;
+
+          elements.metricsBody.innerHTML = '';
+          
+          if (state.sprints.length === 0) {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+              <td colspan="12" class="text-center text-muted">
+                Select boards and click "Load Data" to see sprint metrics
+              </td>
+            `;
+            elements.metricsBody.appendChild(row);
+            return;
+          }
+
+          state.sprints.forEach(sprint => {
+            const row = document.createElement('tr');
+            const metrics = sprint.metrics;
+            
+            row.innerHTML = `
+              <td><strong>${sprint.name}</strong><br><small style="color: #6b7280;">${sprint.boardName}</small></td>
+              <td>${metrics.initiallyPlanned}</td>
+              <td><strong>${metrics.completed}</strong></td>
+              <td>${metrics.pulledIn.storyPoints} / ${metrics.pulledIn.issues}</td>
+              <td>${metrics.blockedDays.days} / ${metrics.blockedDays.issues}</td>
+              <td>${metrics.movedOut.storyPoints} / ${metrics.movedOut.issues}</td>
+              <td>${metrics.spillover.storyPoints} / ${metrics.spillover.issues}</td>
+              <td><span style="color: #10b981;">${metrics.piCompleted}</span></td>
+              <td><span style="color: #ef4444;">${metrics.piNotCompleted}</span></td>
+              <td><span style="color: #10b981;">${metrics.otherCompleted}</span></td>
+              <td><span style="color: #ef4444;">${metrics.otherNotCompleted}</span></td>
+              <td>
+                <button class="toggle-button" onclick="kpiReport.showSprintDetails('${sprint.id}')">
+                  Details
+                </button>
+              </td>
+            `;
+            
+            elements.metricsBody.appendChild(row);
+          });
+        } catch (error) {
+          console.error('Failed to render metrics table:', error);
+        }
+      };
+      
+      /**
+       * Show sprint details (placeholder)
+       */
+      const showSprintDetails = (sprintId) => {
+        const sprint = state.sprints.find(s => s.id === sprintId);
+        if (sprint) {
+          const details = `Sprint Details:
+
+Sprint: ${sprint.name}
+Board: ${sprint.boardName}
+
+Story Points:
+- Initially Planned: ${sprint.metrics.initiallyPlanned}
+- Completed: ${sprint.metrics.completed}
+- Spillover: ${sprint.metrics.spillover.storyPoints}
+
+Issues:
+- PI Completed: ${sprint.metrics.piCompleted}
+- PI Not Completed: ${sprint.metrics.piNotCompleted}
+- Other Completed: ${sprint.metrics.otherCompleted}
+- Other Not Completed: ${sprint.metrics.otherNotCompleted}
+
+Disruptions:
+- Pulled In: ${sprint.metrics.pulledIn.storyPoints} SP / ${sprint.metrics.pulledIn.issues} issues
+- Moved Out: ${sprint.metrics.movedOut.storyPoints} SP / ${sprint.metrics.movedOut.issues} issues
+- Blocked Days: ${sprint.metrics.blockedDays.days} days / ${sprint.metrics.blockedDays.issues} issues`;
+          
+          alert(details);
+        }
+      };
 
       // Public API
       return {
@@ -1309,6 +1734,8 @@
         exportPDF,
         renderDisruptionReport,
         extractSprintKey,
+        loadData,
+        showSprintDetails,
         
         // State accessors (for external scripts)
         getState: () => ({ ...state }),
@@ -1331,6 +1758,7 @@
     window.exportPDF = kpiReport.exportPDF;
     window.extractSprintKey = kpiReport.extractSprintKey;
     window.renderDisruptionReport = kpiReport.renderDisruptionReport;
+    window.loadData = kpiReport.loadData;
 
     // Expose kpiReport object for advanced usage
     window.kpiReport = kpiReport;
