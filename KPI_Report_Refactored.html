@@ -4,7 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Stakeholder PI Status Report – KPI Report</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet" crossorigin="anonymous">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css">
   <link rel="stylesheet" href="public/tailwind.css">
   <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
@@ -53,7 +55,7 @@
       --shadow-card: 0 2px 12px var(--color-border-light);
       
       /* Typography */
-      --font-family-base: 'Inter', Arial, sans-serif;
+      --font-family-base: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
       --font-size-xs: 0.85em;
       --font-size-sm: 0.9em;
       --font-size-base: 0.95em;
@@ -352,6 +354,23 @@
       color: var(--color-text-secondary);
     }
 
+    /* Font Loading Fallbacks */
+    @font-face {
+      font-family: 'Inter-fallback';
+      font-style: normal;
+      font-weight: 400;
+      font-display: swap;
+      src: local('Arial'), local('Helvetica'), local('system-ui');
+    }
+
+    @font-face {
+      font-family: 'Inter-fallback';
+      font-style: normal;
+      font-weight: 600;
+      font-display: swap;
+      src: local('Arial'), local('Helvetica'), local('system-ui');
+    }
+
     /* Utility Classes */
     .hidden {
       display: none !important;
@@ -588,6 +607,41 @@
   <!-- Application Script -->
   <script>
     'use strict';
+
+    // Font Loading Detection and Fallback
+    (() => {
+      const checkFontLoading = () => {
+        // Check if Inter font is available
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        
+        // Test with fallback font first
+        context.font = '12px Arial, sans-serif';
+        const fallbackWidth = context.measureText('abcdefghijklmnopqrstuvwxyz').width;
+        
+        // Test with Inter font
+        context.font = '12px Inter, Arial, sans-serif';
+        const interWidth = context.measureText('abcdefghijklmnopqrstuvwxyz').width;
+        
+        // If widths are the same, Inter probably didn't load
+        if (Math.abs(fallbackWidth - interWidth) < 1) {
+          console.warn('Inter font may not have loaded, using system fonts');
+          // Update CSS custom property to use fallback
+          document.documentElement.style.setProperty(
+            '--font-family-base', 
+            '-apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Helvetica Neue", Arial, sans-serif'
+          );
+        }
+      };
+
+      // Check font loading after a delay
+      setTimeout(checkFontLoading, 100);
+      
+      // Also check when fonts finish loading
+      if (document.fonts && document.fonts.ready) {
+        document.fonts.ready.then(checkFontLoading);
+      }
+    })();
 
     /**
      * KPI Report Application
