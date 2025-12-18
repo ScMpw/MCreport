@@ -2,25 +2,45 @@
 
 ```mermaid
 flowchart TD
-    U[User in KPI_Report.html] --> Init[Page loads<br/>populateBoards()]
-    Init --> Boards[Fetch Jira boards<br/>Jira.fetchBoardsByJql]
-    U --> |select domain & boards| Boards
-    Boards --> Selection[Choices.js multi-select<br/>board/group IDs ready]
-    U --> |click Load Data| Load[loadDisruption()]
-    Load --> Fetch[fetchDisruptionData(domain, boards)]
-    Fetch --> Velocity[Fetch velocity/sprint list<br/>rapid/charts APIs<br/>fallback agile sprint list]
-    Velocity --> SprintReports[Iterate closed sprints<br/>rapid/charts/sprintreport]
-    SprintReports --> Events[Build sprint events<br/>completed/added/removed<br/>PI label detection]
-    Events --> Issues[Fetch issue details + changelog<br/>blocked periods, cycle time,<br/>initial/completed SP]
-    Issues --> Metrics[Disruption.calculateDisruptionMetrics<br/>per sprint]
-    Metrics --> Aggregate[Aggregate per board/group<br/>DISPLAY_SPRINT_COUNT window]
-    Aggregate --> RenderTable[renderTable() rows + details<br/>renderSprintList()]
-    Aggregate --> Charts[renderCharts() → renderBoardCharts()]
-    Charts --> ChartJS[Chart.js visualizations<br/>rating zones, throughput,<br/>cycle time, disruption]
-    Aggregate --> Stats[renderVelocityStats()<br/>throughput & cycle time]
-    U --> |Download PDF options| PDF[exportPDF()]
-    PDF --> Prep[Enable datalabels & filtered legends<br/>collect chart canvases]
-    Prep --> Output[Write per-board charts to PDF<br/>svg2pdf fallback JPEG<br/>save KPI_Report_<date>.pdf]
+    U([User in KPI_Report.html])
+    Init[Page loads\npopulateBoards()]
+    Boards[Fetch Jira boards\nJira.fetchBoardsByJql]
+    Selection[Choices.js multi-select\nboard/group IDs ready]
+    Load[loadDisruption()]
+    Fetch[fetchDisruptionData(domain, boards)]
+    Velocity[Fetch velocity/sprint list\nrapid/charts APIs\nfallback agile sprint list]
+    SprintReports[Iterate closed sprints\nrapid/charts/sprintreport]
+    Events[Build sprint events\ncompleted/added/removed\nPI label detection]
+    Issues[Fetch issue details + changelog\nblocked periods, cycle time,\ninitial/completed SP]
+    Metrics[Disruption.calculateDisruptionMetrics\nper sprint]
+    Aggregate[Aggregate per board/group\nDISPLAY_SPRINT_COUNT window]
+    RenderTable[renderTable() rows + details\nrenderSprintList()]
+    Charts[renderCharts() -> renderBoardCharts()]
+    ChartJS[Chart.js visualizations\nrating zones, throughput,\ncycle time, disruption]
+    Stats[renderVelocityStats()\nthroughput & cycle time]
+    PDF[exportPDF()]
+    Prep[Enable datalabels & filtered legends\ncollect chart canvases]
+    Output[Write per-board charts to PDF\nsvg2pdf fallback JPEG\nsave KPI_Report_<date>.pdf]
+
+    U --> Init
+    Init --> Boards
+    U -->|select domain & boards| Boards
+    Boards --> Selection
+    U -->|click Load Data| Load
+    Load --> Fetch
+    Fetch --> Velocity
+    Velocity --> SprintReports
+    SprintReports --> Events
+    Events --> Issues
+    Issues --> Metrics
+    Metrics --> Aggregate
+    Aggregate --> RenderTable
+    Aggregate --> Charts
+    Charts --> ChartJS
+    Aggregate --> Stats
+    U -->|Download PDF options| PDF
+    PDF --> Prep
+    Prep --> Output
 ```
 
 **Key interactions**
