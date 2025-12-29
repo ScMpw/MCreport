@@ -28,17 +28,6 @@
   // Track in-flight requests so duplicate calls can share the same promise.
   const pendingRequests = new Map();
 
-  function normalizeBaseUrl(url = '') {
-    return url.replace(/\/+$/, '');
-  }
-
-  function resolveBaseUrl(jiraDomain, baseUrl) {
-    if (baseUrl) {
-      return normalizeBaseUrl(baseUrl);
-    }
-    return `https://${jiraDomain}`;
-  }
-
   async function fetchWithDedup(key, fetchFn) {
     if (pendingRequests.has(key)) {
       return pendingRequests.get(key);
@@ -88,30 +77,27 @@
   }
 
   // Convenience helpers for common Jira lookups
-  async function fetchIssue(jiraDomain, issueId, { ttl = CACHE_TTL, forceRefresh = false, baseUrl } = {}) {
+  async function fetchIssue(jiraDomain, issueId, { ttl = CACHE_TTL, forceRefresh = false } = {}) {
     const key = `issue:${jiraDomain}:${issueId}`;
     if (forceRefresh) clearCache(key);
-    const resolvedBaseUrl = resolveBaseUrl(jiraDomain, baseUrl);
-    return fetchWithCache(key, `${resolvedBaseUrl}/rest/api/2/issue/${issueId}`, ttl);
+    return fetchWithCache(key, `https://${jiraDomain}/rest/api/2/issue/${issueId}`, ttl);
   }
 
-  async function fetchSprint(jiraDomain, sprintId, { ttl = CACHE_TTL, forceRefresh = false, baseUrl } = {}) {
+  async function fetchSprint(jiraDomain, sprintId, { ttl = CACHE_TTL, forceRefresh = false } = {}) {
     const key = `sprint:${jiraDomain}:${sprintId}`;
     if (forceRefresh) clearCache(key);
-    const resolvedBaseUrl = resolveBaseUrl(jiraDomain, baseUrl);
-    return fetchWithCache(key, `${resolvedBaseUrl}/rest/agile/1.0/sprint/${sprintId}`, ttl);
+    return fetchWithCache(key, `https://${jiraDomain}/rest/agile/1.0/sprint/${sprintId}`, ttl);
   }
 
-  async function fetchBoardsByJql(jiraDomain, { boardIds = DEFAULT_BOARD_IDS, baseUrl } = {}) {
+  async function fetchBoardsByJql(jiraDomain, { boardIds = DEFAULT_BOARD_IDS } = {}) {
     logger.info('Fetching boards for domain', jiraDomain);
-    const resolvedBaseUrl = resolveBaseUrl(jiraDomain, baseUrl);
 
     const results = [];
     for (const id of boardIds) {
       try {
         const board = await fetchWithCache(
           `board:${jiraDomain}:${id}`,
-          `${resolvedBaseUrl}/rest/agile/1.0/board/${id}`
+          `https://${jiraDomain}/rest/agile/1.0/board/${id}`
         );
         results.push({ id: board.id, name: board.name });
       } catch (e) {
@@ -123,15 +109,10 @@
     return results;
   }
 
-  async function fetchIssuesBatch(
-    jiraDomain,
-    issueKeys = [],
-    { ttl = CACHE_TTL, forceRefresh = false, baseUrl } = {}
-  ) {
+  async function fetchIssuesBatch(jiraDomain, issueKeys = [], { ttl = CACHE_TTL, forceRefresh = false } = {}) {
     const BATCH_SIZE = 100;
     const issueMap = new Map();
     const keysToFetch = [];
-    const resolvedBaseUrl = resolveBaseUrl(jiraDomain, baseUrl);
 
     for (const key of issueKeys) {
       const cacheKey = `issue:${jiraDomain}:${key}`;
@@ -155,7 +136,7 @@
         expand: ['changelog']
       };
       const data = await fetchWithDedup(`search:${jiraDomain}:${batch.join(',')}`, async () => {
-        const searchUrl = `${resolvedBaseUrl}/rest/api/3/search`;
+        const searchUrl = `https://${jiraDomain}/rest/api/3/search`;
         const fieldList = payload.fields.filter(Boolean);
         const expandList = payload.expand.filter(Boolean);
 
