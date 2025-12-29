@@ -162,15 +162,36 @@ let boardChoices = new Choices(boardSelect, {
   searchPlaceholderValue: 'Search boards...'
 });
 
+function initJiraDomain() {
+  const params = new URLSearchParams(window.location.search);
+  const urlDomain = params.get('jiraDomain');
+  const host = window.location.hostname || '';
+  if (urlDomain) {
+    jiraDomain = urlDomain;
+    return;
+  }
+  if (host.includes('atlassian.net')) {
+    jiraDomain = host;
+  }
+}
+
 function createPlaceholder(label = 'Select a board…') {
   return { value: '', label, disabled: true, selected: true };
+}
+
+function buildCorsHint() {
+  const origin = window.location.origin;
+  const sameHost = origin.includes(jiraDomain);
+  return sameHost
+    ? ''
+    : ' Open this dashboard from your Jira domain or via a proxy that allows cross-origin requests.';
 }
 
 async function populateBoards() {
   boardChoices.clearChoices();
   boardChoices.setChoices([createPlaceholder()], 'value', 'label', true);
   try {
-    const boards = await Jira.fetchBoardsByJql(DEFAULT_JIRA_DOMAIN);
+    const boards = await Jira.fetchBoardsByJql(jiraDomain);
     if (!boards.length) {
       boardChoices.setChoices([
         createPlaceholder('No boards available')
@@ -184,11 +205,12 @@ async function populateBoards() {
   } catch (e) {
     console.error('Failed to load boards', e);
     boardChoices.setChoices([
-      createPlaceholder('Failed to load boards')
+      createPlaceholder(`Failed to load boards.${buildCorsHint()}`)
     ], 'value', 'label', true);
   }
 }
 
+initJiraDomain();
 populateBoards();
 
 boardSelect.addEventListener('change', () => {
