@@ -154,7 +154,7 @@
   <script src="src/jira.js"></script>
   <script>
 const DEFAULT_JIRA_DOMAIN = 'aldi-sued.atlassian.net';
-let jiraDomain = DEFAULT_JIRA_DOMAIN, boardNum = '', sprints = [], closedSprintsSorted = [];
+let jiraDomain = DEFAULT_JIRA_DOMAIN, jiraBaseUrl = '', boardNum = '', sprints = [], closedSprintsSorted = [];
 const boardSelect = document.getElementById('boardNum');
 let boardChoices = new Choices(boardSelect, {
   shouldSort: false,
@@ -165,10 +165,13 @@ let boardChoices = new Choices(boardSelect, {
 function initJiraDomain() {
   const params = new URLSearchParams(window.location.search);
   const urlDomain = params.get('jiraDomain');
+  const urlBase = params.get('jiraBaseUrl');
   const host = window.location.hostname || '';
   if (urlDomain) {
     jiraDomain = urlDomain;
-    return;
+  }
+  if (urlBase) {
+    jiraBaseUrl = normalizeBaseUrl(urlBase);
   }
   if (host.includes('atlassian.net')) {
     jiraDomain = host;
@@ -181,17 +184,25 @@ function createPlaceholder(label = 'Select a board…') {
 
 function buildCorsHint() {
   const origin = window.location.origin;
-  const sameHost = origin.includes(jiraDomain);
+  const sameHost = getJiraBaseUrl().startsWith(origin);
   return sameHost
     ? ''
     : ' Open this dashboard from your Jira domain or via a proxy that allows cross-origin requests.';
+}
+
+function normalizeBaseUrl(url = '') {
+  return url.replace(/\/+$/, '');
+}
+
+function getJiraBaseUrl() {
+  return normalizeBaseUrl(jiraBaseUrl || `https://${jiraDomain}`);
 }
 
 async function populateBoards() {
   boardChoices.clearChoices();
   boardChoices.setChoices([createPlaceholder()], 'value', 'label', true);
   try {
-    const boards = await Jira.fetchBoardsByJql(jiraDomain);
+    const boards = await Jira.fetchBoardsByJql(jiraDomain, { baseUrl: getJiraBaseUrl() });
     if (!boards.length) {
       boardChoices.setChoices([
         createPlaceholder('No boards available')
@@ -280,7 +291,7 @@ function switchVersion(page) {
 // triggers a CORS preflight when issued as POST from GitHub Pages. Prefer GET
 // to avoid the failing preflight and fall back to POST for large queries.
 async function jiraSearch(jql, fields = [], options = {}) {
-  const searchUrl = `https://${jiraDomain}/rest/api/3/search/jql`;
+  const searchUrl = `${getJiraBaseUrl()}/rest/api/3/search/jql`;
   const maxResults = options.maxResults || 500;
   let startAt = options.startAt || 0;
   const collected = [];
@@ -423,7 +434,7 @@ function addTooltipListeners() {
 
     // --- NEW: FETCH JIRA VELOCITY REPORT (Greenhopper REST API) ---
     async function fetchVelocityFromReport(jiraDomain, boardNum) {
-      const url = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/velocity?rapidViewId=${boardNum}`;
+    const url = `${getJiraBaseUrl()}/rest/greenhopper/1.0/rapid/charts/velocity?rapidViewId=${boardNum}`;
       const resp = await fetch(url, { credentials: "include" });
       if (!resp.ok) {
         alert("Failed to fetch velocity report. Are you logged in to Jira?");
@@ -447,7 +458,7 @@ function addTooltipListeners() {
       // Fallback: if fewer than 3 velocities are non-zero, try sprint reports
       if (velocities.filter(v => v > 0).length < 3) {
         velocities = await Promise.all(closed.map(async s => {
-          const surl = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/sprintreport?rapidViewId=${boardNum}&sprintId=${s.id}`;
+          const surl = `${getJiraBaseUrl()}/rest/greenhopper/1.0/rapid/charts/sprintreport?rapidViewId=${boardNum}&sprintId=${s.id}`;
           try {
             const r = await fetch(surl, { credentials: "include" });
             if (!r.ok) return 0;
@@ -463,13 +474,13 @@ function addTooltipListeners() {
     async function fetchBoardTeam() {
       boardTeams = [];
       try {
-        const cfgUrl = `https://${jiraDomain}/rest/agile/1.0/board/${boardNum}/configuration`;
+        const cfgUrl = `${getJiraBaseUrl()}/rest/agile/1.0/board/${boardNum}/configuration`;
         const cfgResp = await fetch(cfgUrl, { credentials: "include" });
         if (!cfgResp.ok) return;
         const cfg = await cfgResp.json();
         const filterId = cfg.filter && cfg.filter.id;
         if (!filterId) return;
-        const fResp = await fetch(`https://${jiraDomain}/rest/api/3/filter/${filterId}`, { credentials: "include" });
+        const fResp = await fetch(`${getJiraBaseUrl()}/rest/api/3/filter/${filterId}`, { credentials: "include" });
         if (!fResp.ok) return;
         const fd = await fResp.json();
         const jql = fd.jql || '';
@@ -505,7 +516,7 @@ function addTooltipListeners() {
       let total = null;
 
       while (true) {
-        const url = `https://${jiraDomain}/rest/agile/1.0/board/${boardNum}/sprint?maxResults=${maxResults}&startAt=${startAt}`;
+        const url = `${getJiraBaseUrl()}/rest/agile/1.0/board/${boardNum}/sprint?maxResults=${maxResults}&startAt=${startAt}`;
         console.log("Fetching sprints:", url);
         try {
           const resp = await fetch(url, { credentials: "include" });
