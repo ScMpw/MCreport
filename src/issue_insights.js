@@ -15,8 +15,12 @@
   const focusStatusEl = document.getElementById('focusStatuses');
   const statusDurationChartEl = document.getElementById('statusDurationChart');
   const completionChartEl = document.getElementById('completionChart');
+  const currentStatusChartEl = document.getElementById('currentStatusChart');
+  const currentStatusTableBody = document.getElementById('currentStatusTable');
+  const transitionCountsBody = document.getElementById('transitionCountsBody');
   let statusChart;
   let completionChart;
+  let currentStatusChart;
 
   initJiraDomain();
 
@@ -160,6 +164,26 @@
     return '13+';
   }
 
+  function normalizeStatusName(value) {
+    const name = String(value || '').trim();
+    return name || 'Unknown';
+  }
+
+  function targetTransitionBucket(statusName) {
+    const lowered = String(statusName || '').toLowerCase();
+    if (lowered.includes('in development')) return 'In Development';
+    if (lowered.includes('closed')) return 'Closed';
+    return null;
+  }
+
+  function buildColorPalette(count) {
+    if (count <= 0) return [];
+    return Array.from({ length: count }, (_, index) => {
+      const hue = Math.round((360 / count) * index);
+      return `hsl(${hue}, 70%, 60%)`;
+    });
+  }
+
   function renderStatusDurationTable(issues, sprintStart, sprintEnd) {
     const totals = new Map();
     const counts = new Map();
@@ -218,6 +242,89 @@
           }
         }
       });
+    }
+  }
+
+  function renderStatusMixAndTransitions(issues) {
+    const statusCounts = new Map();
+    const transitionCounts = new Map();
+
+    issues.forEach(issue => {
+      const statusName = normalizeStatusName(issue.fields && issue.fields.status && issue.fields.status.name);
+      statusCounts.set(statusName, (statusCounts.get(statusName) || 0) + 1);
+
+      const changes = getStatusHistory(issue);
+      changes.forEach(change => {
+        const toStatus = normalizeStatusName(change.to);
+        const fromStatus = normalizeStatusName(change.from);
+        const bucket = targetTransitionBucket(toStatus);
+        if (!bucket) return;
+        const label = `${fromStatus} → ${toStatus}`;
+        transitionCounts.set(label, (transitionCounts.get(label) || 0) + 1);
+      });
+    });
+
+    const statusRows = Array.from(statusCounts.entries())
+      .map(([status, count]) => ({ status, count }))
+      .sort((a, b) => b.count - a.count || a.status.localeCompare(b.status));
+
+    if (currentStatusTableBody) {
+      currentStatusTableBody.innerHTML = '';
+      statusRows.forEach(row => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${row.status}</td>
+          <td>${row.count}</td>
+        `;
+        currentStatusTableBody.appendChild(tr);
+      });
+      if (!statusRows.length) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td colspan="2">No status data available.</td>';
+        currentStatusTableBody.appendChild(tr);
+      }
+    }
+
+    if (currentStatusChartEl) {
+      if (currentStatusChart) currentStatusChart.destroy();
+      currentStatusChart = new Chart(currentStatusChartEl, {
+        type: 'pie',
+        data: {
+          labels: statusRows.map(row => row.status),
+          datasets: [{
+            data: statusRows.map(row => row.count),
+            backgroundColor: buildColorPalette(statusRows.length)
+          }]
+        },
+        options: {
+          plugins: {
+            legend: {
+              position: 'bottom'
+            }
+          }
+        }
+      });
+    }
+
+    const transitionRows = Array.from(transitionCounts.entries())
+      .map(([transition, count]) => ({ transition, count }))
+      .sort((a, b) => b.count - a.count || a.transition.localeCompare(b.transition));
+
+    if (transitionCountsBody) {
+      transitionCountsBody.innerHTML = '';
+      transitionRows.forEach(row => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${row.transition}</td>
+          <td>${row.count}</td>
+        `;
+        transitionCountsBody.appendChild(tr);
+      });
+      if (!transitionRows.length) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td colspan="2">No matching transitions found.</td>';
+        transitionCountsBody.appendChild(tr);
+      }
     }
   }
 
@@ -563,6 +670,7 @@
     renderMeta(filteredIssues, sprint);
     renderStatusDurationTable(filteredIssues, sprintStart, sprintEnd);
     renderCompletionRates(filteredIssues, sprintStart, sprintEnd);
+    renderStatusMixAndTransitions(filteredIssues);
     renderIssueDetails(filteredIssues, sprintStart, sprintEnd);
     hideLoading();
   }
