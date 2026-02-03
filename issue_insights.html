@@ -96,6 +96,27 @@
     </div>
 
     <div class="card">
+      <h2>Current status mix &amp; transitions</h2>
+      <p class="helper">See how sprint issues are distributed across their latest status, plus the most common transitions into In Development and Closed.</p>
+      <div class="chart-wrap">
+        <canvas id="currentStatusChart" aria-label="Current status pie chart"></canvas>
+      </div>
+      <table>
+        <thead>
+          <tr><th>Status</th><th>Issues</th></tr>
+        </thead>
+        <tbody id="currentStatusTable"></tbody>
+      </table>
+      <h3 style="margin-top:16px; font-weight:600;">Transitions into In Development or Closed</h3>
+      <table>
+        <thead>
+          <tr><th>Transition</th><th>Count</th></tr>
+        </thead>
+        <tbody id="transitionCountsBody"></tbody>
+      </table>
+    </div>
+
+    <div class="card">
       <h2>Issue deep dive</h2>
       <p class="helper">Highlight time spent in the statuses you care about (set above) and quickly scan which stories stayed in a state the longest.</p>
       <table>

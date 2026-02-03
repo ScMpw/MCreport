@@ -92,6 +92,33 @@
       </div>
     </div>
 
+    <div class="card">
+      <h2>Current status mix</h2>
+      <p class="helper">Snapshot of where all WARP issues are right now.</p>
+      <div class="chart-wrap">
+        <canvas id="statusMixChart" aria-label="Current status pie chart"></canvas>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Status</th>
+            <th>Issues</th>
+          </tr>
+        </thead>
+        <tbody id="statusMixBody"></tbody>
+      </table>
+      <h3 style="margin-top:16px; font-weight:600;">Transitions into In Development or Closed</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Transition</th>
+            <th>Count</th>
+          </tr>
+        </thead>
+        <tbody id="transitionSummaryBody"></tbody>
+      </table>
+    </div>
+
     <div id="detailsSection" class="card">
       <h2>Story details</h2>
       <p class="helper">Stories that match the selected transition or were created inside the date range.</p>
@@ -124,12 +151,16 @@
     const createdTotal = document.getElementById('createdTotal');
     const transitionTotal = document.getElementById('transitionTotal');
     const detailsBody = document.getElementById('detailsBody');
+    const statusMixBody = document.getElementById('statusMixBody');
+    const transitionSummaryBody = document.getElementById('transitionSummaryBody');
     const toggleDetailsBtn = document.getElementById('toggleDetailsBtn');
     const detailsSection = document.getElementById('detailsSection');
     const loadingMessage = document.getElementById('loadingMessage');
     const errorMessage = document.getElementById('errorMessage');
+    const statusMixChartCanvas = document.getElementById('statusMixChart');
 
     let chartInstance = null;
+    let statusMixChart = null;
     let cachedIssues = [];
 
     function showLoading(message) {
@@ -216,7 +247,7 @@
       const issues = [];
       let startAt = 0;
       const maxResults = 100;
-      const fields = ['summary', 'created', 'parent'];
+      const fields = ['summary', 'created', 'parent', 'status'];
       const expand = ['changelog'];
 
       while (true) {
@@ -266,6 +297,80 @@
       return transitions;
     }
 
+    function normalizeStatus(value) {
+      const name = String(value || '').trim();
+      return name || 'Unknown';
+    }
+
+    function getCurrentStatus(issue) {
+      const fieldStatus = issue.fields?.status?.name;
+      if (fieldStatus) return normalizeStatus(fieldStatus);
+      const transitions = parseTransitions(issue);
+      if (!transitions.length) return 'Unknown';
+      return normalizeStatus(transitions[transitions.length - 1].to || transitions[transitions.length - 1].from);
+    }
+
+    function buildColorPalette(count) {
+      if (!count) return [];
+      return Array.from({ length: count }, (_, index) => {
+        const hue = Math.round((360 / count) * index);
+        return `hsl(${hue}, 70%, 60%)`;
+      });
+    }
+
+    function renderStatusMix(statusRows) {
+      statusMixBody.innerHTML = '';
+      statusRows.forEach(row => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${row.status}</td>
+          <td>${row.count}</td>
+        `;
+        statusMixBody.appendChild(tr);
+      });
+      if (!statusRows.length) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td colspan="2">No status data available.</td>';
+        statusMixBody.appendChild(tr);
+      }
+
+      if (statusMixChart) statusMixChart.destroy();
+      statusMixChart = new Chart(statusMixChartCanvas, {
+        type: 'pie',
+        data: {
+          labels: statusRows.map(row => row.status),
+          datasets: [{
+            data: statusRows.map(row => row.count),
+            backgroundColor: buildColorPalette(statusRows.length)
+          }]
+        },
+        options: {
+          plugins: {
+            legend: {
+              position: 'bottom'
+            }
+          }
+        }
+      });
+    }
+
+    function renderTransitionSummary(rows) {
+      transitionSummaryBody.innerHTML = '';
+      rows.forEach(row => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${row.transition}</td>
+          <td>${row.count}</td>
+        `;
+        transitionSummaryBody.appendChild(tr);
+      });
+      if (!rows.length) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td colspan="2">No matching transitions found.</td>';
+        transitionSummaryBody.appendChild(tr);
+      }
+    }
+
     function collectStatusOptions(issues) {
       const values = new Set(statusFallback);
       issues.forEach(issue => {
@@ -307,6 +412,8 @@
     function updateReport() {
       if (!cachedIssues.length) {
         renderChart([], [], []);
+        renderStatusMix([]);
+        renderTransitionSummary([]);
         return;
       }
       const fromStatus = fromStatusSelect.value || 'Ready';
@@ -319,10 +426,14 @@
       const transitionSeries = labels.map(() => 0);
 
       const detailRows = [];
+      const statusCounts = new Map();
+      const transitionCounts = new Map();
 
       cachedIssues.forEach(issue => {
         const created = issue.fields?.created?.slice(0, 10);
         const parentKey = issue.fields?.parent?.key || '—';
+        const currentStatus = getCurrentStatus(issue);
+        statusCounts.set(currentStatus, (statusCounts.get(currentStatus) || 0) + 1);
         if (created && created >= startDate && created <= endDate) {
           const idx = labels.indexOf(created);
           if (idx >= 0) createdSeries[idx] += 1;
@@ -353,8 +464,25 @@
               });
             }
           }
+          const toLower = (transition.to || '').toLowerCase();
+          if (transition.date >= startDate && transition.date <= endDate) {
+            if (toLower === 'in development' || toLower === 'closed') {
+              const label = `${transition.from || 'Unknown'} → ${transition.to}`;
+              transitionCounts.set(label, (transitionCounts.get(label) || 0) + 1);
+            }
+          }
         });
       });
+
+      const statusRows = Array.from(statusCounts.entries())
+        .map(([status, count]) => ({ status, count }))
+        .sort((a, b) => b.count - a.count || a.status.localeCompare(b.status));
+      renderStatusMix(statusRows);
+
+      const transitionRows = Array.from(transitionCounts.entries())
+        .map(([transition, count]) => ({ transition, count }))
+        .sort((a, b) => b.count - a.count || a.transition.localeCompare(b.transition));
+      renderTransitionSummary(transitionRows);
 
       createdTotal.textContent = createdSeries.reduce((sum, val) => sum + val, 0);
       transitionTotal.textContent = transitionSeries.reduce((sum, val) => sum + val, 0);
