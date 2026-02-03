@@ -227,7 +227,7 @@
           fields: fields.join(','),
           expand: expand.join(',')
         });
-        const resp = await fetch(`https://${jiraDomain}/rest/api/2/search?${params.toString()}`, {
+        const resp = await fetch(`https://${jiraDomain}/rest/api/3/search/jql?${params.toString()}`, {
           credentials: 'include'
         });
 
