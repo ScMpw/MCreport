@@ -41,16 +41,12 @@
 <body>
   <div class="main">
     <h1>WARP Progression</h1>
-    <p class="helper">Track stories for parent epics WARP-534, WARP-627, WARP-621 by board, date range, and status transitions.</p>
+    <p class="helper">Track stories for parent epics WARP-534, WARP-627, WARP-621 by date range and status transitions.</p>
 
     <div class="controls">
       <div>
         <label for="jiraDomain">Jira Domain</label>
         <input id="jiraDomain" type="text" placeholder="your-domain.atlassian.net">
-      </div>
-      <div>
-        <label for="boardSelect">Board</label>
-        <select id="boardSelect"></select>
       </div>
       <div>
         <label for="fromStatus">From status</label>
@@ -71,7 +67,6 @@
     </div>
 
     <div style="display:flex; gap:10px; flex-wrap:wrap;">
-      <button id="fetchBoardsBtn">Fetch boards</button>
       <button id="refreshBtn">Load WARP progression</button>
       <button id="toggleDetailsBtn" class="secondary details-toggle">Show details</button>
     </div>
@@ -90,10 +85,6 @@
         <div class="summary-tile">
           <h3>Transitions (from → to)</h3>
           <p id="transitionTotal">0</p>
-        </div>
-        <div class="summary-tile">
-          <h3>Selected board</h3>
-          <p id="boardLabel">—</p>
         </div>
       </div>
       <div class="chart-wrap">
@@ -126,14 +117,12 @@
     const EPIC_PARENTS = ['WARP-534', 'WARP-627', 'WARP-621'];
 
     const statusFallback = ['Open', 'Ready', 'In Development', 'In Review', 'Closed'];
-    const boardSelect = document.getElementById('boardSelect');
     const fromStatusSelect = document.getElementById('fromStatus');
     const toStatusSelect = document.getElementById('toStatus');
     const dateFromInput = document.getElementById('dateFrom');
     const dateToInput = document.getElementById('dateTo');
     const createdTotal = document.getElementById('createdTotal');
     const transitionTotal = document.getElementById('transitionTotal');
-    const boardLabel = document.getElementById('boardLabel');
     const detailsBody = document.getElementById('detailsBody');
     const toggleDetailsBtn = document.getElementById('toggleDetailsBtn');
     const detailsSection = document.getElementById('detailsSection');
@@ -223,26 +212,6 @@
       });
     }
 
-    async function fetchBoards() {
-      const jiraDomain = document.getElementById('jiraDomain').value.trim();
-      if (!jiraDomain) {
-        setError('Enter your Jira domain first.');
-        return;
-      }
-      setError('');
-      showLoading('Fetching boards…');
-      try {
-        const boards = await Jira.fetchBoardsByJql(jiraDomain);
-        setupSelectOptions(boardSelect, boards, 'Select a board…');
-        boardLabel.textContent = '—';
-      } catch (err) {
-        console.error(err);
-        setError('Failed to load boards.');
-      } finally {
-        hideLoading();
-      }
-    }
-
     async function jiraSearch(jiraDomain, jql) {
       const issues = [];
       let startAt = 0;
@@ -313,7 +282,6 @@
 
     async function loadIssues() {
       const jiraDomain = document.getElementById('jiraDomain').value.trim();
-      const boardId = boardSelect.value;
       if (!jiraDomain) {
         setError('Enter your Jira domain first.');
         return;
@@ -321,8 +289,7 @@
       setError('');
       showLoading('Loading WARP issues…');
 
-      const boardClause = boardId ? ` AND board = ${boardId}` : '';
-      const jql = `parent in (${EPIC_PARENTS.join(',')})${boardClause}`;
+      const jql = `parent in (${EPIC_PARENTS.join(',')})`;
 
       try {
         cachedIssues = await jiraSearch(jiraDomain, jql);
@@ -394,8 +361,6 @@
 
       createdTotal.textContent = createdSeries.reduce((sum, val) => sum + val, 0);
       transitionTotal.textContent = transitionSeries.reduce((sum, val) => sum + val, 0);
-      boardLabel.textContent = boardSelect.options[boardSelect.selectedIndex]?.text || 'All boards';
-
       renderChart(labels, createdSeries, transitionSeries);
 
       detailsBody.innerHTML = '';
@@ -425,7 +390,6 @@
     }
 
     function initializeDefaults() {
-      setupSelectOptions(boardSelect, [], 'Select a board…');
       setupSelectOptions(fromStatusSelect, statusFallback, 'Select from status…');
       setupSelectOptions(toStatusSelect, statusFallback, 'Select to status…');
 
@@ -436,7 +400,6 @@
       dateToInput.value = toDateValue(today);
     }
 
-    document.getElementById('fetchBoardsBtn').addEventListener('click', fetchBoards);
     document.getElementById('refreshBtn').addEventListener('click', loadIssues);
     toggleDetailsBtn.addEventListener('click', toggleDetails);
     fromStatusSelect.addEventListener('change', updateReport);
