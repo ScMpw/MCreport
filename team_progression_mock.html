@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>WARP Progression</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="public/tailwind.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { background: #f7f8fa; font-family: 'Inter', Arial, sans-serif; margin: 0; padding: 0; }
+    .main { max-width: 1100px; margin: 30px auto 40px auto; background: #fff; border-radius: 18px; box-shadow: 0 2px 12px #d1d5db70; padding: 36px 32px; }
+    h1 { font-size: 2.1em; margin:0 0 0.7em 0; font-weight: 600; }
+    h2 { font-size: 1.2em; margin-top:1.6em; font-weight:600; }
+    .controls { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:14px; margin: 10px 0 12px 0; }
+    label { font-weight:600; display:block; margin-bottom:4px; color:#374151; }
+    select, input { width:100%; padding:8px 10px; border-radius:8px; border:1px solid #d1d5db; font-size:0.98em; }
+    button { background: #6366f1; color:#fff; border:none; border-radius:8px; padding:10px 16px; font-size:1em; cursor:pointer; }
+    button.secondary { background:#e5e7eb; color:#111827; }
+    .card { background:#f9fafb; border:1px solid #e5e7eb; border-radius:12px; padding:16px; margin-top:10px; }
+    .summary-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:12px; margin-top:12px; }
+    .summary-tile { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:12px; }
+    .summary-tile h3 { margin:0 0 6px 0; font-size:1em; color:#4b5563; }
+    .summary-tile p { margin:0; font-size:1.4em; font-weight:600; }
+    .chart-wrap { position: relative; height: 280px; margin-top: 10px; }
+    table { border-collapse: collapse; width: 100%; margin-top:10px; }
+    th, td { border:1px solid #e5e7eb; padding:8px 10px; text-align:left; font-size:0.95em; }
+    th { background:#eef2ff; }
+    .helper { color:#4b5563; font-size:0.93em; }
+    .tag { display:inline-block; padding:2px 8px; border-radius:999px; font-size:0.78em; font-weight:600; }
+    .tag-created { background:#e0f2fe; color:#0369a1; }
+    .tag-transition { background:#fef3c7; color:#b45309; }
+    .details-toggle { margin-top:8px; }
+    #detailsSection { display:none; }
+    #loadingMessage { font-weight:700; color:#111827; margin-top:10px; display:none; }
+    .error { color:#dc2626; font-weight:600; }
+    @media (max-width: 700px) {
+      .main { padding:16px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="main">
+    <h1>WARP Progression</h1>
+    <p class="helper">Track stories for parent epics WARP-534, WARP-627, WARP-621 by board, date range, and status transitions.</p>
+
+    <div class="controls">
+      <div>
+        <label for="jiraDomain">Jira Domain</label>
+        <input id="jiraDomain" type="text" placeholder="your-domain.atlassian.net">
+      </div>
+      <div>
+        <label for="boardSelect">Board</label>
+        <select id="boardSelect"></select>
+      </div>
+      <div>
+        <label for="fromStatus">From status</label>
+        <select id="fromStatus"></select>
+      </div>
+      <div>
+        <label for="toStatus">To status</label>
+        <select id="toStatus"></select>
+      </div>
+      <div>
+        <label for="dateFrom">Date from</label>
+        <input id="dateFrom" type="date">
+      </div>
+      <div>
+        <label for="dateTo">Date to</label>
+        <input id="dateTo" type="date">
+      </div>
+    </div>
+
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+      <button id="fetchBoardsBtn">Fetch boards</button>
+      <button id="refreshBtn">Load WARP progression</button>
+      <button id="toggleDetailsBtn" class="secondary details-toggle">Show details</button>
+    </div>
+
+    <div id="loadingMessage">Loading…</div>
+    <div id="errorMessage" class="error"></div>
+
+    <div class="card">
+      <h2>Progression summary</h2>
+      <p class="helper">Created issues and selected status transitions are displayed across the chosen date range.</p>
+      <div class="summary-grid">
+        <div class="summary-tile">
+          <h3>Tickets created</h3>
+          <p id="createdTotal">0</p>
+        </div>
+        <div class="summary-tile">
+          <h3>Transitions (from → to)</h3>
+          <p id="transitionTotal">0</p>
+        </div>
+        <div class="summary-tile">
+          <h3>Selected board</h3>
+          <p id="boardLabel">—</p>
+        </div>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="progressionChart" aria-label="Story progression chart"></canvas>
+      </div>
+    </div>
+
+    <div id="detailsSection" class="card">
+      <h2>Story details</h2>
+      <p class="helper">Stories that match the selected transition or were created inside the date range.</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Story</th>
+            <th>Summary</th>
+            <th>Parent</th>
+            <th>Type</th>
+            <th>From</th>
+            <th>To</th>
+            <th>Date</th>
+          </tr>
+        </thead>
+        <tbody id="detailsBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="src/jira.js"></script>
+  <script>
+    const EPIC_PARENTS = ['WARP-534', 'WARP-627', 'WARP-621'];
+
+    const statusFallback = ['Open', 'Ready', 'In Development', 'In Review', 'Closed'];
+    const boardSelect = document.getElementById('boardSelect');
+    const fromStatusSelect = document.getElementById('fromStatus');
+    const toStatusSelect = document.getElementById('toStatus');
+    const dateFromInput = document.getElementById('dateFrom');
+    const dateToInput = document.getElementById('dateTo');
+    const createdTotal = document.getElementById('createdTotal');
+    const transitionTotal = document.getElementById('transitionTotal');
+    const boardLabel = document.getElementById('boardLabel');
+    const detailsBody = document.getElementById('detailsBody');
+    const toggleDetailsBtn = document.getElementById('toggleDetailsBtn');
+    const detailsSection = document.getElementById('detailsSection');
+    const loadingMessage = document.getElementById('loadingMessage');
+    const errorMessage = document.getElementById('errorMessage');
+
+    let chartInstance = null;
+    let cachedIssues = [];
+
+    function showLoading(message) {
+      loadingMessage.textContent = message || 'Loading…';
+      loadingMessage.style.display = 'block';
+    }
+
+    function hideLoading() {
+      loadingMessage.style.display = 'none';
+    }
+
+    function setError(message) {
+      errorMessage.textContent = message || '';
+    }
+
+    function setupSelectOptions(select, options, placeholder) {
+      select.innerHTML = '';
+      const placeholderOption = document.createElement('option');
+      placeholderOption.value = '';
+      placeholderOption.textContent = placeholder;
+      select.appendChild(placeholderOption);
+      options.forEach(option => {
+        const opt = document.createElement('option');
+        if (typeof option === 'string') {
+          opt.value = option;
+          opt.textContent = option;
+        } else {
+          opt.value = option.id;
+          opt.textContent = option.name;
+        }
+        select.appendChild(opt);
+      });
+    }
+
+    function toDateValue(date) {
+      return new Date(date).toISOString().slice(0, 10);
+    }
+
+    function buildDateRange(start, end) {
+      const dates = [];
+      const cursor = new Date(start);
+      const last = new Date(end);
+      while (cursor <= last) {
+        dates.push(toDateValue(cursor));
+        cursor.setDate(cursor.getDate() + 1);
+      }
+      return dates;
+    }
+
+    function renderChart(labels, createdSeries, transitionSeries) {
+      const ctx = document.getElementById('progressionChart');
+      if (chartInstance) chartInstance.destroy();
+      chartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: 'Tickets created',
+              data: createdSeries,
+              backgroundColor: '#60a5fa'
+            },
+            {
+              label: 'Status transitions',
+              data: transitionSeries,
+              backgroundColor: '#fbbf24'
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: { stepSize: 1 }
+            }
+          }
+        }
+      });
+    }
+
+    async function fetchBoards() {
+      const jiraDomain = document.getElementById('jiraDomain').value.trim();
+      if (!jiraDomain) {
+        setError('Enter your Jira domain first.');
+        return;
+      }
+      setError('');
+      showLoading('Fetching boards…');
+      try {
+        const boards = await Jira.fetchBoardsByJql(jiraDomain);
+        setupSelectOptions(boardSelect, boards, 'Select a board…');
+        boardLabel.textContent = '—';
+      } catch (err) {
+        console.error(err);
+        setError('Failed to load boards.');
+      } finally {
+        hideLoading();
+      }
+    }
+
+    async function jiraSearch(jiraDomain, jql) {
+      const issues = [];
+      let startAt = 0;
+      const maxResults = 100;
+
+      while (true) {
+        const resp = await fetch(`https://${jiraDomain}/rest/api/3/search`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-Atlassian-Token': 'no-check'
+          },
+          body: JSON.stringify({
+            jql,
+            startAt,
+            maxResults,
+            fields: ['summary', 'created', 'parent'],
+            expand: ['changelog']
+          })
+        });
+
+        if (!resp.ok) {
+          const text = await resp.text();
+          throw new Error(`Jira search failed (${resp.status}): ${text}`);
+        }
+
+        const data = await resp.json();
+        issues.push(...(data.issues || []));
+        const total = data.total || issues.length;
+        startAt += data.issues ? data.issues.length : 0;
+        if (!data.issues || data.issues.length === 0 || startAt >= total) {
+          break;
+        }
+      }
+      return issues;
+    }
+
+    function parseTransitions(issue) {
+      const histories = issue.changelog?.histories || [];
+      const transitions = [];
+      histories.forEach(history => {
+        const changed = history.items || [];
+        changed.forEach(item => {
+          if (item.field === 'status') {
+            transitions.push({
+              from: item.fromString,
+              to: item.toString,
+              date: history.created.slice(0, 10)
+            });
+          }
+        });
+      });
+      return transitions;
+    }
+
+    function collectStatusOptions(issues) {
+      const values = new Set(statusFallback);
+      issues.forEach(issue => {
+        parseTransitions(issue).forEach(tr => {
+          if (tr.from) values.add(tr.from);
+          if (tr.to) values.add(tr.to);
+        });
+      });
+      return Array.from(values).sort((a, b) => a.localeCompare(b));
+    }
+
+    async function loadIssues() {
+      const jiraDomain = document.getElementById('jiraDomain').value.trim();
+      const boardId = boardSelect.value;
+      if (!jiraDomain) {
+        setError('Enter your Jira domain first.');
+        return;
+      }
+      setError('');
+      showLoading('Loading WARP issues…');
+
+      const boardClause = boardId ? ` AND board = ${boardId}` : '';
+      const jql = `parent in (${EPIC_PARENTS.join(',')})${boardClause}`;
+
+      try {
+        cachedIssues = await jiraSearch(jiraDomain, jql);
+        const statusOptions = collectStatusOptions(cachedIssues);
+        setupSelectOptions(fromStatusSelect, statusOptions, 'Select from status…');
+        setupSelectOptions(toStatusSelect, statusOptions, 'Select to status…');
+        if (statusOptions.includes('Ready')) fromStatusSelect.value = 'Ready';
+        if (statusOptions.includes('In Development')) toStatusSelect.value = 'In Development';
+        updateReport();
+      } catch (err) {
+        console.error(err);
+        setError('Failed to load issues. Ensure you are logged in to Jira.');
+      } finally {
+        hideLoading();
+      }
+    }
+
+    function updateReport() {
+      if (!cachedIssues.length) {
+        renderChart([], [], []);
+        return;
+      }
+      const fromStatus = fromStatusSelect.value || 'Ready';
+      const toStatus = toStatusSelect.value || 'In Development';
+      const startDate = dateFromInput.value || toDateValue(new Date(Date.now() - 6 * 24 * 60 * 60 * 1000));
+      const endDate = dateToInput.value || toDateValue(new Date());
+
+      const labels = buildDateRange(startDate, endDate);
+      const createdSeries = labels.map(() => 0);
+      const transitionSeries = labels.map(() => 0);
+
+      const detailRows = [];
+
+      cachedIssues.forEach(issue => {
+        const created = issue.fields?.created?.slice(0, 10);
+        const parentKey = issue.fields?.parent?.key || '—';
+        if (created && created >= startDate && created <= endDate) {
+          const idx = labels.indexOf(created);
+          if (idx >= 0) createdSeries[idx] += 1;
+          detailRows.push({
+            key: issue.key,
+            summary: issue.fields?.summary || '',
+            parent: parentKey,
+            type: 'Created',
+            from: '—',
+            to: '—',
+            date: created
+          });
+        }
+
+        parseTransitions(issue).forEach(transition => {
+          if (transition.from === fromStatus && transition.to === toStatus) {
+            if (transition.date >= startDate && transition.date <= endDate) {
+              const idx = labels.indexOf(transition.date);
+              if (idx >= 0) transitionSeries[idx] += 1;
+              detailRows.push({
+                key: issue.key,
+                summary: issue.fields?.summary || '',
+                parent: parentKey,
+                type: 'Transition',
+                from: transition.from,
+                to: transition.to,
+                date: transition.date
+              });
+            }
+          }
+        });
+      });
+
+      createdTotal.textContent = createdSeries.reduce((sum, val) => sum + val, 0);
+      transitionTotal.textContent = transitionSeries.reduce((sum, val) => sum + val, 0);
+      boardLabel.textContent = boardSelect.options[boardSelect.selectedIndex]?.text || 'All boards';
+
+      renderChart(labels, createdSeries, transitionSeries);
+
+      detailsBody.innerHTML = '';
+      detailRows.sort((a, b) => a.date.localeCompare(b.date));
+      detailRows.forEach(row => {
+        const tr = document.createElement('tr');
+        const typeTag = row.type === 'Created'
+          ? '<span class="tag tag-created">Created</span>'
+          : '<span class="tag tag-transition">Transition</span>';
+        tr.innerHTML = `
+          <td>${row.key}</td>
+          <td>${row.summary}</td>
+          <td>${row.parent}</td>
+          <td>${typeTag}</td>
+          <td>${row.from}</td>
+          <td>${row.to}</td>
+          <td>${row.date}</td>
+        `;
+        detailsBody.appendChild(tr);
+      });
+    }
+
+    function toggleDetails() {
+      const isHidden = detailsSection.style.display === 'none';
+      detailsSection.style.display = isHidden ? 'block' : 'none';
+      toggleDetailsBtn.textContent = isHidden ? 'Hide details' : 'Show details';
+    }
+
+    function initializeDefaults() {
+      setupSelectOptions(boardSelect, [], 'Select a board…');
+      setupSelectOptions(fromStatusSelect, statusFallback, 'Select from status…');
+      setupSelectOptions(toStatusSelect, statusFallback, 'Select to status…');
+
+      const today = new Date();
+      const lastWeek = new Date();
+      lastWeek.setDate(today.getDate() - 7);
+      dateFromInput.value = toDateValue(lastWeek);
+      dateToInput.value = toDateValue(today);
+    }
+
+    document.getElementById('fetchBoardsBtn').addEventListener('click', fetchBoards);
+    document.getElementById('refreshBtn').addEventListener('click', loadIssues);
+    toggleDetailsBtn.addEventListener('click', toggleDetails);
+    fromStatusSelect.addEventListener('change', updateReport);
+    toStatusSelect.addEventListener('change', updateReport);
+    dateFromInput.addEventListener('change', updateReport);
+    dateToInput.addEventListener('change', updateReport);
+
+    initializeDefaults();
+  </script>
+</body>
+</html>
