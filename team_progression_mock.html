@@ -31,7 +31,9 @@
     .tag-created { background:#e0f2fe; color:#0369a1; }
     .tag-transition { background:#fef3c7; color:#b45309; }
     .details-toggle { margin-top:8px; }
+    .cycle-toggle { margin-top: 12px; }
     #detailsSection { display:none; }
+    #cycleTableSection { display:none; }
     #loadingMessage { font-weight:700; color:#111827; margin-top:10px; display:none; }
     .error { color:#dc2626; font-weight:600; }
     @media (max-width: 700px) {
@@ -143,18 +145,21 @@
           <p id="cycleMedian">0.0</p>
         </div>
       </div>
-      <table>
-        <thead>
-          <tr>
-            <th>Story</th>
-            <th>Summary</th>
-            <th>Parent</th>
-            <th>Total age (days)</th>
-            <th>Time in statuses (days)</th>
-          </tr>
-        </thead>
-        <tbody id="cycleDetailsBody"></tbody>
-      </table>
+      <button id="toggleCycleTableBtn" class="secondary cycle-toggle" type="button" aria-expanded="false">Show cycle time details</button>
+      <div id="cycleTableSection">
+        <table>
+          <thead>
+            <tr>
+              <th>Story</th>
+              <th>Summary</th>
+              <th>Parent</th>
+              <th>Total age (days)</th>
+              <th>Time in statuses (days)</th>
+            </tr>
+          </thead>
+          <tbody id="cycleDetailsBody"></tbody>
+        </table>
+      </div>
     </div>
 
     <div id="detailsSection" class="card">
@@ -201,6 +206,8 @@
     const cycleIssueCount = document.getElementById('cycleIssueCount');
     const cycleAverage = document.getElementById('cycleAverage');
     const cycleMedian = document.getElementById('cycleMedian');
+    const toggleCycleTableBtn = document.getElementById('toggleCycleTableBtn');
+    const cycleTableSection = document.getElementById('cycleTableSection');
 
     let chartInstance = null;
     let statusMixChart = null;
@@ -688,6 +695,13 @@
       toggleDetailsBtn.textContent = isHidden ? 'Hide details' : 'Show details';
     }
 
+    function toggleCycleTable() {
+      const isHidden = cycleTableSection.style.display === 'none';
+      cycleTableSection.style.display = isHidden ? 'block' : 'none';
+      toggleCycleTableBtn.textContent = isHidden ? 'Hide cycle time details' : 'Show cycle time details';
+      toggleCycleTableBtn.setAttribute('aria-expanded', String(isHidden));
+    }
+
     function initializeDefaults() {
       setupSelectOptions(fromStatusSelect, statusFallback, 'Select from status…');
       setupSelectOptions(toStatusSelect, statusFallback, 'Select to status…');
@@ -706,6 +720,7 @@
 
     document.getElementById('refreshBtn').addEventListener('click', loadIssues);
     toggleDetailsBtn.addEventListener('click', toggleDetails);
+    toggleCycleTableBtn.addEventListener('click', toggleCycleTable);
     fromStatusSelect.addEventListener('change', updateReport);
     toStatusSelect.addEventListener('change', updateReport);
     dateFromInput.addEventListener('change', updateReport);
