@@ -56,10 +56,12 @@
       <div>
         <label for="fromStatus">From status</label>
         <select id="fromStatus" multiple></select>
+        <p class="helper">Click to toggle multiple statuses (no Ctrl/Cmd needed).</p>
       </div>
       <div>
         <label for="toStatus">To status</label>
         <select id="toStatus" multiple></select>
+        <p class="helper">Click to toggle multiple statuses (no Ctrl/Cmd needed).</p>
       </div>
       <div>
         <label for="dateFrom">Date from</label>
@@ -243,6 +245,17 @@
         .map(option => option.value)
         .filter(Boolean);
       return values.length ? values : [fallbackStatus];
+    }
+
+    function enableMultiSelectToggle(select) {
+      select.addEventListener('mousedown', event => {
+        const option = event.target;
+        if (!(option instanceof HTMLOptionElement)) return;
+        event.preventDefault();
+        option.selected = !option.selected;
+        select.focus();
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      });
     }
 
     function toDateValue(date) {
@@ -705,6 +718,8 @@
     });
 
     initializeDefaults();
+    enableMultiSelectToggle(fromStatusSelect);
+    enableMultiSelectToggle(toStatusSelect);
   </script>
 </body>
 </html>
