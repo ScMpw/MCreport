@@ -46,7 +46,11 @@
     <div class="controls">
       <div>
         <label for="jiraDomain">Jira Domain</label>
-        <input id="jiraDomain" type="text" placeholder="your-domain.atlassian.net">
+        <input id="jiraDomain" type="text" value="aldi-sued.atlassian.net" readonly>
+      </div>
+      <div>
+        <label for="extraEpics">Additional epic keys</label>
+        <input id="extraEpics" type="text" placeholder="WARP-123, WARP-4567">
       </div>
       <div>
         <label for="fromStatus">From status</label>
@@ -119,6 +123,38 @@
       </table>
     </div>
 
+    <div class="card">
+      <h2>Cycle time analysis</h2>
+      <p class="helper">Cycle time is measured per issue from the first selected "from" status to the first selected "to" status that occurs after it.</p>
+      <div class="summary-grid">
+        <div class="summary-tile">
+          <h3>Issues with cycle time</h3>
+          <p id="cycleIssueCount">0</p>
+        </div>
+        <div class="summary-tile">
+          <h3>Average cycle time (days)</h3>
+          <p id="cycleAverage">0.0</p>
+        </div>
+        <div class="summary-tile">
+          <h3>Median cycle time (days)</h3>
+          <p id="cycleMedian">0.0</p>
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Story</th>
+            <th>Summary</th>
+            <th>Parent</th>
+            <th>From date</th>
+            <th>To date</th>
+            <th>Cycle time (days)</th>
+          </tr>
+        </thead>
+        <tbody id="cycleDetailsBody"></tbody>
+      </table>
+    </div>
+
     <div id="detailsSection" class="card">
       <h2>Story details</h2>
       <p class="helper">Stories that match the selected transition or were created inside the date range.</p>
@@ -151,6 +187,7 @@
     const createdTotal = document.getElementById('createdTotal');
     const transitionTotal = document.getElementById('transitionTotal');
     const detailsBody = document.getElementById('detailsBody');
+    const cycleDetailsBody = document.getElementById('cycleDetailsBody');
     const statusMixBody = document.getElementById('statusMixBody');
     const transitionSummaryBody = document.getElementById('transitionSummaryBody');
     const toggleDetailsBtn = document.getElementById('toggleDetailsBtn');
@@ -158,6 +195,10 @@
     const loadingMessage = document.getElementById('loadingMessage');
     const errorMessage = document.getElementById('errorMessage');
     const statusMixChartCanvas = document.getElementById('statusMixChart');
+    const extraEpicsInput = document.getElementById('extraEpics');
+    const cycleIssueCount = document.getElementById('cycleIssueCount');
+    const cycleAverage = document.getElementById('cycleAverage');
+    const cycleMedian = document.getElementById('cycleMedian');
 
     let chartInstance = null;
     let statusMixChart = null;
@@ -382,16 +423,32 @@
       return Array.from(values).sort((a, b) => a.localeCompare(b));
     }
 
-    async function loadIssues() {
-      const jiraDomain = document.getElementById('jiraDomain').value.trim();
-      if (!jiraDomain) {
-        setError('Enter your Jira domain first.');
-        return;
+    function parseEpicInput() {
+      const input = (extraEpicsInput.value || '').trim();
+      if (!input) return [];
+      const entries = input.split(',').map(item => item.trim().toUpperCase()).filter(Boolean);
+      const keyPattern = /^WARP-\d{3,4}$/;
+      const invalid = entries.filter(key => !keyPattern.test(key));
+      if (invalid.length) {
+        throw new Error(`Invalid epic keys: ${invalid.join(', ')}. Use format WARP-XXX or WARP-XXXX.`);
       }
+      return Array.from(new Set(entries));
+    }
+
+    async function loadIssues() {
+      const jiraDomain = 'aldi-sued.atlassian.net';
       setError('');
       showLoading('Loading WARP issues…');
 
-      const jql = `parent in (${EPIC_PARENTS.join(',')})`;
+      let epicParents;
+      try {
+        epicParents = [...EPIC_PARENTS, ...parseEpicInput()];
+      } catch (error) {
+        hideLoading();
+        setError(error.message);
+        return;
+      }
+      const jql = `parent in (${Array.from(new Set(epicParents)).join(',')})`;
 
       try {
         cachedIssues = await jiraSearch(jiraDomain, jql);
@@ -414,6 +471,7 @@
         renderChart([], [], []);
         renderStatusMix([]);
         renderTransitionSummary([]);
+        renderCycleAnalysis([], '', '');
         return;
       }
       const fromStatus = fromStatusSelect.value || 'Ready';
@@ -426,6 +484,7 @@
       const transitionSeries = labels.map(() => 0);
 
       const detailRows = [];
+      const cycleRows = [];
       const statusCounts = new Map();
       const transitionCounts = new Map();
 
@@ -448,7 +507,8 @@
           });
         }
 
-        parseTransitions(issue).forEach(transition => {
+        const transitions = parseTransitions(issue);
+        transitions.forEach(transition => {
           if (transition.from === fromStatus && transition.to === toStatus) {
             if (transition.date >= startDate && transition.date <= endDate) {
               const idx = labels.indexOf(transition.date);
@@ -472,6 +532,18 @@
             }
           }
         });
+
+        const cycle = calculateCycleTimeDays(transitions, fromStatus, toStatus);
+        if (cycle) {
+          cycleRows.push({
+            key: issue.key,
+            summary: issue.fields?.summary || '',
+            parent: parentKey,
+            fromDate: cycle.fromDate,
+            toDate: cycle.toDate,
+            cycleDays: cycle.cycleDays
+          });
+        }
       });
 
       const statusRows = Array.from(statusCounts.entries())
@@ -483,6 +555,7 @@
         .map(([transition, count]) => ({ transition, count }))
         .sort((a, b) => b.count - a.count || a.transition.localeCompare(b.transition));
       renderTransitionSummary(transitionRows);
+      renderCycleAnalysis(cycleRows, fromStatus, toStatus);
 
       createdTotal.textContent = createdSeries.reduce((sum, val) => sum + val, 0);
       transitionTotal.textContent = transitionSeries.reduce((sum, val) => sum + val, 0);
@@ -508,6 +581,77 @@
       });
     }
 
+    function toTimeValue(dateText) {
+      if (!dateText) return null;
+      const ts = Date.parse(dateText);
+      return Number.isNaN(ts) ? null : ts;
+    }
+
+    function calculateCycleTimeDays(transitions, fromStatus, toStatus) {
+      let startTs = null;
+      let startDate = '';
+      let endTs = null;
+      let endDate = '';
+
+      for (const transition of transitions) {
+        const ts = toTimeValue(transition.date);
+        if (ts === null) continue;
+        if (transition.to === fromStatus && startTs === null) {
+          startTs = ts;
+          startDate = transition.date;
+          continue;
+        }
+        if (startTs !== null && transition.to === toStatus && ts >= startTs) {
+          endTs = ts;
+          endDate = transition.date;
+          break;
+        }
+      }
+
+      if (startTs === null || endTs === null) return null;
+      const cycleDays = (endTs - startTs) / (1000 * 60 * 60 * 24);
+      return {
+        fromDate: startDate,
+        toDate: endDate,
+        cycleDays: Math.max(0, cycleDays)
+      };
+    }
+
+    function renderCycleAnalysis(cycleRows, fromStatus, toStatus) {
+      const sortedRows = [...cycleRows].sort((a, b) => a.cycleDays - b.cycleDays);
+      const total = sortedRows.length;
+      const avg = total ? sortedRows.reduce((sum, row) => sum + row.cycleDays, 0) / total : 0;
+      const median = total
+        ? (total % 2 === 0
+          ? (sortedRows[total / 2 - 1].cycleDays + sortedRows[total / 2].cycleDays) / 2
+          : sortedRows[Math.floor(total / 2)].cycleDays)
+        : 0;
+
+      cycleIssueCount.textContent = String(total);
+      cycleAverage.textContent = avg.toFixed(1);
+      cycleMedian.textContent = median.toFixed(1);
+
+      cycleDetailsBody.innerHTML = '';
+      sortedRows.forEach(row => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${row.key}</td>
+          <td>${row.summary}</td>
+          <td>${row.parent}</td>
+          <td>${row.fromDate}</td>
+          <td>${row.toDate}</td>
+          <td>${row.cycleDays.toFixed(1)}</td>
+        `;
+        cycleDetailsBody.appendChild(tr);
+      });
+
+      if (!sortedRows.length) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td colspan="6">No cycle time data for selected statuses (${fromStatus || '—'} → ${toStatus || '—'}).</td>`;
+        cycleDetailsBody.appendChild(tr);
+      }
+    }
+
     function toggleDetails() {
       const isHidden = detailsSection.style.display === 'none';
       detailsSection.style.display = isHidden ? 'block' : 'none';
@@ -531,6 +675,12 @@
     toStatusSelect.addEventListener('change', updateReport);
     dateFromInput.addEventListener('change', updateReport);
     dateToInput.addEventListener('change', updateReport);
+    extraEpicsInput.addEventListener('keydown', event => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        loadIssues();
+      }
+    });
 
     initializeDefaults();
   </script>
