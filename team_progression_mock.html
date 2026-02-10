@@ -14,6 +14,7 @@
     .controls { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:14px; margin: 10px 0 12px 0; }
     label { font-weight:600; display:block; margin-bottom:4px; color:#374151; }
     select, input { width:100%; padding:8px 10px; border-radius:8px; border:1px solid #d1d5db; font-size:0.98em; }
+    select[multiple] { min-height: 130px; }
     button { background: #6366f1; color:#fff; border:none; border-radius:8px; padding:10px 16px; font-size:1em; cursor:pointer; }
     button.secondary { background:#e5e7eb; color:#111827; }
     .card { background:#f9fafb; border:1px solid #e5e7eb; border-radius:12px; padding:16px; margin-top:10px; }
@@ -54,11 +55,11 @@
       </div>
       <div>
         <label for="fromStatus">From status</label>
-        <select id="fromStatus"></select>
+        <select id="fromStatus" multiple></select>
       </div>
       <div>
         <label for="toStatus">To status</label>
-        <select id="toStatus"></select>
+        <select id="toStatus" multiple></select>
       </div>
       <div>
         <label for="dateFrom">Date from</label>
@@ -125,7 +126,7 @@
 
     <div class="card">
       <h2>Cycle time analysis</h2>
-      <p class="helper">Cycle time is measured per issue from the first selected "from" status to the first selected "to" status that occurs after it.</p>
+      <p class="helper">Cycle time is calculated for all issues, showing total ticket age and time spent in each status category.</p>
       <div class="summary-grid">
         <div class="summary-tile">
           <h3>Issues with cycle time</h3>
@@ -146,9 +147,8 @@
             <th>Story</th>
             <th>Summary</th>
             <th>Parent</th>
-            <th>From date</th>
-            <th>To date</th>
-            <th>Cycle time (days)</th>
+            <th>Total age (days)</th>
+            <th>Time in statuses (days)</th>
           </tr>
         </thead>
         <tbody id="cycleDetailsBody"></tbody>
@@ -219,10 +219,12 @@
 
     function setupSelectOptions(select, options, placeholder) {
       select.innerHTML = '';
-      const placeholderOption = document.createElement('option');
-      placeholderOption.value = '';
-      placeholderOption.textContent = placeholder;
-      select.appendChild(placeholderOption);
+      if (!select.multiple) {
+        const placeholderOption = document.createElement('option');
+        placeholderOption.value = '';
+        placeholderOption.textContent = placeholder;
+        select.appendChild(placeholderOption);
+      }
       options.forEach(option => {
         const opt = document.createElement('option');
         if (typeof option === 'string') {
@@ -234,6 +236,13 @@
         }
         select.appendChild(opt);
       });
+    }
+
+    function getSelectedStatuses(select, fallbackStatus) {
+      const values = Array.from(select.selectedOptions)
+        .map(option => option.value)
+        .filter(Boolean);
+      return values.length ? values : [fallbackStatus];
     }
 
     function toDateValue(date) {
@@ -330,11 +339,14 @@
             transitions.push({
               from: item.fromString,
               to: item.toString,
-              date: history.created.slice(0, 10)
+              date: history.created.slice(0, 10),
+              dateTime: history.created,
+              timestamp: toTimeValue(history.created)
             });
           }
         });
       });
+      transitions.sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0));
       return transitions;
     }
 
@@ -455,8 +467,15 @@
         const statusOptions = collectStatusOptions(cachedIssues);
         setupSelectOptions(fromStatusSelect, statusOptions, 'Select from status…');
         setupSelectOptions(toStatusSelect, statusOptions, 'Select to status…');
-        if (statusOptions.includes('Ready')) fromStatusSelect.value = 'Ready';
-        if (statusOptions.includes('In Development')) toStatusSelect.value = 'In Development';
+
+        if (statusOptions.includes('Ready')) {
+          const option = Array.from(fromStatusSelect.options).find(opt => opt.value === 'Ready');
+          if (option) option.selected = true;
+        }
+        if (statusOptions.includes('In Development')) {
+          const option = Array.from(toStatusSelect.options).find(opt => opt.value === 'In Development');
+          if (option) option.selected = true;
+        }
         updateReport();
       } catch (err) {
         console.error(err);
@@ -471,11 +490,13 @@
         renderChart([], [], []);
         renderStatusMix([]);
         renderTransitionSummary([]);
-        renderCycleAnalysis([], '', '');
+        renderCycleAnalysis([]);
         return;
       }
-      const fromStatus = fromStatusSelect.value || 'Ready';
-      const toStatus = toStatusSelect.value || 'In Development';
+      const fromStatuses = getSelectedStatuses(fromStatusSelect, 'Ready');
+      const toStatuses = getSelectedStatuses(toStatusSelect, 'In Development');
+      const fromStatusSet = new Set(fromStatuses);
+      const toStatusSet = new Set(toStatuses);
       const startDate = dateFromInput.value || toDateValue(new Date(Date.now() - 6 * 24 * 60 * 60 * 1000));
       const endDate = dateToInput.value || toDateValue(new Date());
 
@@ -509,7 +530,7 @@
 
         const transitions = parseTransitions(issue);
         transitions.forEach(transition => {
-          if (transition.from === fromStatus && transition.to === toStatus) {
+          if (fromStatusSet.has(transition.from) && toStatusSet.has(transition.to)) {
             if (transition.date >= startDate && transition.date <= endDate) {
               const idx = labels.indexOf(transition.date);
               if (idx >= 0) transitionSeries[idx] += 1;
@@ -533,17 +554,14 @@
           }
         });
 
-        const cycle = calculateCycleTimeDays(transitions, fromStatus, toStatus);
-        if (cycle) {
-          cycleRows.push({
-            key: issue.key,
-            summary: issue.fields?.summary || '',
-            parent: parentKey,
-            fromDate: cycle.fromDate,
-            toDate: cycle.toDate,
-            cycleDays: cycle.cycleDays
-          });
-        }
+        const cycle = calculateIssueAging(transitions, issue.fields?.created, issue.fields?.status?.name);
+        cycleRows.push({
+          key: issue.key,
+          summary: issue.fields?.summary || '',
+          parent: parentKey,
+          totalAgeDays: cycle.totalAgeDays,
+          statusBreakdown: cycle.statusBreakdown
+        });
       });
 
       const statusRows = Array.from(statusCounts.entries())
@@ -555,7 +573,7 @@
         .map(([transition, count]) => ({ transition, count }))
         .sort((a, b) => b.count - a.count || a.transition.localeCompare(b.transition));
       renderTransitionSummary(transitionRows);
-      renderCycleAnalysis(cycleRows, fromStatus, toStatus);
+      renderCycleAnalysis(cycleRows);
 
       createdTotal.textContent = createdSeries.reduce((sum, val) => sum + val, 0);
       transitionTotal.textContent = transitionSeries.reduce((sum, val) => sum + val, 0);
@@ -587,44 +605,44 @@
       return Number.isNaN(ts) ? null : ts;
     }
 
-    function calculateCycleTimeDays(transitions, fromStatus, toStatus) {
-      let startTs = null;
-      let startDate = '';
-      let endTs = null;
-      let endDate = '';
+    function calculateIssueAging(transitions, createdDateTime, fallbackStatus) {
+      const nowTs = Date.now();
+      const createdTs = toTimeValue(createdDateTime) ?? nowTs;
+      const statusDurations = new Map();
+      let currentStatus = normalizeStatus(transitions[0]?.from || fallbackStatus);
+      let cursorTs = createdTs;
 
       for (const transition of transitions) {
-        const ts = toTimeValue(transition.date);
-        if (ts === null) continue;
-        if (transition.to === fromStatus && startTs === null) {
-          startTs = ts;
-          startDate = transition.date;
-          continue;
-        }
-        if (startTs !== null && transition.to === toStatus && ts >= startTs) {
-          endTs = ts;
-          endDate = transition.date;
-          break;
-        }
+        const ts = transition.timestamp;
+        if (ts === null || ts === undefined || ts < cursorTs) continue;
+        const delta = Math.max(0, ts - cursorTs);
+        statusDurations.set(currentStatus, (statusDurations.get(currentStatus) || 0) + delta);
+        currentStatus = normalizeStatus(transition.to || currentStatus);
+        cursorTs = ts;
       }
 
-      if (startTs === null || endTs === null) return null;
-      const cycleDays = (endTs - startTs) / (1000 * 60 * 60 * 24);
+      statusDurations.set(currentStatus, (statusDurations.get(currentStatus) || 0) + Math.max(0, nowTs - cursorTs));
+
+      const statusBreakdown = Array.from(statusDurations.entries())
+        .filter(([, duration]) => duration > 0)
+        .sort((a, b) => b[1] - a[1])
+        .map(([status, duration]) => `${status}: ${(duration / (1000 * 60 * 60 * 24)).toFixed(1)}`)
+        .join(' · ');
+
       return {
-        fromDate: startDate,
-        toDate: endDate,
-        cycleDays: Math.max(0, cycleDays)
+        totalAgeDays: Math.max(0, (nowTs - createdTs) / (1000 * 60 * 60 * 24)),
+        statusBreakdown: statusBreakdown || 'No status history'
       };
     }
 
-    function renderCycleAnalysis(cycleRows, fromStatus, toStatus) {
-      const sortedRows = [...cycleRows].sort((a, b) => a.cycleDays - b.cycleDays);
+    function renderCycleAnalysis(cycleRows) {
+      const sortedRows = [...cycleRows].sort((a, b) => a.totalAgeDays - b.totalAgeDays);
       const total = sortedRows.length;
-      const avg = total ? sortedRows.reduce((sum, row) => sum + row.cycleDays, 0) / total : 0;
+      const avg = total ? sortedRows.reduce((sum, row) => sum + row.totalAgeDays, 0) / total : 0;
       const median = total
         ? (total % 2 === 0
-          ? (sortedRows[total / 2 - 1].cycleDays + sortedRows[total / 2].cycleDays) / 2
-          : sortedRows[Math.floor(total / 2)].cycleDays)
+          ? (sortedRows[total / 2 - 1].totalAgeDays + sortedRows[total / 2].totalAgeDays) / 2
+          : sortedRows[Math.floor(total / 2)].totalAgeDays)
         : 0;
 
       cycleIssueCount.textContent = String(total);
@@ -638,16 +656,15 @@
           <td>${row.key}</td>
           <td>${row.summary}</td>
           <td>${row.parent}</td>
-          <td>${row.fromDate}</td>
-          <td>${row.toDate}</td>
-          <td>${row.cycleDays.toFixed(1)}</td>
+          <td>${row.totalAgeDays.toFixed(1)}</td>
+          <td>${row.statusBreakdown}</td>
         `;
         cycleDetailsBody.appendChild(tr);
       });
 
       if (!sortedRows.length) {
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td colspan="6">No cycle time data for selected statuses (${fromStatus || '—'} → ${toStatus || '—'}).</td>`;
+        tr.innerHTML = '<td colspan="5">No cycle time data available.</td>';
         cycleDetailsBody.appendChild(tr);
       }
     }
@@ -661,6 +678,11 @@
     function initializeDefaults() {
       setupSelectOptions(fromStatusSelect, statusFallback, 'Select from status…');
       setupSelectOptions(toStatusSelect, statusFallback, 'Select to status…');
+
+      const defaultFrom = Array.from(fromStatusSelect.options).find(opt => opt.value === 'Ready');
+      if (defaultFrom) defaultFrom.selected = true;
+      const defaultTo = Array.from(toStatusSelect.options).find(opt => opt.value === 'In Development');
+      if (defaultTo) defaultTo.selected = true;
 
       const today = new Date();
       const lastWeek = new Date();
