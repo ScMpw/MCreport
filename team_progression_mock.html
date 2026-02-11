@@ -52,6 +52,11 @@
         <input id="jiraDomain" type="text" value="aldi-sued.atlassian.net" readonly>
       </div>
       <div>
+        <label for="epicParents">Default epic keys</label>
+        <select id="epicParents" multiple></select>
+        <p class="helper">Select one or more default epics to include in the report.</p>
+      </div>
+      <div>
         <label for="extraEpics">Additional epic keys</label>
         <input id="extraEpics" type="text" placeholder="WARP-123, WARP-4567">
       </div>
@@ -187,6 +192,7 @@
     const EPIC_PARENTS = ['WARP-534', 'WARP-627', 'WARP-621'];
 
     const statusFallback = ['Open', 'Ready', 'In Development', 'In Review', 'Closed'];
+    const epicParentsSelect = document.getElementById('epicParents');
     const fromStatusSelect = document.getElementById('fromStatus');
     const toStatusSelect = document.getElementById('toStatus');
     const dateFromInput = document.getElementById('dateFrom');
@@ -467,6 +473,16 @@
       return Array.from(new Set(entries));
     }
 
+    function getSelectedEpicParents() {
+      const selected = Array.from(epicParentsSelect.selectedOptions)
+        .map(option => option.value)
+        .filter(Boolean);
+      if (!selected.length) {
+        throw new Error('Select at least one default epic key or provide additional epic keys.');
+      }
+      return selected;
+    }
+
     async function loadIssues() {
       const jiraDomain = 'aldi-sued.atlassian.net';
       setError('');
@@ -474,7 +490,7 @@
 
       let epicParents;
       try {
-        epicParents = [...EPIC_PARENTS, ...parseEpicInput()];
+        epicParents = [...getSelectedEpicParents(), ...parseEpicInput()];
       } catch (error) {
         hideLoading();
         setError(error.message);
@@ -703,6 +719,11 @@
     }
 
     function initializeDefaults() {
+      setupSelectOptions(epicParentsSelect, EPIC_PARENTS, 'Select epic keys…');
+      Array.from(epicParentsSelect.options).forEach(option => {
+        option.selected = true;
+      });
+
       setupSelectOptions(fromStatusSelect, statusFallback, 'Select from status…');
       setupSelectOptions(toStatusSelect, statusFallback, 'Select to status…');
 
@@ -723,6 +744,7 @@
     toggleCycleTableBtn.addEventListener('click', toggleCycleTable);
     fromStatusSelect.addEventListener('change', updateReport);
     toStatusSelect.addEventListener('change', updateReport);
+    epicParentsSelect.addEventListener('change', loadIssues);
     dateFromInput.addEventListener('change', updateReport);
     dateToInput.addEventListener('change', updateReport);
     extraEpicsInput.addEventListener('keydown', event => {
@@ -735,6 +757,7 @@
     initializeDefaults();
     enableMultiSelectToggle(fromStatusSelect);
     enableMultiSelectToggle(toStatusSelect);
+    enableMultiSelectToggle(epicParentsSelect);
   </script>
 </body>
 </html>
