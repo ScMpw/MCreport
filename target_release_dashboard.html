@@ -148,6 +148,11 @@
           <label for="boardFilterSelect">Boards (Filter)</label>
           <select id="boardFilterSelect" multiple></select>
         </div>
+        <div class="filter-block">
+          <label for="epicSelect">Epics</label>
+          <select id="epicSelect" multiple></select>
+          <div style="font-size:0.78em; color:#6b7280; margin-top:6px;">Select one or more epics (for example WARP-534, WARP-627, WARP-621) to focus the dashboard.</div>
+        </div>
       </div>
     </div>
 
@@ -235,7 +240,7 @@
       filteredEpics: [],
     };
 
-    let boardChoices, targetVersionChoices, piChoices, teamChoices, boardFilterChoices;
+    let boardChoices, targetVersionChoices, piChoices, teamChoices, boardFilterChoices, epicChoices;
 
     function initChoices() {
       boardChoices = new Choices('#boardSelect', { removeItemButton: true, shouldSort: false });
@@ -243,6 +248,7 @@
       piChoices = new Choices('#piSelect', { removeItemButton: true, shouldSort: true, placeholder: true, placeholderValue: 'Select Product Increments' });
       teamChoices = new Choices('#teamSelect', { removeItemButton: true, shouldSort: true, placeholder: true, placeholderValue: 'All teams' });
       boardFilterChoices = new Choices('#boardFilterSelect', { removeItemButton: true, shouldSort: false });
+      epicChoices = new Choices('#epicSelect', { removeItemButton: true, shouldSort: true, placeholder: true, placeholderValue: 'All epics' });
     }
 
     function setLoading(message) {
@@ -1568,6 +1574,7 @@
       const allowSpillover = document.getElementById('suffixSpillover').checked;
       const selectedTeams = new Set(teamChoices.getValue(true));
       const selectedBoardFilters = new Set(boardFilterChoices.getValue(true));
+      const selectedEpicKeys = new Set(epicChoices.getValue(true));
 
       const filteredEpics = state.epics.filter(epic => {
         if (!Array.isArray(epic.pis) || !epic.pis.length) return false;
@@ -1599,6 +1606,10 @@
             ? Array.from(epic.boardIds).map(String)
             : ['__unassigned__'];
           if (!boards.some(id => selectedBoardFilters.has(id))) return false;
+        }
+
+        if (selectedEpicKeys.size && !selectedEpicKeys.has(epic.key)) {
+          return false;
         }
 
         return true;
@@ -2208,6 +2219,7 @@
       const teams = new Set();
       const boardOptions = new Map();
       const versions = new Map();
+      const epicOptions = new Map();
 
       state.epics.forEach(epic => {
         const targets = getAllTargetVersionsForEntity(epic);
@@ -2238,6 +2250,13 @@
             if (!boardOptions.has(key)) {
               boardOptions.set(key, { value: key, label: state.boardsMap.get(Number(id))?.name || `Board ${id}` });
             }
+          });
+        }
+
+        if (!epicOptions.has(epic.key)) {
+          epicOptions.set(epic.key, {
+            value: epic.key,
+            label: `${epic.key} — ${epic.summary || 'No summary'}`,
           });
         }
       });
@@ -2296,6 +2315,10 @@
       const boardValues = Array.from(boardOptions.values());
       boardValues.push({ value: '__unassigned__', label: 'No Board' });
       boardFilterChoices.setChoices(boardValues, 'value', 'label', true);
+
+      epicChoices.clearChoices();
+      const epicValues = Array.from(epicOptions.values()).sort((a, b) => a.value.localeCompare(b.value, undefined, { numeric: true }));
+      epicChoices.setChoices(epicValues, 'value', 'label', true);
     }
 
 
@@ -2569,7 +2592,7 @@
     });
 
     function setupFilterReactivity() {
-      ['teamSelect', 'boardFilterSelect', 'piSelect', 'targetVersionSelect'].forEach(id => {
+      ['teamSelect', 'boardFilterSelect', 'piSelect', 'targetVersionSelect', 'epicSelect'].forEach(id => {
         const el = document.getElementById(id);
         el.addEventListener('change', () => {
           applyFilters();
