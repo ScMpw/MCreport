@@ -36,6 +36,10 @@
     #cycleTableSection { display:none; }
     #loadingMessage { font-weight:700; color:#111827; margin-top:10px; display:none; }
     .error { color:#dc2626; font-weight:600; }
+    .tool-container { display:none; }
+    .tool-container.active { display:block; }
+    .inline-control { display:flex; align-items:end; gap:10px; flex-wrap:wrap; margin-top:10px; }
+    .inline-control > div { min-width:180px; }
     @media (max-width: 700px) {
       .main { padding:16px; }
     }
@@ -46,11 +50,17 @@
     <h1>WARP Progression</h1>
     <p class="helper">Track stories for parent epics WARP-534, WARP-627, WARP-621 by date range and status transitions.</p>
 
-    <div class="controls">
+    <div class="controls" style="margin-bottom:8px;">
       <div>
-        <label for="jiraDomain">Jira Domain</label>
-        <input id="jiraDomain" type="text" value="aldi-sued.atlassian.net" readonly>
+        <label for="toolSelect">Tool</label>
+        <select id="toolSelect">
+          <option value="progression" selected>Progression Overview</option>
+          <option value="prediction">Monte Carlo Prediction</option>
+        </select>
       </div>
+    </div>
+
+    <div class="controls">
       <div>
         <label for="epicParents">Default epic keys</label>
         <select id="epicParents" multiple></select>
@@ -88,6 +98,7 @@
     <div id="loadingMessage">Loading…</div>
     <div id="errorMessage" class="error"></div>
 
+    <div id="progressionTool" class="tool-container active">
     <div class="card">
       <h2>Progression summary</h2>
       <p class="helper">Created issues and selected status transitions are displayed across the chosen date range.</p>
@@ -185,10 +196,62 @@
         <tbody id="detailsBody"></tbody>
       </table>
     </div>
+    </div>
+
+    <div id="predictionTool" class="tool-container">
+      <div class="card">
+        <h2>Monte Carlo epic prediction</h2>
+        <p class="helper">Uses recent completion throughput from the selected WARP epics to forecast remaining delivery by epic.</p>
+        <div class="inline-control">
+          <div>
+            <label for="targetSprintsInput">Target sprints</label>
+            <input id="targetSprintsInput" type="number" min="1" max="20" value="4">
+          </div>
+          <div>
+            <label for="sprintLengthInput">Sprint length (days)</label>
+            <input id="sprintLengthInput" type="number" min="3" max="30" value="14">
+          </div>
+          <button id="runPredictionBtn" type="button">Run prediction</button>
+        </div>
+        <div class="summary-grid">
+          <div class="summary-tile">
+            <h3>Total backlog issues</h3>
+            <p id="predictionBacklogTotal">0</p>
+          </div>
+          <div class="summary-tile">
+            <h3>Estimated avg throughput / sprint</h3>
+            <p id="predictionVelocity">0.0</p>
+          </div>
+          <div class="summary-tile">
+            <h3>Epics in scope</h3>
+            <p id="predictionEpicCount">0</p>
+          </div>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="epicBacklogChart" aria-label="Epic backlog and done points"></canvas>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Epic</th>
+              <th>Stories</th>
+              <th>Done issues</th>
+              <th>Backlog issues</th>
+              <th>P50 sprints</th>
+              <th>P75 sprints</th>
+              <th>P95 sprints</th>
+              <th>Req. allocation (75% / 95%)</th>
+            </tr>
+          </thead>
+          <tbody id="predictionTableBody"></tbody>
+        </table>
+      </div>
+    </div>
   </div>
 
   <script src="src/jira.js"></script>
   <script>
+    const JIRA_DOMAIN = 'aldi-sued.atlassian.net';
     const EPIC_PARENTS = ['WARP-534', 'WARP-627', 'WARP-621'];
 
     const statusFallback = ['Open', 'Ready', 'In Development', 'In Review', 'Closed'];
@@ -214,10 +277,29 @@
     const cycleMedian = document.getElementById('cycleMedian');
     const toggleCycleTableBtn = document.getElementById('toggleCycleTableBtn');
     const cycleTableSection = document.getElementById('cycleTableSection');
+    const toolSelect = document.getElementById('toolSelect');
+    const progressionTool = document.getElementById('progressionTool');
+    const predictionTool = document.getElementById('predictionTool');
+    const targetSprintsInput = document.getElementById('targetSprintsInput');
+    const sprintLengthInput = document.getElementById('sprintLengthInput');
+    const runPredictionBtn = document.getElementById('runPredictionBtn');
+    const predictionBacklogTotal = document.getElementById('predictionBacklogTotal');
+    const predictionVelocity = document.getElementById('predictionVelocity');
+    const predictionEpicCount = document.getElementById('predictionEpicCount');
+    const predictionTableBody = document.getElementById('predictionTableBody');
+    const epicBacklogChartCanvas = document.getElementById('epicBacklogChart');
 
     let chartInstance = null;
     let statusMixChart = null;
+    let epicBacklogChart = null;
     let cachedIssues = [];
+
+    function switchTool(tool) {
+      const showPrediction = tool === 'prediction';
+      progressionTool.classList.toggle('active', !showPrediction);
+      predictionTool.classList.toggle('active', showPrediction);
+      if (showPrediction) renderPrediction();
+    }
 
     function showLoading(message) {
       loadingMessage.textContent = message || 'Loading…';
@@ -484,7 +566,6 @@
     }
 
     async function loadIssues() {
-      const jiraDomain = 'aldi-sued.atlassian.net';
       setError('');
       showLoading('Loading WARP issues…');
 
@@ -499,7 +580,7 @@
       const jql = `parent in (${Array.from(new Set(epicParents)).join(',')})`;
 
       try {
-        cachedIssues = await jiraSearch(jiraDomain, jql);
+        cachedIssues = await jiraSearch(JIRA_DOMAIN, jql);
         const statusOptions = collectStatusOptions(cachedIssues);
         setupSelectOptions(fromStatusSelect, statusOptions, 'Select from status…');
         setupSelectOptions(toStatusSelect, statusOptions, 'Select to status…');
@@ -527,6 +608,7 @@
         renderStatusMix([]);
         renderTransitionSummary([]);
         renderCycleAnalysis([]);
+        renderPrediction();
         return;
       }
       const fromStatuses = getSelectedStatuses(fromStatusSelect, 'Ready');
@@ -633,6 +715,154 @@
         `;
         detailsBody.appendChild(tr);
       });
+
+      renderPrediction();
+    }
+
+    function isDoneStatus(statusName) {
+      const value = String(statusName || '').toLowerCase();
+      return value.includes('done') || value.includes('closed') || value.includes('resolved');
+    }
+
+    function computeEpicStats() {
+      const epicMap = new Map();
+      cachedIssues.forEach(issue => {
+        const epicKey = issue.fields?.parent?.key || 'UNASSIGNED';
+        if (!epicMap.has(epicKey)) {
+          epicMap.set(epicKey, { epicKey, stories: 0, doneCount: 0, backlogCount: 0 });
+        }
+        const entry = epicMap.get(epicKey);
+        const status = getCurrentStatus(issue);
+        entry.stories += 1;
+        if (isDoneStatus(status)) entry.doneCount += 1;
+        else entry.backlogCount += 1;
+      });
+      return Array.from(epicMap.values()).sort((a, b) => b.backlogCount - a.backlogCount);
+    }
+
+    function calculateRecentThroughputBySprint(sprintLengthDays) {
+      const dayMs = 24 * 60 * 60 * 1000;
+      const sprintMs = Math.max(1, sprintLengthDays) * dayMs;
+      const doneTransitions = [];
+
+      cachedIssues.forEach(issue => {
+        const transitions = parseTransitions(issue);
+        const doneTransition = transitions.find(transition => isDoneStatus(transition.to));
+        if (doneTransition?.timestamp) {
+          doneTransitions.push(doneTransition.timestamp);
+        }
+      });
+
+      if (!doneTransitions.length) return [0, 0, 0, 0, 0, 0];
+      const latestTs = Math.max(...doneTransitions);
+      const buckets = Array.from({ length: 6 }, () => 0);
+
+      doneTransitions.forEach(timestamp => {
+        const sprintDiff = Math.floor((latestTs - timestamp) / sprintMs);
+        if (sprintDiff >= 0 && sprintDiff < buckets.length) {
+          buckets[buckets.length - 1 - sprintDiff] += 1;
+        }
+      });
+
+      return buckets;
+    }
+
+    function monteCarloSprints(backlogItems, throughputSeries, runs = 10000) {
+      if (backlogItems <= 0) return [0];
+      const usableThroughput = throughputSeries.map(v => Number(v) || 0).filter(v => v > 0);
+      if (!usableThroughput.length) return [100];
+      const outcomes = [];
+      for (let i = 0; i < runs; i += 1) {
+        let remaining = backlogItems;
+        let sprints = 0;
+        while (remaining > 0 && sprints < 100) {
+          const randomThroughput = usableThroughput[Math.floor(Math.random() * usableThroughput.length)] || 1;
+          remaining -= Math.max(1, randomThroughput);
+          sprints += 1;
+        }
+        outcomes.push(sprints);
+      }
+      outcomes.sort((a, b) => a - b);
+      return outcomes;
+    }
+
+    function percentile(sortedValues, fraction) {
+      if (!sortedValues.length) return 0;
+      return sortedValues[Math.min(sortedValues.length - 1, Math.floor(sortedValues.length * fraction))];
+    }
+
+    function calculateRequiredAllocation(backlogItems, targetSprints, throughputSeries) {
+      if (backlogItems <= 0) return { p75: 0, p95: 0 };
+      const usableThroughput = throughputSeries.map(v => Number(v) || 0).filter(v => v > 0);
+      if (!usableThroughput.length) return { p75: null, p95: null };
+      let p75 = null;
+      let p95 = null;
+      for (let pct = 1; pct <= 100; pct += 1) {
+        const scaledThroughput = usableThroughput.map(v => (v * pct) / 100);
+        const runs = monteCarloSprints(backlogItems, scaledThroughput, 3000);
+        if (p75 === null && percentile(runs, 0.75) <= targetSprints) p75 = pct;
+        if (p95 === null && percentile(runs, 0.95) <= targetSprints) p95 = pct;
+        if (p75 !== null && p95 !== null) break;
+      }
+      return { p75, p95 };
+    }
+
+    function renderPredictionChart(rows) {
+      if (epicBacklogChart) epicBacklogChart.destroy();
+      epicBacklogChart = new Chart(epicBacklogChartCanvas, {
+        type: 'bar',
+        data: {
+          labels: rows.map(row => row.epicKey),
+          datasets: [
+            { label: 'Done issues', data: rows.map(row => row.doneCount), backgroundColor: '#34d399' },
+            { label: 'Backlog issues', data: rows.map(row => row.backlogCount), backgroundColor: '#f97316' }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: { y: { beginAtZero: true } },
+          plugins: { legend: { position: 'bottom' } }
+        }
+      });
+    }
+
+    function renderPrediction() {
+      const sprintLength = Number(sprintLengthInput.value) || 14;
+      const targetSprints = Number(targetSprintsInput.value) || 4;
+      const epicRows = computeEpicStats();
+      const throughputSeries = calculateRecentThroughputBySprint(sprintLength);
+      const avgThroughput = throughputSeries.reduce((sum, value) => sum + value, 0) / throughputSeries.length;
+
+      predictionBacklogTotal.textContent = String(epicRows.reduce((sum, row) => sum + row.backlogCount, 0));
+      predictionVelocity.textContent = avgThroughput.toFixed(1);
+      predictionEpicCount.textContent = String(epicRows.length);
+
+      predictionTableBody.innerHTML = '';
+      epicRows.forEach(row => {
+        const runResult = monteCarloSprints(row.backlogCount, throughputSeries);
+        const req = calculateRequiredAllocation(row.backlogCount, targetSprints, throughputSeries);
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${row.epicKey}</td>
+          <td>${row.stories}</td>
+          <td>${row.doneCount}</td>
+          <td>${row.backlogCount}</td>
+          <td>${percentile(runResult, 0.5)}</td>
+          <td>${percentile(runResult, 0.75)}</td>
+          <td>${percentile(runResult, 0.95)}</td>
+          <td>${req.p75 ?? 'N/A'}% / ${req.p95 ?? 'N/A'}%</td>
+        `;
+        predictionTableBody.appendChild(tr);
+      });
+
+      if (!epicRows.length) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td colspan="8">No epic data available. Load WARP progression first.</td>';
+        predictionTableBody.appendChild(tr);
+      }
+
+      renderPredictionChart(epicRows);
     }
 
     function toTimeValue(dateText) {
@@ -742,6 +972,8 @@
     document.getElementById('refreshBtn').addEventListener('click', loadIssues);
     toggleDetailsBtn.addEventListener('click', toggleDetails);
     toggleCycleTableBtn.addEventListener('click', toggleCycleTable);
+    runPredictionBtn.addEventListener('click', renderPrediction);
+    toolSelect.addEventListener('change', event => switchTool(event.target.value));
     fromStatusSelect.addEventListener('change', updateReport);
     toStatusSelect.addEventListener('change', updateReport);
     epicParentsSelect.addEventListener('change', loadIssues);
@@ -755,6 +987,8 @@
     });
 
     initializeDefaults();
+    switchTool(toolSelect.value);
+    renderPrediction();
     enableMultiSelectToggle(fromStatusSelect);
     enableMultiSelectToggle(toStatusSelect);
     enableMultiSelectToggle(epicParentsSelect);
