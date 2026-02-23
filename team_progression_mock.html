@@ -226,6 +226,16 @@
         <div class="chart-wrap">
           <canvas id="epicBacklogChart" aria-label="Epic backlog and done points"></canvas>
         </div>
+        <h3 style="margin-top:16px; font-weight:600;">Completed issues by week (absolute)</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Week (Mon start)</th>
+              <th>Completed issues</th>
+            </tr>
+          </thead>
+          <tbody id="weeklyThroughputBody"></tbody>
+        </table>
         <table>
           <thead>
             <tr>
@@ -282,6 +292,7 @@
     const predictionVelocity = document.getElementById('predictionVelocity');
     const predictionEpicCount = document.getElementById('predictionEpicCount');
     const predictionTableBody = document.getElementById('predictionTableBody');
+    const weeklyThroughputBody = document.getElementById('weeklyThroughputBody');
     const epicBacklogChartCanvas = document.getElementById('epicBacklogChart');
 
     let chartInstance = null;
@@ -744,21 +755,33 @@
       return date.getTime();
     }
 
+    function formatWeekStart(timestamp) {
+      return new Date(timestamp).toISOString().slice(0, 10);
+    }
+
     function calculateWeeklyThroughput(windowWeeks = 12) {
       const weekMs = 7 * 24 * 60 * 60 * 1000;
       const doneTransitions = [];
 
       cachedIssues.forEach(issue => {
         const transitions = parseTransitions(issue);
-        const doneTransition = transitions.find(transition => isDoneStatus(transition.to));
-        if (doneTransition?.timestamp) {
+        const doneCandidates = transitions.filter(transition => isDoneStatus(transition.to));
+        const doneTransition = doneCandidates.length ? doneCandidates[doneCandidates.length - 1] : null;
+        if (doneTransition?.timestamp !== null && doneTransition?.timestamp !== undefined) {
           doneTransitions.push(doneTransition.timestamp);
         }
       });
 
-      if (!doneTransitions.length) return Array.from({ length: windowWeeks }, () => 0);
+      if (!doneTransitions.length) {
+        const nowWeekStart = getWeekStartTimestamp(Date.now());
+        return {
+          buckets: Array.from({ length: windowWeeks }, () => 0),
+          weekStarts: Array.from({ length: windowWeeks }, (_, index) => nowWeekStart - ((windowWeeks - 1 - index) * weekMs))
+        };
+      }
       const latestWeekStart = getWeekStartTimestamp(Math.max(...doneTransitions));
       const buckets = Array.from({ length: windowWeeks }, () => 0);
+      const weekStarts = Array.from({ length: windowWeeks }, (_, index) => latestWeekStart - ((windowWeeks - 1 - index) * weekMs));
 
       doneTransitions.forEach(timestamp => {
         const weekStart = getWeekStartTimestamp(timestamp);
@@ -768,7 +791,24 @@
         }
       });
 
-      return buckets;
+      return { buckets, weekStarts };
+    }
+
+    function renderWeeklyThroughput(weekStarts, buckets) {
+      weeklyThroughputBody.innerHTML = '';
+      weekStarts.forEach((weekStart, index) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${formatWeekStart(weekStart)}</td>
+          <td>${buckets[index] ?? 0}</td>
+        `;
+        weeklyThroughputBody.appendChild(tr);
+      });
+      if (!weekStarts.length) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td colspan="2">No completion history available yet.</td>';
+        weeklyThroughputBody.appendChild(tr);
+      }
     }
 
     function monteCarloPeriods(backlogItems, throughputSeries, runs = 10000) {
@@ -842,12 +882,15 @@
     function renderPrediction() {
       const targetWeeks = Number(targetWeeksInput.value) || 8;
       const epicRows = computeEpicStats();
-      const throughputSeries = calculateWeeklyThroughput(12);
-      const medianThroughput = median(throughputSeries);
+      const throughputResult = calculateWeeklyThroughput(12);
+      const throughputSeries = throughputResult.buckets;
+      const nonZeroThroughput = throughputSeries.filter(value => value > 0);
+      const medianThroughput = median(nonZeroThroughput.length ? nonZeroThroughput : throughputSeries);
 
       predictionBacklogTotal.textContent = String(epicRows.reduce((sum, row) => sum + row.backlogCount, 0));
       predictionVelocity.textContent = medianThroughput.toFixed(1);
       predictionEpicCount.textContent = String(epicRows.length);
+      renderWeeklyThroughput(throughputResult.weekStarts, throughputSeries);
 
       predictionTableBody.innerHTML = '';
       epicRows.forEach(row => {
