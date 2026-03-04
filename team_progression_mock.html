@@ -486,15 +486,21 @@
       const expand = ['changelog'];
 
       while (true) {
-        const params = new URLSearchParams({
-          jql,
-          startAt: String(startAt),
-          maxResults: String(maxResults),
-          fields: fields.join(','),
-          expand: expand.join(',')
-        });
-        const resp = await fetch(`https://${jiraDomain}/rest/api/3/search/jql?${params.toString()}`, {
-          credentials: 'include'
+        const resp = await fetch(`https://${jiraDomain}/rest/api/3/search`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-Atlassian-Token': 'no-check'
+          },
+          body: JSON.stringify({
+            jql,
+            startAt,
+            maxResults,
+            fields,
+            expand
+          })
         });
 
         if (!resp.ok) {
@@ -514,12 +520,25 @@
       return issues;
     }
 
+    async function fetchBoardFilterJql(jiraDomain, boardId) {
+      const resp = await fetch(`https://${jiraDomain}/rest/agile/1.0/board/${boardId}/configuration`, {
+        credentials: 'include'
+      });
+      if (!resp.ok) {
+        throw new Error(`Board configuration request failed (${resp.status})`);
+      }
+      const data = await resp.json();
+      return String(data?.filter?.query || '').trim();
+    }
+
     async function jiraSearchBoard(jiraDomain, boardId, jql = '') {
-      const baseClause = `issuekey in board(${boardId})`;
-      const scopedJql = jql ? `(${jql})` : '';
-      const fullJql = scopedJql
-        ? `${baseClause} AND ${scopedJql} ORDER BY created DESC`
-        : `${baseClause} ORDER BY created DESC`;
+      const boardFilterJql = await fetchBoardFilterJql(jiraDomain, boardId);
+      const clauses = [];
+      if (boardFilterJql) clauses.push(`(${boardFilterJql})`);
+      if (jql) clauses.push(`(${jql})`);
+      const fullJql = clauses.length
+        ? `${clauses.join(' AND ')} ORDER BY created DESC`
+        : 'ORDER BY created DESC';
       return jiraSearch(jiraDomain, fullJql);
     }
 
