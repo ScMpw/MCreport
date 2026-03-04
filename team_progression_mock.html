@@ -329,7 +329,7 @@
 
         <details class="info-collapse">
           <summary>How the Monte Carlo simulation works (simple explanation)</summary>
-          <p class="helper">The model looks at how many issues were completed in each recent week. It then runs many simulations where each future week randomly reuses one of those historical throughput values. This creates a range of possible finish dates and lets us report milestones such as 50%, 75%, and 95% certainty.</p>
+          <p class="helper">The model looks at how many issues were completed in each recent week. It then runs many simulations where each future week randomly reuses one of those historical throughput values. This helps us predict possible outcomes based on historical data.</p>
         </details>
 
         <details class="info-collapse">
@@ -1179,7 +1179,7 @@
             <div class="epic-card-metrics">
               <div>
                 <b title="Estimated completion time from Monte Carlo simulation.">Forecast (weeks)</b><br>
-                <div class="forecast-highlight tooltip-value" title="With 95% certainty, this many weeks are needed to finish the backlog.">With 95% certainty: ${p95Weeks}</div>
+                <div class="forecast-highlight tooltip-value" title="95% certainty, this many weeks are needed to finish the backlog.">95% certainty: ${p95Weeks}</div>
                 <small title="Time horizon used to evaluate required weekly completions.">Target: ${targetWeeks} week(s)</small>
               </div>
               <div>
@@ -1196,7 +1196,7 @@
               <div class="epic-details-header">
                 <span class="tooltip-value" title="50% percentile: half the simulation runs finish by this week.">P50: ${p50Weeks} week(s)</span>
                 <span class="tooltip-value" title="75% percentile: three out of four simulation runs finish by this week.">P75: ${p75Weeks} week(s)</span>
-                <span class="tooltip-value" title="95% percentile: nineteen out of twenty simulation runs finish by this week.">With 95% certainty: ${p95Weeks} week(s)</span>
+                <span class="tooltip-value" title="95% percentile: nineteen out of twenty simulation runs finish by this week.">95% certainty: ${p95Weeks} week(s)</span>
               </div>
               <table>
                 <thead>
