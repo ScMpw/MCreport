@@ -82,12 +82,12 @@
         <label for="extraEpics">Additional epic keys</label>
         <input id="extraEpics" type="text" placeholder="WARP-123, WARP-4567">
       </div>
-      <div>
+      <div id="fromStatusControl">
         <label for="fromStatus">From status</label>
         <select id="fromStatus" multiple></select>
         <p class="helper">Click to toggle multiple statuses (no Ctrl/Cmd needed).</p>
       </div>
-      <div>
+      <div id="toStatusControl">
         <label for="toStatus">To status</label>
         <select id="toStatus" multiple></select>
         <p class="helper">Click to toggle multiple statuses (no Ctrl/Cmd needed).</p>
@@ -276,6 +276,10 @@
             <select id="kanbanQuickFilterSelect"></select>
           </div>
           <div>
+            <label for="kanbanDateFromInput">Date from</label>
+            <input id="kanbanDateFromInput" type="date">
+          </div>
+          <div>
             <label for="kanbanTargetWeeksInput">Target weeks</label>
             <input id="kanbanTargetWeeksInput" type="number" min="1" max="52" value="8">
           </div>
@@ -306,11 +310,14 @@
   <script>
     const JIRA_DOMAIN = 'aldi-sued.atlassian.net';
     const EPIC_PARENTS = ['WARP-534', 'WARP-627', 'WARP-621'];
+    const KANBAN_DEFAULT_START_DATE = '2026-01-27';
 
     const statusFallback = ['Open', 'Ready', 'In Development', 'In Review', 'Closed'];
     const epicParentsSelect = document.getElementById('epicParents');
     const fromStatusSelect = document.getElementById('fromStatus');
     const toStatusSelect = document.getElementById('toStatus');
+    const fromStatusControl = document.getElementById('fromStatusControl');
+    const toStatusControl = document.getElementById('toStatusControl');
     const dateFromInput = document.getElementById('dateFrom');
     const dateToInput = document.getElementById('dateTo');
     const createdTotal = document.getElementById('createdTotal');
@@ -343,6 +350,7 @@
     const weeklyThroughputBody = document.getElementById('weeklyThroughputBody');
     const epicBacklogChartCanvas = document.getElementById('epicBacklogChart');
     const kanbanQuickFilterSelect = document.getElementById('kanbanQuickFilterSelect');
+    const kanbanDateFromInput = document.getElementById('kanbanDateFromInput');
     const kanbanTargetWeeksInput = document.getElementById('kanbanTargetWeeksInput');
     const runKanbanBtn = document.getElementById('runKanbanBtn');
     const kanbanEpicCount = document.getElementById('kanbanEpicCount');
@@ -364,6 +372,8 @@
       progressionTool.classList.toggle('active', showProgression);
       predictionTool.classList.toggle('active', showPrediction);
       kanbanTool.classList.toggle('active', showKanban);
+      fromStatusControl.style.display = showKanban ? 'none' : '';
+      toStatusControl.style.display = showKanban ? 'none' : '';
       if (showPrediction) renderPrediction();
       if (showKanban) runKanbanReport();
     }
@@ -657,13 +667,9 @@
     }
 
     function getSelectedEpicParents() {
-      const selected = Array.from(epicParentsSelect.selectedOptions)
+      return Array.from(epicParentsSelect.selectedOptions)
         .map(option => option.value)
         .filter(Boolean);
-      if (!selected.length) {
-        throw new Error('Select at least one default epic key or provide additional epic keys.');
-      }
-      return selected;
     }
 
     async function loadIssues() {
@@ -678,7 +684,8 @@
         setError(error.message);
         return;
       }
-      const jql = `parent in (${Array.from(new Set(epicParents)).join(',')})`;
+      const epicKeys = Array.from(new Set(epicParents.length ? epicParents : EPIC_PARENTS));
+      const jql = `(parent in (${epicKeys.join(',')}) OR \"Epic Link\" in (${epicKeys.join(',')}))`;
 
       try {
         cachedIssues = await jiraSearch(JIRA_DOMAIN, jql);
@@ -853,18 +860,39 @@
       return new Date(timestamp).toISOString().slice(0, 10);
     }
 
-    function calculateWeeklyThroughput(windowWeeks = 12) {
+    function calculateWeeklyThroughput(windowWeeks = 12, options = {}) {
       const weekMs = 7 * 24 * 60 * 60 * 1000;
+      const throughputStartDate = options.startDate || '';
+      const throughputStartTs = throughputStartDate
+        ? toTimeValue(`${throughputStartDate}T00:00:00.000Z`)
+        : null;
       const doneTransitions = [];
 
       cachedIssues.forEach(issue => {
         const transitions = parseTransitions(issue);
         const doneCandidates = transitions.filter(transition => isDoneStatus(transition.to));
         const doneTransition = doneCandidates.length ? doneCandidates[doneCandidates.length - 1] : null;
-        if (doneTransition?.timestamp !== null && doneTransition?.timestamp !== undefined) {
-          doneTransitions.push(doneTransition.timestamp);
-        }
+        if (doneTransition?.timestamp === null || doneTransition?.timestamp === undefined) return;
+        if (throughputStartTs !== null && doneTransition.timestamp < throughputStartTs) return;
+        doneTransitions.push(doneTransition.timestamp);
       });
+
+      if (throughputStartTs !== null) {
+        const throughputStartWeek = getWeekStartTimestamp(throughputStartTs);
+        const rangeEndTimestamp = doneTransitions.length ? Math.max(...doneTransitions, Date.now()) : Date.now();
+        const latestWeekStart = getWeekStartTimestamp(rangeEndTimestamp);
+        const weekCount = Math.max(1, Math.floor((latestWeekStart - throughputStartWeek) / weekMs) + 1);
+        const buckets = Array.from({ length: weekCount }, () => 0);
+        const weekStarts = Array.from({ length: weekCount }, (_, index) => throughputStartWeek + (index * weekMs));
+
+        doneTransitions.forEach(timestamp => {
+          const weekStart = getWeekStartTimestamp(timestamp);
+          const index = Math.floor((weekStart - throughputStartWeek) / weekMs);
+          if (index >= 0 && index < buckets.length) buckets[index] += 1;
+        });
+
+        return { buckets, weekStarts };
+      }
 
       if (!doneTransitions.length) {
         const nowWeekStart = getWeekStartTimestamp(Date.now());
@@ -1029,7 +1057,8 @@
         const jql = getSelectedKanbanQuickFilterQuery();
         kanbanIssues = await jiraSearchBoard(JIRA_DOMAIN, 15575, jql);
         const rows = computeKanbanEpicRows();
-        const throughput = calculateWeeklyThroughputFromIssues(kanbanIssues, 12);
+        const throughputStartDate = kanbanDateFromInput.value || KANBAN_DEFAULT_START_DATE;
+        const throughput = calculateWeeklyThroughputFromIssues(kanbanIssues, { startDate: throughputStartDate });
         const nonZero = throughput.buckets.filter(v => v > 0);
         const med = median(nonZero.length ? nonZero : throughput.buckets);
 
@@ -1085,10 +1114,10 @@
       }
     }
 
-    function calculateWeeklyThroughputFromIssues(issues, windowWeeks = 12) {
+    function calculateWeeklyThroughputFromIssues(issues, options = {}) {
       const original = cachedIssues;
       cachedIssues = issues || [];
-      const result = calculateWeeklyThroughput(windowWeeks);
+      const result = calculateWeeklyThroughput(12, options);
       cachedIssues = original;
       return result;
     }
@@ -1238,9 +1267,6 @@
 
     function initializeDefaults() {
       setupSelectOptions(epicParentsSelect, EPIC_PARENTS, 'Select epic keys…');
-      Array.from(epicParentsSelect.options).forEach(option => {
-        option.selected = true;
-      });
 
       setupSelectOptions(fromStatusSelect, statusFallback, 'Select from status…');
       setupSelectOptions(toStatusSelect, statusFallback, 'Select to status…');
@@ -1255,6 +1281,7 @@
       lastWeek.setDate(today.getDate() - 7);
       dateFromInput.value = toDateValue(lastWeek);
       dateToInput.value = toDateValue(today);
+      kanbanDateFromInput.value = KANBAN_DEFAULT_START_DATE;
     }
 
     document.getElementById('refreshBtn').addEventListener('click', loadIssues);
