@@ -42,6 +42,9 @@
     .inline-control > div { min-width:180px; }
     .epic-card-grid { display:grid; gap:14px; margin-top:12px; }
     .epic-card { background:#f3f4f6; border-radius:14px; padding:16px; border:1px solid #e5e7eb; }
+    .epic-card.flag-green { border:2px solid #16a34a; }
+    .epic-card.flag-yellow { border:2px solid #eab308; }
+    .epic-card.flag-red { border:2px solid #dc2626; }
     .epic-card h3 { margin:0 0 8px 0; font-size:1.2em; }
     .epic-pill-row { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:8px; }
     .epic-pill { display:inline-block; border-radius:999px; padding:4px 10px; color:#fff; font-weight:600; font-size:0.86em; }
@@ -51,6 +54,7 @@
     .epic-pill.open { background:#3b82f6; }
     .epic-card-metrics { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:10px; margin-top:8px; }
     .epic-card small { color:#4b5563; }
+    .forecast-highlight { font-size:1.55em; font-weight:700; line-height:1.1; margin-top:4px; }
     @media (max-width: 700px) {
       .main { padding:16px; }
     }
@@ -1102,11 +1106,14 @@
 
         rows.forEach(row => {
           const runs = monteCarloPeriods(row.backlog, throughput.buckets);
+          const p95Weeks = percentile(runs, 0.95);
+          const targetWeeks = Number(kanbanTargetWeeksInput.value) || 8;
           const req = calculateRequiredThroughputMultiplier(row.backlog, Number(kanbanTargetWeeksInput.value) || 8, throughput.buckets);
           const scopeDelta = row.newLastWeek - row.removedLastWeek;
           const scope = scopeDelta === 0 ? 'No change' : (scopeDelta > 0 ? `Increased (+${scopeDelta})` : `Reduced (${scopeDelta})`);
           const card = document.createElement('article');
-          card.className = 'epic-card';
+          const riskFlagClass = p95Weeks > targetWeeks ? 'flag-red' : (p95Weeks === targetWeeks ? 'flag-yellow' : 'flag-green');
+          card.className = `epic-card ${riskFlagClass}`;
           card.innerHTML = `
             <h3>${row.epicKey}</h3>
             <div class="epic-pill-row">
@@ -1119,10 +1126,11 @@
             <div class="epic-card-metrics">
               <div>
                 <b>Forecast (weeks)</b><br>
-                <small>P50: ${percentile(runs, 0.5)} · P75: ${percentile(runs, 0.75)} · P95: ${percentile(runs, 0.95)}</small>
+                <div class="forecast-highlight">P95: ${p95Weeks}</div>
+                <small>Target: ${targetWeeks} week(s)</small>
               </div>
               <div>
-                <b>Changes since last sprint</b><br>
+                <b>Changes since last week</b><br>
                 <small>Completed: ${row.completedLastWeek} · New: ${row.newLastWeek} · Removed: ${row.removedLastWeek}<br>Scope: ${scope}</small>
               </div>
               <div>
