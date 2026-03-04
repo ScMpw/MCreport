@@ -56,6 +56,7 @@
         <select id="toolSelect">
           <option value="progression" selected>Progression Overview</option>
           <option value="prediction">Monte Carlo Prediction</option>
+          <option value="kanban">Kanban Stakeholder Report</option>
         </select>
       </div>
     </div>
@@ -253,6 +254,55 @@
         </table>
       </div>
     </div>
+
+    <div id="kanbanTool" class="tool-container">
+      <div class="card">
+        <h2>Kanban stakeholder report</h2>
+        <p class="helper">Board 15575 issues are filtered by quick filter, grouped by epic, and summarized with weekly ticket-based scope changes.</p>
+        <div class="inline-control">
+          <div>
+            <label for="kanbanQuickFilterSelect">Quick filter</label>
+            <select id="kanbanQuickFilterSelect"></select>
+          </div>
+          <div>
+            <label for="kanbanTargetWeeksInput">Target weeks</label>
+            <input id="kanbanTargetWeeksInput" type="number" min="1" max="52" value="8">
+          </div>
+          <button id="runKanbanBtn" type="button">Run Kanban report</button>
+        </div>
+
+        <div class="summary-grid">
+          <div class="summary-tile">
+            <h3>Epics in scope</h3>
+            <p id="kanbanEpicCount">0</p>
+          </div>
+          <div class="summary-tile">
+            <h3>Backlog issues</h3>
+            <p id="kanbanBacklogTotal">0</p>
+          </div>
+          <div class="summary-tile">
+            <h3>Median throughput / week</h3>
+            <p id="kanbanVelocity">0.0</p>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Epic</th>
+              <th>Done / In Progress / Open</th>
+              <th>Issues completed (last week)</th>
+              <th>New issues (last week)</th>
+              <th>Removed issues (last week)</th>
+              <th>Scope change</th>
+              <th>P50 / P75 / P95 weeks</th>
+              <th>Req. throughput multiplier (75% / 95%)</th>
+            </tr>
+          </thead>
+          <tbody id="kanbanStakeholderBody"></tbody>
+        </table>
+      </div>
+    </div>
   </div>
 
   <script src="src/jira.js"></script>
@@ -286,6 +336,7 @@
     const toolSelect = document.getElementById('toolSelect');
     const progressionTool = document.getElementById('progressionTool');
     const predictionTool = document.getElementById('predictionTool');
+    const kanbanTool = document.getElementById('kanbanTool');
     const targetWeeksInput = document.getElementById('targetWeeksInput');
     const runPredictionBtn = document.getElementById('runPredictionBtn');
     const predictionBacklogTotal = document.getElementById('predictionBacklogTotal');
@@ -294,17 +345,30 @@
     const predictionTableBody = document.getElementById('predictionTableBody');
     const weeklyThroughputBody = document.getElementById('weeklyThroughputBody');
     const epicBacklogChartCanvas = document.getElementById('epicBacklogChart');
+    const kanbanQuickFilterSelect = document.getElementById('kanbanQuickFilterSelect');
+    const kanbanTargetWeeksInput = document.getElementById('kanbanTargetWeeksInput');
+    const runKanbanBtn = document.getElementById('runKanbanBtn');
+    const kanbanEpicCount = document.getElementById('kanbanEpicCount');
+    const kanbanBacklogTotal = document.getElementById('kanbanBacklogTotal');
+    const kanbanVelocity = document.getElementById('kanbanVelocity');
+    const kanbanStakeholderBody = document.getElementById('kanbanStakeholderBody');
 
     let chartInstance = null;
     let statusMixChart = null;
     let epicBacklogChart = null;
     let cachedIssues = [];
+    let kanbanIssues = [];
+    let kanbanQuickFilters = [];
 
     function switchTool(tool) {
+      const showProgression = tool === 'progression';
       const showPrediction = tool === 'prediction';
-      progressionTool.classList.toggle('active', !showPrediction);
+      const showKanban = tool === 'kanban';
+      progressionTool.classList.toggle('active', showProgression);
       predictionTool.classList.toggle('active', showPrediction);
+      kanbanTool.classList.toggle('active', showKanban);
       if (showPrediction) renderPrediction();
+      if (showKanban) runKanbanReport();
     }
 
     function showLoading(message) {
@@ -441,6 +505,37 @@
       }
 
       return issues;
+    }
+
+    async function jiraSearchBoard(jiraDomain, boardId, jql = '') {
+      const scopedJql = jql ? `(${jql})` : '';
+      const query = scopedJql || 'order by created DESC';
+      return jiraSearch(jiraDomain, `issuekey in board(${boardId}) AND ${query}`);
+    }
+
+    async function loadKanbanQuickFilters() {
+      const resp = await fetch(`https://${JIRA_DOMAIN}/rest/greenhopper/1.0/rapidviewconfig/editmodel.json?rapidViewId=15575`, {
+        credentials: 'include'
+      });
+      if (!resp.ok) {
+        throw new Error(`Quick filter request failed (${resp.status})`);
+      }
+      const data = await resp.json();
+      const model = data?.quickFilterConfig?.models || {};
+      kanbanQuickFilters = Object.values(model)
+        .map(item => ({ id: String(item.id), name: item.name || `Filter ${item.id}`, query: item.query || '' }))
+        .filter(item => item.id && item.name)
+        .sort((a, b) => a.name.localeCompare(b.name));
+      setupSelectOptions(kanbanQuickFilterSelect, [{ id: '', name: 'All board issues' }, ...kanbanQuickFilters], 'Select quick filter…');
+      const preferred = kanbanQuickFilters.find(filter => filter.id === '67675');
+      kanbanQuickFilterSelect.value = preferred ? preferred.id : '';
+    }
+
+    function getSelectedKanbanQuickFilterQuery() {
+      const selectedId = String(kanbanQuickFilterSelect.value || '');
+      if (!selectedId) return '';
+      const found = kanbanQuickFilters.find(filter => String(filter.id) === selectedId);
+      return found?.query || '';
     }
 
     function parseTransitions(issue) {
@@ -859,6 +954,130 @@
       return sorted[mid];
     }
 
+    function getLastWeekRange(referenceDate = new Date()) {
+      const end = new Date(referenceDate);
+      const day = end.getUTCDay();
+      const mondayOffset = (day + 6) % 7;
+      end.setUTCDate(end.getUTCDate() - mondayOffset);
+      end.setUTCHours(0, 0, 0, 0);
+      const start = new Date(end);
+      start.setUTCDate(start.getUTCDate() - 7);
+      return { start: start.getTime(), end: end.getTime() };
+    }
+
+    function isRemovedStatus(statusName) {
+      const value = String(statusName || '').toLowerCase();
+      return value.includes('cancel') || value.includes("won't do") || value.includes('reject') || value.includes('duplicate');
+    }
+
+    function calculateRequiredThroughputMultiplier(backlogItems, targetWeeks, throughputSeries) {
+      if (backlogItems <= 0) return { p75: '0.00', p95: '0.00' };
+      const usable = throughputSeries.map(v => Number(v) || 0).filter(v => v > 0);
+      if (!usable.length) return { p75: null, p95: null };
+      let p75 = null;
+      let p95 = null;
+      for (let pct = 10; pct <= 300; pct += 5) {
+        const scaled = usable.map(v => (v * pct) / 100);
+        const runs = monteCarloPeriods(backlogItems, scaled, 3000);
+        if (p75 === null && percentile(runs, 0.75) <= targetWeeks) p75 = (pct / 100).toFixed(2);
+        if (p95 === null && percentile(runs, 0.95) <= targetWeeks) p95 = (pct / 100).toFixed(2);
+        if (p75 !== null && p95 !== null) break;
+      }
+      return { p75, p95 };
+    }
+
+    function computeKanbanEpicRows() {
+      const epicMap = new Map();
+      const weekRange = getLastWeekRange();
+      kanbanIssues.forEach(issue => {
+        const epicKey = issue.fields?.parent?.key || 'UNASSIGNED';
+        if (!epicMap.has(epicKey)) {
+          epicMap.set(epicKey, {
+            epicKey,
+            done: 0,
+            inProgress: 0,
+            open: 0,
+            backlog: 0,
+            completedLastWeek: 0,
+            newLastWeek: 0,
+            removedLastWeek: 0
+          });
+        }
+        const row = epicMap.get(epicKey);
+        const status = getCurrentStatus(issue);
+        if (isDoneStatus(status)) row.done += 1;
+        else {
+          row.backlog += 1;
+          if (String(status).toLowerCase().includes('progress') || String(status).toLowerCase().includes('develop')) row.inProgress += 1;
+          else row.open += 1;
+        }
+        const createdTs = toTimeValue(issue.fields?.created);
+        if (createdTs !== null && createdTs >= weekRange.start && createdTs < weekRange.end) row.newLastWeek += 1;
+        parseTransitions(issue).forEach(transition => {
+          const ts = transition.timestamp;
+          if (ts === null || ts < weekRange.start || ts >= weekRange.end) return;
+          if (isDoneStatus(transition.to)) row.completedLastWeek += 1;
+          if (isRemovedStatus(transition.to)) row.removedLastWeek += 1;
+        });
+      });
+      return Array.from(epicMap.values()).sort((a, b) => b.backlog - a.backlog);
+    }
+
+    async function runKanbanReport() {
+      setError('');
+      showLoading('Loading Kanban board issues…');
+      try {
+        const jql = getSelectedKanbanQuickFilterQuery();
+        kanbanIssues = await jiraSearchBoard(JIRA_DOMAIN, 15575, jql);
+        const rows = computeKanbanEpicRows();
+        const throughput = calculateWeeklyThroughputFromIssues(kanbanIssues, 12);
+        const nonZero = throughput.buckets.filter(v => v > 0);
+        const med = median(nonZero.length ? nonZero : throughput.buckets);
+
+        kanbanEpicCount.textContent = String(rows.length);
+        kanbanBacklogTotal.textContent = String(rows.reduce((sum, row) => sum + row.backlog, 0));
+        kanbanVelocity.textContent = med.toFixed(1);
+        kanbanStakeholderBody.innerHTML = '';
+
+        rows.forEach(row => {
+          const runs = monteCarloPeriods(row.backlog, throughput.buckets);
+          const req = calculateRequiredThroughputMultiplier(row.backlog, Number(kanbanTargetWeeksInput.value) || 8, throughput.buckets);
+          const scopeDelta = row.newLastWeek - row.removedLastWeek;
+          const scope = scopeDelta === 0 ? 'No change' : (scopeDelta > 0 ? `Increased (+${scopeDelta})` : `Reduced (${scopeDelta})`);
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${row.epicKey}</td>
+            <td>${row.done} / ${row.inProgress} / ${row.open}</td>
+            <td>${row.completedLastWeek}</td>
+            <td>${row.newLastWeek}</td>
+            <td>${row.removedLastWeek}</td>
+            <td>${scope}</td>
+            <td>${percentile(runs, 0.5)} / ${percentile(runs, 0.75)} / ${percentile(runs, 0.95)}</td>
+            <td>${req.p75 ?? 'N/A'}x / ${req.p95 ?? 'N/A'}x</td>
+          `;
+          kanbanStakeholderBody.appendChild(tr);
+        });
+        if (!rows.length) {
+          const tr = document.createElement('tr');
+          tr.innerHTML = '<td colspan="8">No epic data available for the selected quick filter.</td>';
+          kanbanStakeholderBody.appendChild(tr);
+        }
+      } catch (error) {
+        console.error(error);
+        setError('Failed to run Kanban report. Ensure Jira access is available.');
+      } finally {
+        hideLoading();
+      }
+    }
+
+    function calculateWeeklyThroughputFromIssues(issues, windowWeeks = 12) {
+      const original = cachedIssues;
+      cachedIssues = issues || [];
+      const result = calculateWeeklyThroughput(windowWeeks);
+      cachedIssues = original;
+      return result;
+    }
+
     function renderPredictionChart(rows) {
       if (epicBacklogChart) epicBacklogChart.destroy();
       epicBacklogChart = new Chart(epicBacklogChartCanvas, {
@@ -1027,6 +1246,7 @@
     toggleDetailsBtn.addEventListener('click', toggleDetails);
     toggleCycleTableBtn.addEventListener('click', toggleCycleTable);
     runPredictionBtn.addEventListener('click', renderPrediction);
+    runKanbanBtn.addEventListener('click', runKanbanReport);
     toolSelect.addEventListener('change', event => switchTool(event.target.value));
     fromStatusSelect.addEventListener('change', updateReport);
     toStatusSelect.addEventListener('change', updateReport);
@@ -1043,9 +1263,16 @@
     initializeDefaults();
     switchTool(toolSelect.value);
     renderPrediction();
+    loadKanbanQuickFilters().catch(error => {
+      console.error(error);
+      setError('Failed to load Kanban quick filters.');
+    });
     enableMultiSelectToggle(fromStatusSelect);
     enableMultiSelectToggle(toStatusSelect);
     enableMultiSelectToggle(epicParentsSelect);
+    kanbanQuickFilterSelect.addEventListener('change', () => {
+      if (toolSelect.value === 'kanban') runKanbanReport();
+    });
   </script>
 </body>
 </html>
