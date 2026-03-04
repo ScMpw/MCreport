@@ -486,21 +486,19 @@
       const expand = ['changelog'];
 
       while (true) {
-        const resp = await fetch(`https://${jiraDomain}/rest/api/3/search`, {
-          method: 'POST',
+        const params = new URLSearchParams({
+          jql,
+          startAt: String(startAt),
+          maxResults: String(maxResults)
+        });
+        fields.forEach(field => params.append('fields', field));
+        expand.forEach(item => params.append('expand', item));
+
+        const resp = await fetch(`https://${jiraDomain}/rest/api/3/search/jql?${params.toString()}`, {
           credentials: 'include',
           headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'X-Atlassian-Token': 'no-check'
-          },
-          body: JSON.stringify({
-            jql,
-            startAt,
-            maxResults,
-            fields,
-            expand
-          })
+            'Accept': 'application/json'
+          }
         });
 
         if (!resp.ok) {
@@ -543,16 +541,16 @@
     }
 
     async function loadKanbanQuickFilters() {
-      const resp = await fetch(`https://${JIRA_DOMAIN}/rest/greenhopper/1.0/rapidviewconfig/editmodel.json?rapidViewId=15575`, {
+      const resp = await fetch(`https://${JIRA_DOMAIN}/rest/agile/1.0/board/15575/quickfilter`, {
         credentials: 'include'
       });
       if (!resp.ok) {
         throw new Error(`Quick filter request failed (${resp.status})`);
       }
       const data = await resp.json();
-      const model = data?.quickFilterConfig?.models || {};
-      kanbanQuickFilters = Object.values(model)
-        .map(item => ({ id: String(item.id), name: item.name || `Filter ${item.id}`, query: item.query || '' }))
+      const values = data?.values || [];
+      kanbanQuickFilters = values
+        .map(item => ({ id: String(item.id), name: item.name || `Filter ${item.id}`, query: item.jql || '' }))
         .filter(item => item.id && item.name)
         .sort((a, b) => a.name.localeCompare(b.name));
       setupSelectOptions(kanbanQuickFilterSelect, [{ id: '', name: 'All board issues' }, ...kanbanQuickFilters], 'Select quick filter…');
