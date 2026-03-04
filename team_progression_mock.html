@@ -40,6 +40,17 @@
     .tool-container.active { display:block; }
     .inline-control { display:flex; align-items:end; gap:10px; flex-wrap:wrap; margin-top:10px; }
     .inline-control > div { min-width:180px; }
+    .epic-card-grid { display:grid; gap:14px; margin-top:12px; }
+    .epic-card { background:#f3f4f6; border-radius:14px; padding:16px; border:1px solid #e5e7eb; }
+    .epic-card h3 { margin:0 0 8px 0; font-size:1.2em; }
+    .epic-pill-row { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:8px; }
+    .epic-pill { display:inline-block; border-radius:999px; padding:4px 10px; color:#fff; font-weight:600; font-size:0.86em; }
+    .epic-pill.done { background:#10b981; }
+    .epic-pill.progress { background:#f59e0b; }
+    .epic-pill.blocked { background:#ef4444; }
+    .epic-pill.open { background:#3b82f6; }
+    .epic-card-metrics { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:10px; margin-top:8px; }
+    .epic-card small { color:#4b5563; }
     @media (max-width: 700px) {
       .main { padding:16px; }
     }
@@ -286,21 +297,7 @@
           </div>
         </div>
 
-        <table>
-          <thead>
-            <tr>
-              <th>Epic</th>
-              <th>Done / In Progress / Open</th>
-              <th>Issues completed (last week)</th>
-              <th>New issues (last week)</th>
-              <th>Removed issues (last week)</th>
-              <th>Scope change</th>
-              <th>P50 / P75 / P95 weeks</th>
-              <th>Req. throughput multiplier (75% / 95%)</th>
-            </tr>
-          </thead>
-          <tbody id="kanbanStakeholderBody"></tbody>
-        </table>
+        <div id="kanbanEpicCards" class="epic-card-grid"></div>
       </div>
     </div>
   </div>
@@ -351,7 +348,7 @@
     const kanbanEpicCount = document.getElementById('kanbanEpicCount');
     const kanbanBacklogTotal = document.getElementById('kanbanBacklogTotal');
     const kanbanVelocity = document.getElementById('kanbanVelocity');
-    const kanbanStakeholderBody = document.getElementById('kanbanStakeholderBody');
+    const kanbanEpicCards = document.getElementById('kanbanEpicCards');
 
     let chartInstance = null;
     let statusMixChart = null;
@@ -508,9 +505,12 @@
     }
 
     async function jiraSearchBoard(jiraDomain, boardId, jql = '') {
+      const baseClause = `issuekey in board(${boardId})`;
       const scopedJql = jql ? `(${jql})` : '';
-      const query = scopedJql || 'order by created DESC';
-      return jiraSearch(jiraDomain, `issuekey in board(${boardId}) AND ${query}`);
+      const fullJql = scopedJql
+        ? `${baseClause} AND ${scopedJql} ORDER BY created DESC`
+        : `${baseClause} ORDER BY created DESC`;
+      return jiraSearch(jiraDomain, fullJql);
     }
 
     async function loadKanbanQuickFilters() {
@@ -641,7 +641,7 @@
           if (tr.to) values.add(tr.to);
         });
       });
-      return Array.from(values).sort((a, b) => a.localeCompare(b));
+      return Array.from(values);
     }
 
     function parseEpicInput() {
@@ -799,7 +799,6 @@
       renderChart(labels, createdSeries, transitionSeries);
 
       detailsBody.innerHTML = '';
-      detailRows.sort((a, b) => a.date.localeCompare(b.date));
       detailRows.forEach(row => {
         const tr = document.createElement('tr');
         const typeTag = row.type === 'Created'
@@ -1037,30 +1036,46 @@
         kanbanEpicCount.textContent = String(rows.length);
         kanbanBacklogTotal.textContent = String(rows.reduce((sum, row) => sum + row.backlog, 0));
         kanbanVelocity.textContent = med.toFixed(1);
-        kanbanStakeholderBody.innerHTML = '';
+        kanbanEpicCards.innerHTML = '';
 
         rows.forEach(row => {
           const runs = monteCarloPeriods(row.backlog, throughput.buckets);
           const req = calculateRequiredThroughputMultiplier(row.backlog, Number(kanbanTargetWeeksInput.value) || 8, throughput.buckets);
           const scopeDelta = row.newLastWeek - row.removedLastWeek;
           const scope = scopeDelta === 0 ? 'No change' : (scopeDelta > 0 ? `Increased (+${scopeDelta})` : `Reduced (${scopeDelta})`);
-          const tr = document.createElement('tr');
-          tr.innerHTML = `
-            <td>${row.epicKey}</td>
-            <td>${row.done} / ${row.inProgress} / ${row.open}</td>
-            <td>${row.completedLastWeek}</td>
-            <td>${row.newLastWeek}</td>
-            <td>${row.removedLastWeek}</td>
-            <td>${scope}</td>
-            <td>${percentile(runs, 0.5)} / ${percentile(runs, 0.75)} / ${percentile(runs, 0.95)}</td>
-            <td>${req.p75 ?? 'N/A'}x / ${req.p95 ?? 'N/A'}x</td>
+          const card = document.createElement('article');
+          card.className = 'epic-card';
+          card.innerHTML = `
+            <h3>${row.epicKey}</h3>
+            <div class="epic-pill-row">
+              <span class="epic-pill done">${row.done} Done</span>
+              <span class="epic-pill progress">${row.inProgress} In progress</span>
+              <span class="epic-pill blocked">${row.removedLastWeek} Removed</span>
+              <span class="epic-pill open">${row.open} Open</span>
+            </div>
+            <div><b>Total:</b> ${row.done + row.backlog} &nbsp;|&nbsp; <b>Backlog:</b> ${row.backlog}</div>
+            <div class="epic-card-metrics">
+              <div>
+                <b>Forecast (weeks)</b><br>
+                <small>P50: ${percentile(runs, 0.5)} · P75: ${percentile(runs, 0.75)} · P95: ${percentile(runs, 0.95)}</small>
+              </div>
+              <div>
+                <b>Changes since last sprint</b><br>
+                <small>Completed: ${row.completedLastWeek} · New: ${row.newLastWeek} · Removed: ${row.removedLastWeek}<br>Scope: ${scope}</small>
+              </div>
+              <div>
+                <b>Required throughput multiplier</b><br>
+                <small>75%: ${req.p75 ?? 'N/A'}x · 95%: ${req.p95 ?? 'N/A'}x</small>
+              </div>
+            </div>
           `;
-          kanbanStakeholderBody.appendChild(tr);
+          kanbanEpicCards.appendChild(card);
         });
         if (!rows.length) {
-          const tr = document.createElement('tr');
-          tr.innerHTML = '<td colspan="8">No epic data available for the selected quick filter.</td>';
-          kanbanStakeholderBody.appendChild(tr);
+          const empty = document.createElement('p');
+          empty.className = 'helper';
+          empty.textContent = 'No epic data available for the selected quick filter.';
+          kanbanEpicCards.appendChild(empty);
         }
       } catch (error) {
         console.error(error);
