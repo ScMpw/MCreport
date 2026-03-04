@@ -526,7 +526,23 @@
         throw new Error(`Board configuration request failed (${resp.status})`);
       }
       const data = await resp.json();
-      return String(data?.filter?.query || '').trim();
+      const inlineQuery = String(data?.filter?.query || data?.filter?.jql || '').trim();
+      if (inlineQuery) return inlineQuery;
+
+      const filterId = String(data?.filter?.id || '').trim();
+      if (!filterId) return '';
+
+      const filterResp = await fetch(`https://${jiraDomain}/rest/api/3/filter/${encodeURIComponent(filterId)}`, {
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json'
+        }
+      });
+      if (!filterResp.ok) {
+        throw new Error(`Board filter request failed (${filterResp.status})`);
+      }
+      const filterData = await filterResp.json();
+      return String(filterData?.jql || '').trim();
     }
 
     async function jiraSearchBoard(jiraDomain, boardId, jql = '') {
