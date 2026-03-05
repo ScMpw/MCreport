@@ -1,0 +1,1486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>WARP Progression</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="public/tailwind.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { background: #f7f8fa; font-family: 'Inter', Arial, sans-serif; margin: 0; padding: 0; }
+    .main { max-width: 1100px; margin: 30px auto 40px auto; background: #fff; border-radius: 18px; box-shadow: 0 2px 12px #d1d5db70; padding: 36px 32px; }
+    h1 { font-size: 2.1em; margin:0 0 0.7em 0; font-weight: 600; }
+    h2 { font-size: 1.2em; margin-top:1.6em; font-weight:600; }
+    .controls { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:14px; margin: 10px 0 12px 0; }
+    label { font-weight:600; display:block; margin-bottom:4px; color:#374151; }
+    select, input { width:100%; padding:8px 10px; border-radius:8px; border:1px solid #d1d5db; font-size:0.98em; }
+    select[multiple] { min-height: 130px; }
+    button { background: #6366f1; color:#fff; border:none; border-radius:8px; padding:10px 16px; font-size:1em; cursor:pointer; }
+    button.secondary { background:#e5e7eb; color:#111827; }
+    .card { background:#f9fafb; border:1px solid #e5e7eb; border-radius:12px; padding:16px; margin-top:10px; }
+    .summary-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:12px; margin-top:12px; }
+    .summary-tile { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:12px; }
+    .summary-tile h3 { margin:0 0 6px 0; font-size:1em; color:#4b5563; }
+    .summary-tile p { margin:0; font-size:1.4em; font-weight:600; }
+    .chart-wrap { position: relative; height: 280px; margin-top: 10px; }
+    table { border-collapse: collapse; width: 100%; margin-top:10px; }
+    th, td { border:1px solid #e5e7eb; padding:8px 10px; text-align:left; font-size:0.95em; }
+    th { background:#eef2ff; }
+    .helper { color:#4b5563; font-size:0.93em; }
+    .tag { display:inline-block; padding:2px 8px; border-radius:999px; font-size:0.78em; font-weight:600; }
+    .tag-created { background:#e0f2fe; color:#0369a1; }
+    .tag-transition { background:#fef3c7; color:#b45309; }
+    .details-toggle { margin-top:8px; }
+    .cycle-toggle { margin-top: 12px; }
+    #detailsSection { display:none; }
+    #cycleTableSection { display:none; }
+    #loadingMessage { font-weight:700; color:#111827; margin-top:10px; display:none; }
+    .error { color:#dc2626; font-weight:600; }
+    .tool-container { display:none; }
+    .tool-container.active { display:block; }
+    .inline-control { display:flex; align-items:end; gap:10px; flex-wrap:wrap; margin-top:10px; }
+    .inline-control > div { min-width:180px; }
+    .epic-card-grid { display:grid; gap:14px; margin-top:12px; }
+    .epic-card { background:#f3f4f6; border-radius:14px; padding:16px; border:1px solid #e5e7eb; }
+    .epic-card.flag-green { border:2px solid #16a34a; }
+    .epic-card.flag-yellow { border:2px solid #eab308; }
+    .epic-card.flag-red { border:2px solid #dc2626; }
+    .epic-card h3 { margin:0 0 8px 0; font-size:1.2em; }
+    .epic-pill-row { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:8px; }
+    .epic-pill { display:inline-block; border-radius:999px; padding:4px 10px; color:#fff; font-weight:600; font-size:0.86em; }
+    .epic-pill.done { background:#10b981; }
+    .epic-pill.progress { background:#f59e0b; }
+    .epic-pill.blocked { background:#ef4444; }
+    .epic-pill.open { background:#3b82f6; }
+    .epic-card-metrics { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:10px; margin-top:8px; }
+    .epic-card small { color:#4b5563; }
+    .forecast-highlight { font-size:1.55em; font-weight:700; line-height:1.1; margin-top:4px; }
+    .tooltip-value { border-bottom: 1px dotted #9ca3af; cursor: help; }
+    .epic-details-panel { display:none; margin-top:10px; background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:10px; }
+    .epic-details-panel table { margin-top:8px; }
+    .epic-details-header { display:flex; gap:12px; flex-wrap:wrap; color:#374151; font-size:0.9em; }
+    details.info-collapse { margin-top:14px; background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:10px 12px; }
+    details.info-collapse summary { cursor:pointer; font-weight:600; }
+    @media (max-width: 700px) {
+      .main { padding:16px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="main">
+    <h1>WARP Progression</h1>
+    <p class="helper">Track stories for parent epics WARP-534, WARP-627, WARP-621 by date range and status transitions.</p>
+
+    <div class="card" style="margin-top:12px;">
+      <h2 style="margin-top:0;">Jira API authentication (session only)</h2>
+      <p class="helper">Paste your Jira email and API token to authorize requests. The token field is masked, stored in memory only for the current page session, and never written to local/session storage.</p>
+      <div class="inline-control">
+        <div>
+          <label for="jiraEmailInput">Jira email</label>
+          <input id="jiraEmailInput" type="email" autocomplete="off" spellcheck="false" placeholder="name@company.com">
+        </div>
+        <div>
+          <label for="jiraTokenInput">Jira API token</label>
+          <input id="jiraTokenInput" type="password" autocomplete="off" spellcheck="false" placeholder="Paste API token">
+        </div>
+        <button id="applyAuthBtn" type="button">Use token for this session</button>
+      </div>
+      <p id="authStatus" class="helper" style="margin-top:8px;">No API token loaded.</p>
+    </div>
+
+    <div class="controls" style="margin-bottom:8px;">
+      <div>
+        <label for="toolSelect">Tool</label>
+        <select id="toolSelect">
+          <option value="progression" selected>Progression Overview</option>
+          <option value="prediction">Monte Carlo Prediction</option>
+          <option value="kanban">Kanban Stakeholder Report</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="globalControls" class="controls">
+      <div>
+        <label for="epicParents">Default epic keys</label>
+        <select id="epicParents" multiple></select>
+        <p class="helper">Select one or more default epics to include in the report.</p>
+      </div>
+      <div>
+        <label for="extraEpics">Additional epic keys</label>
+        <input id="extraEpics" type="text" placeholder="WARP-123, WARP-4567">
+      </div>
+      <div id="fromStatusControl">
+        <label for="fromStatus">From status</label>
+        <select id="fromStatus" multiple></select>
+        <p class="helper">Click to toggle multiple statuses (no Ctrl/Cmd needed).</p>
+      </div>
+      <div id="toStatusControl">
+        <label for="toStatus">To status</label>
+        <select id="toStatus" multiple></select>
+        <p class="helper">Click to toggle multiple statuses (no Ctrl/Cmd needed).</p>
+      </div>
+      <div>
+        <label for="dateFrom">Date from</label>
+        <input id="dateFrom" type="date">
+      </div>
+      <div>
+        <label for="dateTo">Date to</label>
+        <input id="dateTo" type="date">
+      </div>
+    </div>
+
+    <div id="globalActionRow" style="display:flex; gap:10px; flex-wrap:wrap;">
+      <button id="refreshBtn">Load WARP progression</button>
+      <button id="toggleDetailsBtn" class="secondary details-toggle">Show details</button>
+    </div>
+
+    <div id="loadingMessage">Loading…</div>
+    <div id="errorMessage" class="error"></div>
+
+    <div id="progressionTool" class="tool-container active">
+    <div class="card">
+      <h2>Progression summary</h2>
+      <p class="helper">Created issues and selected status transitions are displayed across the chosen date range.</p>
+      <div class="summary-grid">
+        <div class="summary-tile">
+          <h3>Tickets created</h3>
+          <p id="createdTotal">0</p>
+        </div>
+        <div class="summary-tile">
+          <h3>Transitions (from → to)</h3>
+          <p id="transitionTotal">0</p>
+        </div>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="progressionChart" aria-label="Story progression chart"></canvas>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Current status mix</h2>
+      <p class="helper">Snapshot of where all WARP issues are right now.</p>
+      <div class="chart-wrap">
+        <canvas id="statusMixChart" aria-label="Current status pie chart"></canvas>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Status</th>
+            <th>Issues</th>
+          </tr>
+        </thead>
+        <tbody id="statusMixBody"></tbody>
+      </table>
+      <h3 style="margin-top:16px; font-weight:600;">Transitions into In Development or Closed</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Transition</th>
+            <th>Count</th>
+          </tr>
+        </thead>
+        <tbody id="transitionSummaryBody"></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Cycle time analysis</h2>
+      <p class="helper">Cycle time is calculated for all issues, showing total ticket age and time spent in each status category.</p>
+      <div class="summary-grid">
+        <div class="summary-tile">
+          <h3>Issues with cycle time</h3>
+          <p id="cycleIssueCount">0</p>
+        </div>
+        <div class="summary-tile">
+          <h3>Average cycle time (days)</h3>
+          <p id="cycleAverage">0.0</p>
+        </div>
+        <div class="summary-tile">
+          <h3>Median cycle time (days)</h3>
+          <p id="cycleMedian">0.0</p>
+        </div>
+      </div>
+      <button id="toggleCycleTableBtn" class="secondary cycle-toggle" type="button" aria-expanded="false">Show cycle time details</button>
+      <div id="cycleTableSection">
+        <table>
+          <thead>
+            <tr>
+              <th>Story</th>
+              <th>Summary</th>
+              <th>Parent</th>
+              <th>Total age (days)</th>
+              <th>Time in statuses (days)</th>
+            </tr>
+          </thead>
+          <tbody id="cycleDetailsBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="detailsSection" class="card">
+      <h2>Story details</h2>
+      <p class="helper">Stories that match the selected transition or were created inside the date range.</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Story</th>
+            <th>Summary</th>
+            <th>Parent</th>
+            <th>Type</th>
+            <th>From</th>
+            <th>To</th>
+            <th>Date</th>
+          </tr>
+        </thead>
+        <tbody id="detailsBody"></tbody>
+      </table>
+    </div>
+    </div>
+
+    <div id="predictionTool" class="tool-container">
+      <div class="card">
+        <h2>Monte Carlo epic prediction</h2>
+        <p class="helper">Uses weekly historical completion throughput from the selected WARP epics to forecast remaining delivery by epic.</p>
+        <div class="inline-control">
+          <div>
+            <label for="targetWeeksInput">Target weeks</label>
+            <input id="targetWeeksInput" type="number" min="1" max="52" value="8">
+          </div>
+          <button id="runPredictionBtn" type="button">Run prediction</button>
+        </div>
+        <div class="summary-grid">
+          <div class="summary-tile">
+            <h3>Total backlog issues</h3>
+            <p id="predictionBacklogTotal">0</p>
+          </div>
+          <div class="summary-tile">
+            <h3>Historical median throughput / week</h3>
+            <p id="predictionVelocity">0.0</p>
+          </div>
+          <div class="summary-tile">
+            <h3>Epics in scope</h3>
+            <p id="predictionEpicCount">0</p>
+          </div>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="epicBacklogChart" aria-label="Epic backlog and done points"></canvas>
+        </div>
+        <h3 style="margin-top:16px; font-weight:600;">Completed issues by week (absolute)</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Week (Mon start)</th>
+              <th>Completed issues</th>
+            </tr>
+          </thead>
+          <tbody id="weeklyThroughputBody"></tbody>
+        </table>
+        <table>
+          <thead>
+            <tr>
+              <th>Epic</th>
+              <th>Stories</th>
+              <th>Done issues</th>
+              <th>Backlog issues</th>
+              <th>P50 weeks</th>
+              <th>P75 weeks</th>
+              <th>P95 weeks</th>
+              <th>Req. allocation (75% / 95%)</th>
+            </tr>
+          </thead>
+          <tbody id="predictionTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="kanbanTool" class="tool-container">
+      <div class="card">
+        <h2>Kanban stakeholder report</h2>
+        <p class="helper">Board 15575 issues are filtered by quick filter, grouped by epic, and summarized with weekly ticket-based scope changes.</p>
+        <div class="inline-control">
+          <div>
+            <label for="kanbanQuickFilterSelect">Quick filter</label>
+            <select id="kanbanQuickFilterSelect"></select>
+          </div>
+          <div>
+            <label for="kanbanDateFromInput">Date from</label>
+            <input id="kanbanDateFromInput" type="date">
+          </div>
+          <div>
+            <label for="kanbanTargetWeeksInput">Target weeks</label>
+            <input id="kanbanTargetWeeksInput" type="number" min="1" max="52" value="8">
+          </div>
+          <button id="runKanbanBtn" type="button">Run Kanban report</button>
+        </div>
+
+        <div class="summary-grid">
+          <div class="summary-tile" title="Number of epics with at least one issue in the selected quick filter.">
+            <h3>Epics in scope</h3>
+            <p id="kanbanEpicCount" class="tooltip-value">0</p>
+          </div>
+          <div class="summary-tile" title="Issues not yet in a done state across all epics.">
+            <h3>Backlog issues</h3>
+            <p id="kanbanBacklogTotal" class="tooltip-value">0</p>
+          </div>
+          <div class="summary-tile" title="Median historical weekly completions used as baseline throughput.">
+            <h3>Median throughput / week</h3>
+            <p id="kanbanVelocity" class="tooltip-value">0.0</p>
+          </div>
+        </div>
+
+        <div id="kanbanEpicCards" class="epic-card-grid"></div>
+
+        <details class="info-collapse">
+          <summary>Historical throughput data used by the simulation</summary>
+          <p class="helper">These are the completed issues per week used as Monte Carlo input samples.</p>
+          <table>
+            <thead>
+              <tr>
+                <th>Week (Mon start)</th>
+                <th>Completed issues</th>
+              </tr>
+            </thead>
+            <tbody id="kanbanHistoricalBody"></tbody>
+          </table>
+        </details>
+
+        <details class="info-collapse">
+          <summary>How the Monte Carlo simulation works (simple explanation)</summary>
+          <p class="helper">The model looks at how many issues were completed in each recent week. It then runs many simulations where each future week randomly reuses one of those historical throughput values. This helps us predict possible outcomes based on historical data.</p>
+        </details>
+
+        <details class="info-collapse">
+          <summary>Warning about confidence and assumptions</summary>
+          <p class="helper">All predictions are based on the currently available Jira data, issue status history, and current scope. Team changes, blockers, reprioritization, quality issues, and external dependencies can significantly change actual outcomes. Use this report as directional guidance, not as a guaranteed commitment.</p>
+        </details>
+      </div>
+    </div>
+  </div>
+
+  <script src="src/jira.js"></script>
+  <script>
+    const JIRA_DOMAIN = 'aldi-sued.atlassian.net';
+    const EPIC_PARENTS = ['WARP-534', 'WARP-627', 'WARP-621'];
+    const KANBAN_DEFAULT_START_DATE = '2026-01-27';
+    const AUTH_STORAGE_NOTICE = 'Token is held in memory for this tab only and is not persisted.';
+
+    const statusFallback = ['Open', 'Ready', 'In Development', 'In Review', 'Closed'];
+    const epicParentsSelect = document.getElementById('epicParents');
+    const fromStatusSelect = document.getElementById('fromStatus');
+    const toStatusSelect = document.getElementById('toStatus');
+    const fromStatusControl = document.getElementById('fromStatusControl');
+    const toStatusControl = document.getElementById('toStatusControl');
+    const globalControls = document.getElementById('globalControls');
+    const globalActionRow = document.getElementById('globalActionRow');
+    const dateFromInput = document.getElementById('dateFrom');
+    const dateToInput = document.getElementById('dateTo');
+    const createdTotal = document.getElementById('createdTotal');
+    const transitionTotal = document.getElementById('transitionTotal');
+    const detailsBody = document.getElementById('detailsBody');
+    const cycleDetailsBody = document.getElementById('cycleDetailsBody');
+    const statusMixBody = document.getElementById('statusMixBody');
+    const transitionSummaryBody = document.getElementById('transitionSummaryBody');
+    const toggleDetailsBtn = document.getElementById('toggleDetailsBtn');
+    const detailsSection = document.getElementById('detailsSection');
+    const loadingMessage = document.getElementById('loadingMessage');
+    const errorMessage = document.getElementById('errorMessage');
+    const statusMixChartCanvas = document.getElementById('statusMixChart');
+    const extraEpicsInput = document.getElementById('extraEpics');
+    const cycleIssueCount = document.getElementById('cycleIssueCount');
+    const cycleAverage = document.getElementById('cycleAverage');
+    const cycleMedian = document.getElementById('cycleMedian');
+    const toggleCycleTableBtn = document.getElementById('toggleCycleTableBtn');
+    const cycleTableSection = document.getElementById('cycleTableSection');
+    const toolSelect = document.getElementById('toolSelect');
+    const jiraEmailInput = document.getElementById('jiraEmailInput');
+    const jiraTokenInput = document.getElementById('jiraTokenInput');
+    const applyAuthBtn = document.getElementById('applyAuthBtn');
+    const authStatus = document.getElementById('authStatus');
+    const progressionTool = document.getElementById('progressionTool');
+    const predictionTool = document.getElementById('predictionTool');
+    const kanbanTool = document.getElementById('kanbanTool');
+    const targetWeeksInput = document.getElementById('targetWeeksInput');
+    const runPredictionBtn = document.getElementById('runPredictionBtn');
+    const predictionBacklogTotal = document.getElementById('predictionBacklogTotal');
+    const predictionVelocity = document.getElementById('predictionVelocity');
+    const predictionEpicCount = document.getElementById('predictionEpicCount');
+    const predictionTableBody = document.getElementById('predictionTableBody');
+    const weeklyThroughputBody = document.getElementById('weeklyThroughputBody');
+    const epicBacklogChartCanvas = document.getElementById('epicBacklogChart');
+    const kanbanQuickFilterSelect = document.getElementById('kanbanQuickFilterSelect');
+    const kanbanDateFromInput = document.getElementById('kanbanDateFromInput');
+    const kanbanTargetWeeksInput = document.getElementById('kanbanTargetWeeksInput');
+    const runKanbanBtn = document.getElementById('runKanbanBtn');
+    const kanbanEpicCount = document.getElementById('kanbanEpicCount');
+    const kanbanBacklogTotal = document.getElementById('kanbanBacklogTotal');
+    const kanbanVelocity = document.getElementById('kanbanVelocity');
+    const kanbanEpicCards = document.getElementById('kanbanEpicCards');
+    const kanbanHistoricalBody = document.getElementById('kanbanHistoricalBody');
+
+    let chartInstance = null;
+    let statusMixChart = null;
+    let epicBacklogChart = null;
+    let cachedIssues = [];
+    let kanbanIssues = [];
+    let kanbanQuickFilters = [];
+    let jiraAuthHeader = '';
+
+    function applyJiraAuth() {
+      const email = String(jiraEmailInput.value || '').trim();
+      const token = String(jiraTokenInput.value || '').trim();
+      if (!email || !token) {
+        jiraAuthHeader = '';
+        authStatus.textContent = 'Enter both Jira email and API token.';
+        setError('Missing Jira credentials.');
+        return;
+      }
+      jiraAuthHeader = `Basic ${btoa(`${email}:${token}`)}`;
+      jiraTokenInput.value = '';
+      authStatus.textContent = `Token loaded for ${email}. ${AUTH_STORAGE_NOTICE}`;
+      setError('');
+      if (toolSelect.value === 'kanban') {
+        loadKanbanQuickFilters().catch(error => {
+          console.error(error);
+          setError('Failed to load Kanban quick filters.');
+        });
+      }
+    }
+
+    function getAuthHeaders(extraHeaders = {}) {
+      if (!jiraAuthHeader) {
+        throw new Error('Jira API token not configured.');
+      }
+      return {
+        'Accept': 'application/json',
+        'Authorization': jiraAuthHeader,
+        ...extraHeaders
+      };
+    }
+
+    async function jiraFetch(url, options = {}) {
+      const headers = getAuthHeaders(options.headers || {});
+      const resp = await fetch(url, {
+        ...options,
+        headers
+      });
+      return resp;
+    }
+
+    function switchTool(tool) {
+      const showProgression = tool === 'progression';
+      const showPrediction = tool === 'prediction';
+      const showKanban = tool === 'kanban';
+      progressionTool.classList.toggle('active', showProgression);
+      predictionTool.classList.toggle('active', showPrediction);
+      kanbanTool.classList.toggle('active', showKanban);
+      fromStatusControl.style.display = showKanban ? 'none' : '';
+      toStatusControl.style.display = showKanban ? 'none' : '';
+      globalControls.style.display = showKanban ? 'none' : 'grid';
+      globalActionRow.style.display = showKanban ? 'none' : 'flex';
+      if (showPrediction) renderPrediction();
+      if (showKanban) runKanbanReport();
+    }
+
+    function showLoading(message) {
+      loadingMessage.textContent = message || 'Loading…';
+      loadingMessage.style.display = 'block';
+    }
+
+    function hideLoading() {
+      loadingMessage.style.display = 'none';
+    }
+
+    function setError(message) {
+      errorMessage.textContent = message || '';
+    }
+
+    function setupSelectOptions(select, options, placeholder) {
+      select.innerHTML = '';
+      if (!select.multiple) {
+        const placeholderOption = document.createElement('option');
+        placeholderOption.value = '';
+        placeholderOption.textContent = placeholder;
+        select.appendChild(placeholderOption);
+      }
+      options.forEach(option => {
+        const opt = document.createElement('option');
+        if (typeof option === 'string') {
+          opt.value = option;
+          opt.textContent = option;
+        } else {
+          opt.value = option.id;
+          opt.textContent = option.name;
+        }
+        select.appendChild(opt);
+      });
+    }
+
+    function getSelectedStatuses(select, fallbackStatus) {
+      const values = Array.from(select.selectedOptions)
+        .map(option => option.value)
+        .filter(Boolean);
+      return values.length ? values : [fallbackStatus];
+    }
+
+    function enableMultiSelectToggle(select) {
+      select.addEventListener('mousedown', event => {
+        const option = event.target;
+        if (!(option instanceof HTMLOptionElement)) return;
+        event.preventDefault();
+        option.selected = !option.selected;
+        select.focus();
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+    }
+
+    function toDateValue(date) {
+      return new Date(date).toISOString().slice(0, 10);
+    }
+
+    function buildDateRange(start, end) {
+      const dates = [];
+      const cursor = new Date(start);
+      const last = new Date(end);
+      while (cursor <= last) {
+        dates.push(toDateValue(cursor));
+        cursor.setDate(cursor.getDate() + 1);
+      }
+      return dates;
+    }
+
+    function renderChart(labels, createdSeries, transitionSeries) {
+      const ctx = document.getElementById('progressionChart');
+      if (chartInstance) chartInstance.destroy();
+      chartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: 'Tickets created',
+              data: createdSeries,
+              backgroundColor: '#60a5fa'
+            },
+            {
+              label: 'Status transitions',
+              data: transitionSeries,
+              backgroundColor: '#fbbf24'
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: { stepSize: 1 }
+            }
+          }
+        }
+      });
+    }
+
+    async function jiraSearch(jiraDomain, jql) {
+      const issues = [];
+      let startAt = 0;
+      const maxResults = 100;
+      const fields = ['summary', 'created', 'parent', 'status'];
+      const expand = ['changelog'];
+
+      while (true) {
+        const params = new URLSearchParams({
+          jql,
+          startAt: String(startAt),
+          maxResults: String(maxResults)
+        });
+        fields.forEach(field => params.append('fields', field));
+        expand.forEach(item => params.append('expand', item));
+
+        const resp = await jiraFetch(`https://${jiraDomain}/rest/api/3/search/jql?${params.toString()}`);
+
+        if (!resp.ok) {
+          const text = await resp.text();
+          throw new Error(`Jira search failed (${resp.status}): ${text}`);
+        }
+
+        const data = await resp.json();
+        issues.push(...(data.issues || []));
+        const total = data.total || issues.length;
+        startAt += data.issues ? data.issues.length : 0;
+        if (!data.issues || data.issues.length === 0 || startAt >= total) {
+          break;
+        }
+      }
+
+      return issues;
+    }
+
+    async function fetchBoardFilterJql(jiraDomain, boardId) {
+      const resp = await jiraFetch(`https://${jiraDomain}/rest/agile/1.0/board/${boardId}/configuration`);
+      if (!resp.ok) {
+        throw new Error(`Board configuration request failed (${resp.status})`);
+      }
+      const data = await resp.json();
+      const inlineQuery = String(data?.filter?.query || data?.filter?.jql || '').trim();
+      if (inlineQuery) return inlineQuery;
+
+      const filterId = String(data?.filter?.id || '').trim();
+      if (!filterId) return '';
+
+      const filterResp = await jiraFetch(`https://${jiraDomain}/rest/api/3/filter/${encodeURIComponent(filterId)}`);
+      if (!filterResp.ok) {
+        throw new Error(`Board filter request failed (${filterResp.status})`);
+      }
+      const filterData = await filterResp.json();
+      return String(filterData?.jql || '').trim();
+    }
+
+    async function jiraSearchBoard(jiraDomain, boardId, jql = '') {
+      const boardFilterJql = await fetchBoardFilterJql(jiraDomain, boardId);
+      const clauses = [];
+      if (boardFilterJql) clauses.push(`(${boardFilterJql})`);
+      if (jql) clauses.push(`(${jql})`);
+      const fullJql = clauses.length
+        ? `${clauses.join(' AND ')} ORDER BY created DESC`
+        : 'ORDER BY created DESC';
+      return jiraSearch(jiraDomain, fullJql);
+    }
+
+    async function loadKanbanQuickFilters() {
+      const resp = await jiraFetch(`https://${JIRA_DOMAIN}/rest/agile/1.0/board/15575/quickfilter`);
+      if (!resp.ok) {
+        throw new Error(`Quick filter request failed (${resp.status})`);
+      }
+      const data = await resp.json();
+      const values = data?.values || [];
+      kanbanQuickFilters = values
+        .map(item => ({ id: String(item.id), name: item.name || `Filter ${item.id}`, query: item.jql || '' }))
+        .filter(item => item.id && item.name)
+        .sort((a, b) => a.name.localeCompare(b.name));
+      setupSelectOptions(kanbanQuickFilterSelect, [{ id: '', name: 'All board issues' }, ...kanbanQuickFilters], 'Select quick filter…');
+      const preferred = kanbanQuickFilters.find(filter => filter.id === '67675');
+      kanbanQuickFilterSelect.value = preferred ? preferred.id : '';
+    }
+
+    function getSelectedKanbanQuickFilterQuery() {
+      const selectedId = String(kanbanQuickFilterSelect.value || '');
+      if (!selectedId) return '';
+      const found = kanbanQuickFilters.find(filter => String(filter.id) === selectedId);
+      return found?.query || '';
+    }
+
+    function parseTransitions(issue) {
+      const histories = issue.changelog?.histories || [];
+      const transitions = [];
+      histories.forEach(history => {
+        const changed = history.items || [];
+        changed.forEach(item => {
+          if (item.field === 'status') {
+            transitions.push({
+              from: item.fromString,
+              to: item.toString,
+              date: history.created.slice(0, 10),
+              dateTime: history.created,
+              timestamp: toTimeValue(history.created)
+            });
+          }
+        });
+      });
+      transitions.sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0));
+      return transitions;
+    }
+
+    function normalizeStatus(value) {
+      const name = String(value || '').trim();
+      return name || 'Unknown';
+    }
+
+    function getCurrentStatus(issue) {
+      const fieldStatus = issue.fields?.status?.name;
+      if (fieldStatus) return normalizeStatus(fieldStatus);
+      const transitions = parseTransitions(issue);
+      if (!transitions.length) return 'Unknown';
+      return normalizeStatus(transitions[transitions.length - 1].to || transitions[transitions.length - 1].from);
+    }
+
+    function buildColorPalette(count) {
+      if (!count) return [];
+      return Array.from({ length: count }, (_, index) => {
+        const hue = Math.round((360 / count) * index);
+        return `hsl(${hue}, 70%, 60%)`;
+      });
+    }
+
+    function renderStatusMix(statusRows) {
+      statusMixBody.innerHTML = '';
+      statusRows.forEach(row => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${row.status}</td>
+          <td>${row.count}</td>
+        `;
+        statusMixBody.appendChild(tr);
+      });
+      if (!statusRows.length) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td colspan="2">No status data available.</td>';
+        statusMixBody.appendChild(tr);
+      }
+
+      if (statusMixChart) statusMixChart.destroy();
+      statusMixChart = new Chart(statusMixChartCanvas, {
+        type: 'pie',
+        data: {
+          labels: statusRows.map(row => row.status),
+          datasets: [{
+            data: statusRows.map(row => row.count),
+            backgroundColor: buildColorPalette(statusRows.length)
+          }]
+        },
+        options: {
+          plugins: {
+            legend: {
+              position: 'bottom'
+            }
+          }
+        }
+      });
+    }
+
+    function renderTransitionSummary(rows) {
+      transitionSummaryBody.innerHTML = '';
+      rows.forEach(row => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${row.transition}</td>
+          <td>${row.count}</td>
+        `;
+        transitionSummaryBody.appendChild(tr);
+      });
+      if (!rows.length) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td colspan="2">No matching transitions found.</td>';
+        transitionSummaryBody.appendChild(tr);
+      }
+    }
+
+    function collectStatusOptions(issues) {
+      const values = new Set(statusFallback);
+      issues.forEach(issue => {
+        parseTransitions(issue).forEach(tr => {
+          if (tr.from) values.add(tr.from);
+          if (tr.to) values.add(tr.to);
+        });
+      });
+      return Array.from(values);
+    }
+
+    function parseEpicInput() {
+      const input = (extraEpicsInput.value || '').trim();
+      if (!input) return [];
+      const entries = input.split(',').map(item => item.trim().toUpperCase()).filter(Boolean);
+      const keyPattern = /^WARP-\d{3,4}$/;
+      const invalid = entries.filter(key => !keyPattern.test(key));
+      if (invalid.length) {
+        throw new Error(`Invalid epic keys: ${invalid.join(', ')}. Use format WARP-XXX or WARP-XXXX.`);
+      }
+      return Array.from(new Set(entries));
+    }
+
+    function getSelectedEpicParents() {
+      return Array.from(epicParentsSelect.selectedOptions)
+        .map(option => option.value)
+        .filter(Boolean);
+    }
+
+    async function loadIssues() {
+      setError('');
+      showLoading('Loading WARP issues…');
+
+      let epicParents;
+      try {
+        epicParents = [...getSelectedEpicParents(), ...parseEpicInput()];
+      } catch (error) {
+        hideLoading();
+        setError(error.message);
+        return;
+      }
+      const epicKeys = Array.from(new Set(epicParents.length ? epicParents : EPIC_PARENTS));
+      const jql = `(parent in (${epicKeys.join(',')}) OR \"Epic Link\" in (${epicKeys.join(',')}))`;
+
+      try {
+        cachedIssues = await jiraSearch(JIRA_DOMAIN, jql);
+        const statusOptions = collectStatusOptions(cachedIssues);
+        setupSelectOptions(fromStatusSelect, statusOptions, 'Select from status…');
+        setupSelectOptions(toStatusSelect, statusOptions, 'Select to status…');
+
+        if (statusOptions.includes('Ready')) {
+          const option = Array.from(fromStatusSelect.options).find(opt => opt.value === 'Ready');
+          if (option) option.selected = true;
+        }
+        if (statusOptions.includes('In Development')) {
+          const option = Array.from(toStatusSelect.options).find(opt => opt.value === 'In Development');
+          if (option) option.selected = true;
+        }
+        updateReport();
+      } catch (err) {
+        console.error(err);
+        setError('Failed to load issues. Ensure you are logged in to Jira.');
+      } finally {
+        hideLoading();
+      }
+    }
+
+    function updateReport() {
+      if (!cachedIssues.length) {
+        renderChart([], [], []);
+        renderStatusMix([]);
+        renderTransitionSummary([]);
+        renderCycleAnalysis([]);
+        renderPrediction();
+        return;
+      }
+      const fromStatuses = getSelectedStatuses(fromStatusSelect, 'Ready');
+      const toStatuses = getSelectedStatuses(toStatusSelect, 'In Development');
+      const fromStatusSet = new Set(fromStatuses);
+      const toStatusSet = new Set(toStatuses);
+      const startDate = dateFromInput.value || toDateValue(new Date(Date.now() - 6 * 24 * 60 * 60 * 1000));
+      const endDate = dateToInput.value || toDateValue(new Date());
+
+      const labels = buildDateRange(startDate, endDate);
+      const createdSeries = labels.map(() => 0);
+      const transitionSeries = labels.map(() => 0);
+
+      const detailRows = [];
+      const cycleRows = [];
+      const statusCounts = new Map();
+      const transitionCounts = new Map();
+
+      cachedIssues.forEach(issue => {
+        const created = issue.fields?.created?.slice(0, 10);
+        const parentKey = issue.fields?.parent?.key || '—';
+        const currentStatus = getCurrentStatus(issue);
+        statusCounts.set(currentStatus, (statusCounts.get(currentStatus) || 0) + 1);
+        if (created && created >= startDate && created <= endDate) {
+          const idx = labels.indexOf(created);
+          if (idx >= 0) createdSeries[idx] += 1;
+          detailRows.push({
+            key: issue.key,
+            summary: issue.fields?.summary || '',
+            parent: parentKey,
+            type: 'Created',
+            from: '—',
+            to: '—',
+            date: created
+          });
+        }
+
+        const transitions = parseTransitions(issue);
+        transitions.forEach(transition => {
+          if (fromStatusSet.has(transition.from) && toStatusSet.has(transition.to)) {
+            if (transition.date >= startDate && transition.date <= endDate) {
+              const idx = labels.indexOf(transition.date);
+              if (idx >= 0) transitionSeries[idx] += 1;
+              detailRows.push({
+                key: issue.key,
+                summary: issue.fields?.summary || '',
+                parent: parentKey,
+                type: 'Transition',
+                from: transition.from,
+                to: transition.to,
+                date: transition.date
+              });
+            }
+          }
+          const toLower = (transition.to || '').toLowerCase();
+          if (transition.date >= startDate && transition.date <= endDate) {
+            if (toLower === 'in development' || toLower === 'closed') {
+              const label = `${transition.from || 'Unknown'} → ${transition.to}`;
+              transitionCounts.set(label, (transitionCounts.get(label) || 0) + 1);
+            }
+          }
+        });
+
+        const cycle = calculateIssueAging(transitions, issue.fields?.created, issue.fields?.status?.name);
+        cycleRows.push({
+          key: issue.key,
+          summary: issue.fields?.summary || '',
+          parent: parentKey,
+          totalAgeDays: cycle.totalAgeDays,
+          statusBreakdown: cycle.statusBreakdown
+        });
+      });
+
+      const statusRows = Array.from(statusCounts.entries())
+        .map(([status, count]) => ({ status, count }))
+        .sort((a, b) => b.count - a.count || a.status.localeCompare(b.status));
+      renderStatusMix(statusRows);
+
+      const transitionRows = Array.from(transitionCounts.entries())
+        .map(([transition, count]) => ({ transition, count }))
+        .sort((a, b) => b.count - a.count || a.transition.localeCompare(b.transition));
+      renderTransitionSummary(transitionRows);
+      renderCycleAnalysis(cycleRows);
+
+      createdTotal.textContent = createdSeries.reduce((sum, val) => sum + val, 0);
+      transitionTotal.textContent = transitionSeries.reduce((sum, val) => sum + val, 0);
+      renderChart(labels, createdSeries, transitionSeries);
+
+      detailsBody.innerHTML = '';
+      detailRows.forEach(row => {
+        const tr = document.createElement('tr');
+        const typeTag = row.type === 'Created'
+          ? '<span class="tag tag-created">Created</span>'
+          : '<span class="tag tag-transition">Transition</span>';
+        tr.innerHTML = `
+          <td>${row.key}</td>
+          <td>${row.summary}</td>
+          <td>${row.parent}</td>
+          <td>${typeTag}</td>
+          <td>${row.from}</td>
+          <td>${row.to}</td>
+          <td>${row.date}</td>
+        `;
+        detailsBody.appendChild(tr);
+      });
+
+      renderPrediction();
+    }
+
+    function isDoneStatus(statusName) {
+      const value = String(statusName || '').toLowerCase();
+      return value.includes('done') || value.includes('closed') || value.includes('resolved');
+    }
+
+    function computeEpicStats() {
+      const epicMap = new Map();
+      cachedIssues.forEach(issue => {
+        const epicKey = issue.fields?.parent?.key || 'UNASSIGNED';
+        if (!epicMap.has(epicKey)) {
+          epicMap.set(epicKey, { epicKey, stories: 0, doneCount: 0, backlogCount: 0 });
+        }
+        const entry = epicMap.get(epicKey);
+        const status = getCurrentStatus(issue);
+        entry.stories += 1;
+        if (isDoneStatus(status)) entry.doneCount += 1;
+        else entry.backlogCount += 1;
+      });
+      return Array.from(epicMap.values()).sort((a, b) => b.backlogCount - a.backlogCount);
+    }
+
+    function getWeekStartTimestamp(timestamp) {
+      const date = new Date(timestamp);
+      const day = date.getUTCDay();
+      const mondayOffset = (day + 6) % 7;
+      date.setUTCDate(date.getUTCDate() - mondayOffset);
+      date.setUTCHours(0, 0, 0, 0);
+      return date.getTime();
+    }
+
+    function formatWeekStart(timestamp) {
+      return new Date(timestamp).toISOString().slice(0, 10);
+    }
+
+    function calculateWeeklyThroughput(windowWeeks = 12, options = {}) {
+      const weekMs = 7 * 24 * 60 * 60 * 1000;
+      const throughputStartDate = options.startDate || '';
+      const throughputStartTs = throughputStartDate
+        ? toTimeValue(`${throughputStartDate}T00:00:00.000Z`)
+        : null;
+      const doneTransitions = [];
+
+      cachedIssues.forEach(issue => {
+        const transitions = parseTransitions(issue);
+        const doneCandidates = transitions.filter(transition => isDoneStatus(transition.to));
+        const doneTransition = doneCandidates.length ? doneCandidates[doneCandidates.length - 1] : null;
+        if (doneTransition?.timestamp === null || doneTransition?.timestamp === undefined) return;
+        if (throughputStartTs !== null && doneTransition.timestamp < throughputStartTs) return;
+        doneTransitions.push(doneTransition.timestamp);
+      });
+
+      if (throughputStartTs !== null) {
+        const throughputStartWeek = getWeekStartTimestamp(throughputStartTs);
+        const rangeEndTimestamp = doneTransitions.length ? Math.max(...doneTransitions, Date.now()) : Date.now();
+        const latestWeekStart = getWeekStartTimestamp(rangeEndTimestamp);
+        const weekCount = Math.max(1, Math.floor((latestWeekStart - throughputStartWeek) / weekMs) + 1);
+        const buckets = Array.from({ length: weekCount }, () => 0);
+        const weekStarts = Array.from({ length: weekCount }, (_, index) => throughputStartWeek + (index * weekMs));
+
+        doneTransitions.forEach(timestamp => {
+          const weekStart = getWeekStartTimestamp(timestamp);
+          const index = Math.floor((weekStart - throughputStartWeek) / weekMs);
+          if (index >= 0 && index < buckets.length) buckets[index] += 1;
+        });
+
+        return { buckets, weekStarts };
+      }
+
+      if (!doneTransitions.length) {
+        const nowWeekStart = getWeekStartTimestamp(Date.now());
+        return {
+          buckets: Array.from({ length: windowWeeks }, () => 0),
+          weekStarts: Array.from({ length: windowWeeks }, (_, index) => nowWeekStart - ((windowWeeks - 1 - index) * weekMs))
+        };
+      }
+      const latestWeekStart = getWeekStartTimestamp(Math.max(...doneTransitions));
+      const buckets = Array.from({ length: windowWeeks }, () => 0);
+      const weekStarts = Array.from({ length: windowWeeks }, (_, index) => latestWeekStart - ((windowWeeks - 1 - index) * weekMs));
+
+      doneTransitions.forEach(timestamp => {
+        const weekStart = getWeekStartTimestamp(timestamp);
+        const weekDiff = Math.floor((latestWeekStart - weekStart) / weekMs);
+        if (weekDiff >= 0 && weekDiff < buckets.length) {
+          buckets[buckets.length - 1 - weekDiff] += 1;
+        }
+      });
+
+      return { buckets, weekStarts };
+    }
+
+    function renderWeeklyThroughput(weekStarts, buckets) {
+      weeklyThroughputBody.innerHTML = '';
+      weekStarts.forEach((weekStart, index) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${formatWeekStart(weekStart)}</td>
+          <td>${buckets[index] ?? 0}</td>
+        `;
+        weeklyThroughputBody.appendChild(tr);
+      });
+      if (!weekStarts.length) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td colspan="2">No completion history available yet.</td>';
+        weeklyThroughputBody.appendChild(tr);
+      }
+    }
+
+    function monteCarloPeriods(backlogItems, throughputSeries, runs = 10000) {
+      if (backlogItems <= 0) return [0];
+      const usableThroughput = throughputSeries.map(v => Number(v) || 0).filter(v => v > 0);
+      if (!usableThroughput.length) return [100];
+      const outcomes = [];
+      for (let i = 0; i < runs; i += 1) {
+        let remaining = backlogItems;
+        let periods = 0;
+        while (remaining > 0 && periods < 100) {
+          const randomThroughput = usableThroughput[Math.floor(Math.random() * usableThroughput.length)] || 1;
+          remaining -= Math.max(1, randomThroughput);
+          periods += 1;
+        }
+        outcomes.push(periods);
+      }
+      outcomes.sort((a, b) => a - b);
+      return outcomes;
+    }
+
+    function percentile(sortedValues, fraction) {
+      if (!sortedValues.length) return 0;
+      return sortedValues[Math.min(sortedValues.length - 1, Math.floor(sortedValues.length * fraction))];
+    }
+
+    function calculateRequiredAllocation(backlogItems, targetWeeks, throughputSeries) {
+      if (backlogItems <= 0) return { p75: 0, p95: 0 };
+      const usableThroughput = throughputSeries.map(v => Number(v) || 0).filter(v => v > 0);
+      if (!usableThroughput.length) return { p75: null, p95: null };
+      let p75 = null;
+      let p95 = null;
+      for (let pct = 1; pct <= 100; pct += 1) {
+        const scaledThroughput = usableThroughput.map(v => (v * pct) / 100);
+        const runs = monteCarloPeriods(backlogItems, scaledThroughput, 3000);
+        if (p75 === null && percentile(runs, 0.75) <= targetWeeks) p75 = pct;
+        if (p95 === null && percentile(runs, 0.95) <= targetWeeks) p95 = pct;
+        if (p75 !== null && p95 !== null) break;
+      }
+      return { p75, p95 };
+    }
+
+    function median(values) {
+      if (!values.length) return 0;
+      const sorted = [...values].sort((a, b) => a - b);
+      const mid = Math.floor(sorted.length / 2);
+      if (sorted.length % 2 === 0) return (sorted[mid - 1] + sorted[mid]) / 2;
+      return sorted[mid];
+    }
+
+    function getLastWeekRange(referenceDate = new Date()) {
+      const end = new Date(referenceDate);
+      const day = end.getUTCDay();
+      const mondayOffset = (day + 6) % 7;
+      end.setUTCDate(end.getUTCDate() - mondayOffset);
+      end.setUTCHours(0, 0, 0, 0);
+      const start = new Date(end);
+      start.setUTCDate(start.getUTCDate() - 7);
+      return { start: start.getTime(), end: end.getTime() };
+    }
+
+    function isRemovedStatus(statusName) {
+      const value = String(statusName || '').toLowerCase();
+      return value.includes('cancel') || value.includes("won't do") || value.includes('reject') || value.includes('duplicate');
+    }
+
+    function calculateRequiredIssuesPerWeek(backlogItems, targetWeeks) {
+      if (backlogItems <= 0) return 0;
+      if (!targetWeeks || targetWeeks <= 0) return null;
+      return Math.ceil(backlogItems / targetWeeks);
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+    }
+
+    function computeKanbanEpicRows() {
+      const epicMap = new Map();
+      const weekRange = getLastWeekRange();
+      kanbanIssues.forEach(issue => {
+        const epicKey = issue.fields?.parent?.key || 'UNASSIGNED';
+        if (!epicMap.has(epicKey)) {
+          epicMap.set(epicKey, {
+            epicKey,
+            done: 0,
+            inProgress: 0,
+            open: 0,
+            backlog: 0,
+            completedLastWeek: 0,
+            newLastWeek: 0,
+            removedLastWeek: 0,
+            issues: []
+          });
+        }
+        const row = epicMap.get(epicKey);
+        const status = getCurrentStatus(issue);
+        row.issues.push({ key: issue.key, summary: issue.fields?.summary || '', status });
+        if (isDoneStatus(status)) row.done += 1;
+        else {
+          row.backlog += 1;
+          if (String(status).toLowerCase().includes('progress') || String(status).toLowerCase().includes('develop')) row.inProgress += 1;
+          else row.open += 1;
+        }
+        const createdTs = toTimeValue(issue.fields?.created);
+        if (createdTs !== null && createdTs >= weekRange.start && createdTs < weekRange.end) row.newLastWeek += 1;
+        parseTransitions(issue).forEach(transition => {
+          const ts = transition.timestamp;
+          if (ts === null || ts < weekRange.start || ts >= weekRange.end) return;
+          if (isDoneStatus(transition.to)) row.completedLastWeek += 1;
+          if (isRemovedStatus(transition.to)) row.removedLastWeek += 1;
+        });
+      });
+      return Array.from(epicMap.values()).sort((a, b) => b.backlog - a.backlog);
+    }
+
+    async function runKanbanReport() {
+      setError('');
+      showLoading('Loading Kanban board issues…');
+      try {
+        const jql = getSelectedKanbanQuickFilterQuery();
+        kanbanIssues = await jiraSearchBoard(JIRA_DOMAIN, 15575, jql);
+        const rows = computeKanbanEpicRows();
+        const throughputStartDate = kanbanDateFromInput.value || KANBAN_DEFAULT_START_DATE;
+        const throughput = calculateWeeklyThroughputFromIssues(kanbanIssues, { startDate: throughputStartDate });
+        const nonZero = throughput.buckets.filter(v => v > 0);
+        const med = median(nonZero.length ? nonZero : throughput.buckets);
+
+        kanbanEpicCount.textContent = String(rows.length);
+        kanbanBacklogTotal.textContent = String(rows.reduce((sum, row) => sum + row.backlog, 0));
+        kanbanVelocity.textContent = med.toFixed(1);
+        kanbanEpicCards.innerHTML = '';
+        kanbanHistoricalBody.innerHTML = '';
+        throughput.weekStarts.forEach((weekStart, index) => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td>${formatWeekStart(weekStart)}</td><td>${throughput.buckets[index] ?? 0}</td>`;
+          kanbanHistoricalBody.appendChild(tr);
+        });
+        if (!throughput.weekStarts.length) {
+          const tr = document.createElement('tr');
+          tr.innerHTML = '<td colspan="2">No historical throughput data available.</td>';
+          kanbanHistoricalBody.appendChild(tr);
+        }
+
+        rows.forEach(row => {
+          const runs = monteCarloPeriods(row.backlog, throughput.buckets);
+          const p50Weeks = percentile(runs, 0.50);
+          const p75Weeks = percentile(runs, 0.75);
+          const p95Weeks = percentile(runs, 0.95);
+          const targetWeeks = Number(kanbanTargetWeeksInput.value) || 8;
+          const requiredIssuesPerWeek = calculateRequiredIssuesPerWeek(row.backlog, targetWeeks);
+          const scopeDelta = row.newLastWeek - row.removedLastWeek;
+          const scope = scopeDelta === 0 ? 'No change' : (scopeDelta > 0 ? `Increased (+${scopeDelta})` : `Reduced (${scopeDelta})`);
+          const card = document.createElement('article');
+          const riskFlagClass = p95Weeks > targetWeeks ? 'flag-red' : (p95Weeks === targetWeeks ? 'flag-yellow' : 'flag-green');
+          card.className = `epic-card ${riskFlagClass}`;
+          const detailsRows = row.issues
+            .sort((a, b) => a.key.localeCompare(b.key))
+            .map(issue => `<tr><td>${escapeHtml(issue.key)}</td><td>${escapeHtml(issue.status)}</td><td>${escapeHtml(issue.summary)}</td></tr>`)
+            .join('');
+          card.innerHTML = `
+            <h3>${row.epicKey}</h3>
+            <div class="epic-pill-row">
+              <span class="epic-pill done" title="Issues currently in a done status.">${row.done} Done</span>
+              <span class="epic-pill progress" title="Issues currently in an in-progress status.">${row.inProgress} In progress</span>
+              <span class="epic-pill blocked" title="Issues moved to canceled/rejected/duplicate during the last full week.">${row.removedLastWeek} Removed</span>
+              <span class="epic-pill open" title="Issues that are open but not currently in progress.">${row.open} Open</span>
+            </div>
+            <div title="Total issues and remaining non-done issues for this epic."><b>Total:</b> ${row.done + row.backlog} &nbsp;|&nbsp; <b>Backlog:</b> ${row.backlog}</div>
+            <div class="epic-card-metrics">
+              <div>
+                <b title="Estimated completion time from Monte Carlo simulation.">Forecast (weeks)</b><br>
+                <div class="forecast-highlight tooltip-value" title="95% certainty, this many weeks are needed to finish the backlog.">95% certainty: ${p95Weeks}</div>
+                <small title="Time horizon used to evaluate required weekly completions.">Target: ${targetWeeks} week(s)</small>
+              </div>
+              <div>
+                <b title="Scope and delivery movement during the last full week.">Changes since last week</b><br>
+                <small>Completed: <span class="tooltip-value" title="Issues transitioned into done during the last full week.">${row.completedLastWeek}</span> · New: <span class="tooltip-value" title="Issues created during the last full week.">${row.newLastWeek}</span> · Removed: <span class="tooltip-value" title="Issues moved to removed/canceled/rejected statuses during the last full week.">${row.removedLastWeek}</span><br>Scope: ${scope}</small>
+              </div>
+              <div>
+                <b title="Minimum weekly completions needed to finish remaining backlog within target weeks.">Required issues per week</b><br>
+                <small class="tooltip-value" title="Computed as ceiling(backlog ÷ target weeks).">${requiredIssuesPerWeek ?? 'N/A'} issues/week</small>
+              </div>
+            </div>
+            <button type="button" class="secondary show-epic-details-btn" title="Display issue-level composition and percentile breakdown for this epic.">Show details</button>
+            <div class="epic-details-panel">
+              <div class="epic-details-header">
+                <span class="tooltip-value" title="50% percentile: half the simulation runs finish by this week.">P50: ${p50Weeks} week(s)</span>
+                <span class="tooltip-value" title="75% percentile: three out of four simulation runs finish by this week.">P75: ${p75Weeks} week(s)</span>
+                <span class="tooltip-value" title="95% percentile: nineteen out of twenty simulation runs finish by this week.">95% certainty: ${p95Weeks} week(s)</span>
+              </div>
+              <table>
+                <thead>
+                  <tr><th>Issue</th><th>Status</th><th>Summary</th></tr>
+                </thead>
+                <tbody>${detailsRows || '<tr><td colspan="3">No issues found for this epic.</td></tr>'}</tbody>
+              </table>
+            </div>
+          `;
+          const detailsButton = card.querySelector('.show-epic-details-btn');
+          const detailsPanel = card.querySelector('.epic-details-panel');
+          detailsButton.addEventListener('click', () => {
+            const hidden = detailsPanel.style.display !== 'block';
+            detailsPanel.style.display = hidden ? 'block' : 'none';
+            detailsButton.textContent = hidden ? 'Hide details' : 'Show details';
+          });
+          kanbanEpicCards.appendChild(card);
+        });
+        if (!rows.length) {
+          const empty = document.createElement('p');
+          empty.className = 'helper';
+          empty.textContent = 'No epic data available for the selected quick filter.';
+          kanbanEpicCards.appendChild(empty);
+        }
+      } catch (error) {
+        console.error(error);
+        setError('Failed to run Kanban report. Ensure Jira access is available.');
+      } finally {
+        hideLoading();
+      }
+    }
+
+    function calculateWeeklyThroughputFromIssues(issues, options = {}) {
+      const original = cachedIssues;
+      cachedIssues = issues || [];
+      const result = calculateWeeklyThroughput(12, options);
+      cachedIssues = original;
+      return result;
+    }
+
+    function renderPredictionChart(rows) {
+      if (epicBacklogChart) epicBacklogChart.destroy();
+      epicBacklogChart = new Chart(epicBacklogChartCanvas, {
+        type: 'bar',
+        data: {
+          labels: rows.map(row => row.epicKey),
+          datasets: [
+            { label: 'Done issues', data: rows.map(row => row.doneCount), backgroundColor: '#34d399' },
+            { label: 'Backlog issues', data: rows.map(row => row.backlogCount), backgroundColor: '#f97316' }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: { y: { beginAtZero: true } },
+          plugins: { legend: { position: 'bottom' } }
+        }
+      });
+    }
+
+    function renderPrediction() {
+      const targetWeeks = Number(targetWeeksInput.value) || 8;
+      const epicRows = computeEpicStats();
+      const throughputResult = calculateWeeklyThroughput(12);
+      const throughputSeries = throughputResult.buckets;
+      const nonZeroThroughput = throughputSeries.filter(value => value > 0);
+      const medianThroughput = median(nonZeroThroughput.length ? nonZeroThroughput : throughputSeries);
+
+      predictionBacklogTotal.textContent = String(epicRows.reduce((sum, row) => sum + row.backlogCount, 0));
+      predictionVelocity.textContent = medianThroughput.toFixed(1);
+      predictionEpicCount.textContent = String(epicRows.length);
+      renderWeeklyThroughput(throughputResult.weekStarts, throughputSeries);
+
+      predictionTableBody.innerHTML = '';
+      epicRows.forEach(row => {
+        const runResult = monteCarloPeriods(row.backlogCount, throughputSeries);
+        const req = calculateRequiredAllocation(row.backlogCount, targetWeeks, throughputSeries);
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${row.epicKey}</td>
+          <td>${row.stories}</td>
+          <td>${row.doneCount}</td>
+          <td>${row.backlogCount}</td>
+          <td>${percentile(runResult, 0.5)}</td>
+          <td>${percentile(runResult, 0.75)}</td>
+          <td>${percentile(runResult, 0.95)}</td>
+          <td>${req.p75 ?? 'N/A'}% / ${req.p95 ?? 'N/A'}%</td>
+        `;
+        predictionTableBody.appendChild(tr);
+      });
+
+      if (!epicRows.length) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td colspan="8">No epic data available. Load WARP progression first.</td>';
+        predictionTableBody.appendChild(tr);
+      }
+
+      renderPredictionChart(epicRows);
+    }
+
+    function toTimeValue(dateText) {
+      if (!dateText) return null;
+      const ts = Date.parse(dateText);
+      return Number.isNaN(ts) ? null : ts;
+    }
+
+    function calculateIssueAging(transitions, createdDateTime, fallbackStatus) {
+      const nowTs = Date.now();
+      const createdTs = toTimeValue(createdDateTime) ?? nowTs;
+      const statusDurations = new Map();
+      let currentStatus = normalizeStatus(transitions[0]?.from || fallbackStatus);
+      let cursorTs = createdTs;
+
+      for (const transition of transitions) {
+        const ts = transition.timestamp;
+        if (ts === null || ts === undefined || ts < cursorTs) continue;
+        const delta = Math.max(0, ts - cursorTs);
+        statusDurations.set(currentStatus, (statusDurations.get(currentStatus) || 0) + delta);
+        currentStatus = normalizeStatus(transition.to || currentStatus);
+        cursorTs = ts;
+      }
+
+      statusDurations.set(currentStatus, (statusDurations.get(currentStatus) || 0) + Math.max(0, nowTs - cursorTs));
+
+      const statusBreakdown = Array.from(statusDurations.entries())
+        .filter(([, duration]) => duration > 0)
+        .sort((a, b) => b[1] - a[1])
+        .map(([status, duration]) => `${status}: ${(duration / (1000 * 60 * 60 * 24)).toFixed(1)}`)
+        .join(' · ');
+
+      return {
+        totalAgeDays: Math.max(0, (nowTs - createdTs) / (1000 * 60 * 60 * 24)),
+        statusBreakdown: statusBreakdown || 'No status history'
+      };
+    }
+
+    function renderCycleAnalysis(cycleRows) {
+      const sortedRows = [...cycleRows].sort((a, b) => a.totalAgeDays - b.totalAgeDays);
+      const total = sortedRows.length;
+      const avg = total ? sortedRows.reduce((sum, row) => sum + row.totalAgeDays, 0) / total : 0;
+      const median = total
+        ? (total % 2 === 0
+          ? (sortedRows[total / 2 - 1].totalAgeDays + sortedRows[total / 2].totalAgeDays) / 2
+          : sortedRows[Math.floor(total / 2)].totalAgeDays)
+        : 0;
+
+      cycleIssueCount.textContent = String(total);
+      cycleAverage.textContent = avg.toFixed(1);
+      cycleMedian.textContent = median.toFixed(1);
+
+      cycleDetailsBody.innerHTML = '';
+      sortedRows.forEach(row => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${row.key}</td>
+          <td>${row.summary}</td>
+          <td>${row.parent}</td>
+          <td>${row.totalAgeDays.toFixed(1)}</td>
+          <td>${row.statusBreakdown}</td>
+        `;
+        cycleDetailsBody.appendChild(tr);
+      });
+
+      if (!sortedRows.length) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td colspan="5">No cycle time data available.</td>';
+        cycleDetailsBody.appendChild(tr);
+      }
+    }
+
+    function toggleDetails() {
+      const isHidden = detailsSection.style.display === 'none';
+      detailsSection.style.display = isHidden ? 'block' : 'none';
+      toggleDetailsBtn.textContent = isHidden ? 'Hide details' : 'Show details';
+    }
+
+    function toggleCycleTable() {
+      const isHidden = cycleTableSection.style.display === 'none';
+      cycleTableSection.style.display = isHidden ? 'block' : 'none';
+      toggleCycleTableBtn.textContent = isHidden ? 'Hide cycle time details' : 'Show cycle time details';
+      toggleCycleTableBtn.setAttribute('aria-expanded', String(isHidden));
+    }
+
+    function initializeDefaults() {
+      setupSelectOptions(epicParentsSelect, EPIC_PARENTS, 'Select epic keys…');
+
+      setupSelectOptions(fromStatusSelect, statusFallback, 'Select from status…');
+      setupSelectOptions(toStatusSelect, statusFallback, 'Select to status…');
+
+      const defaultFrom = Array.from(fromStatusSelect.options).find(opt => opt.value === 'Ready');
+      if (defaultFrom) defaultFrom.selected = true;
+      const defaultTo = Array.from(toStatusSelect.options).find(opt => opt.value === 'In Development');
+      if (defaultTo) defaultTo.selected = true;
+
+      const today = new Date();
+      const lastWeek = new Date();
+      lastWeek.setDate(today.getDate() - 7);
+      dateFromInput.value = toDateValue(lastWeek);
+      dateToInput.value = toDateValue(today);
+      kanbanDateFromInput.value = KANBAN_DEFAULT_START_DATE;
+    }
+
+    document.getElementById('refreshBtn').addEventListener('click', loadIssues);
+    applyAuthBtn.addEventListener('click', applyJiraAuth);
+    toggleDetailsBtn.addEventListener('click', toggleDetails);
+    toggleCycleTableBtn.addEventListener('click', toggleCycleTable);
+    runPredictionBtn.addEventListener('click', renderPrediction);
+    runKanbanBtn.addEventListener('click', runKanbanReport);
+    toolSelect.addEventListener('change', event => switchTool(event.target.value));
+    fromStatusSelect.addEventListener('change', updateReport);
+    toStatusSelect.addEventListener('change', updateReport);
+    epicParentsSelect.addEventListener('change', loadIssues);
+    dateFromInput.addEventListener('change', updateReport);
+    dateToInput.addEventListener('change', updateReport);
+    extraEpicsInput.addEventListener('keydown', event => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        loadIssues();
+      }
+    });
+
+    initializeDefaults();
+    switchTool(toolSelect.value);
+    renderPrediction();
+    window.addEventListener('beforeunload', () => {
+      jiraAuthHeader = '';
+      jiraTokenInput.value = '';
+    });
+    enableMultiSelectToggle(fromStatusSelect);
+    enableMultiSelectToggle(toStatusSelect);
+    enableMultiSelectToggle(epicParentsSelect);
+    kanbanQuickFilterSelect.addEventListener('change', () => {
+      if (toolSelect.value === 'kanban') runKanbanReport();
+    });
+  </script>
+</body>
+</html>
