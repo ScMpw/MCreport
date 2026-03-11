@@ -42,6 +42,7 @@
     .inline-control > div { min-width:180px; }
     .epic-card-grid { display:grid; gap:14px; margin-top:12px; }
     .epic-card { background:#f3f4f6; border-radius:14px; padding:16px; border:1px solid #e5e7eb; }
+    .epic-card.selected { box-shadow: 0 0 0 3px #c7d2fe; }
     .epic-card.flag-green { border:2px solid #16a34a; }
     .epic-card.flag-yellow { border:2px solid #eab308; }
     .epic-card.flag-red { border:2px solid #dc2626; }
@@ -59,6 +60,8 @@
     .epic-details-panel { display:none; margin-top:10px; background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:10px; }
     .epic-details-panel table { margin-top:8px; }
     .epic-details-header { display:flex; gap:12px; flex-wrap:wrap; color:#374151; font-size:0.9em; }
+    .epic-select-row { display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:8px; }
+    .epic-select-row label { margin:0; display:flex; gap:6px; align-items:center; font-weight:600; font-size:0.92em; }
     details.info-collapse { margin-top:14px; background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:10px 12px; }
     details.info-collapse summary { cursor:pointer; font-weight:600; }
     @media (max-width: 700px) {
@@ -290,10 +293,15 @@
             <input id="kanbanDateFromInput" type="date">
           </div>
           <div>
-            <label for="kanbanTargetWeeksInput">Target weeks</label>
-            <input id="kanbanTargetWeeksInput" type="number" min="1" max="52" value="8">
+            <label for="kanbanTargetDateInput">Target date</label>
+            <input id="kanbanTargetDateInput" type="date">
           </div>
           <button id="runKanbanBtn" type="button">Run Kanban report</button>
+        </div>
+
+        <div class="inline-control">
+          <button id="selectAllKanbanEpicsBtn" class="secondary" type="button">Select all epics</button>
+          <button id="clearKanbanEpicsBtn" class="secondary" type="button">Clear epic selection</button>
         </div>
 
         <div class="summary-grid">
@@ -387,8 +395,10 @@
     const epicBacklogChartCanvas = document.getElementById('epicBacklogChart');
     const kanbanQuickFilterSelect = document.getElementById('kanbanQuickFilterSelect');
     const kanbanDateFromInput = document.getElementById('kanbanDateFromInput');
-    const kanbanTargetWeeksInput = document.getElementById('kanbanTargetWeeksInput');
+    const kanbanTargetDateInput = document.getElementById('kanbanTargetDateInput');
     const runKanbanBtn = document.getElementById('runKanbanBtn');
+    const selectAllKanbanEpicsBtn = document.getElementById('selectAllKanbanEpicsBtn');
+    const clearKanbanEpicsBtn = document.getElementById('clearKanbanEpicsBtn');
     const kanbanEpicCount = document.getElementById('kanbanEpicCount');
     const kanbanBacklogTotal = document.getElementById('kanbanBacklogTotal');
     const kanbanVelocity = document.getElementById('kanbanVelocity');
@@ -400,6 +410,8 @@
     let epicBacklogChart = null;
     let cachedIssues = [];
     let kanbanIssues = [];
+    let kanbanEpicRows = [];
+    let selectedKanbanEpics = new Set();
     let kanbanQuickFilters = [];
 
     function switchTool(tool) {
@@ -1075,6 +1087,15 @@
       return Math.ceil(backlogItems / targetWeeks);
     }
 
+    function getTargetWeeksFromDates(startDateText, targetDateText) {
+      if (!targetDateText) return null;
+      const start = toTimeValue(`${startDateText || KANBAN_DEFAULT_START_DATE}T00:00:00.000Z`);
+      const target = toTimeValue(`${targetDateText}T00:00:00.000Z`);
+      if (start === null || target === null || target <= start) return null;
+      const days = Math.ceil((target - start) / (1000 * 60 * 60 * 24));
+      return Math.max(1, Math.ceil(days / 7));
+    }
+
     function escapeHtml(value) {
       return String(value ?? '')
         .replaceAll('&', '&amp;')
@@ -1123,52 +1144,56 @@
       return Array.from(epicMap.values()).sort((a, b) => b.backlog - a.backlog);
     }
 
-    async function runKanbanReport() {
-      setError('');
-      showLoading('Loading Kanban board issues…');
-      try {
-        const jql = getSelectedKanbanQuickFilterQuery();
-        kanbanIssues = await jiraSearchBoard(JIRA_DOMAIN, 15575, jql);
-        const rows = computeKanbanEpicRows();
-        const throughputStartDate = kanbanDateFromInput.value || KANBAN_DEFAULT_START_DATE;
-        const throughput = calculateWeeklyThroughputFromIssues(kanbanIssues, { startDate: throughputStartDate });
+    function renderKanbanReportView() {
+      const selectedRows = kanbanEpicRows.filter(row => selectedKanbanEpics.has(row.epicKey));
+      const selectedEpicSet = new Set(selectedRows.map(row => row.epicKey));
+      const filteredIssues = kanbanIssues.filter(issue => selectedEpicSet.has(issue.fields?.parent?.key || 'UNASSIGNED'));
+      const throughputStartDate = kanbanDateFromInput.value || KANBAN_DEFAULT_START_DATE;
+      const throughput = calculateWeeklyThroughputFromIssues(filteredIssues, { startDate: throughputStartDate });
+      const targetWeeks = getTargetWeeksFromDates(throughputStartDate, kanbanTargetDateInput.value);
+
         const nonZero = throughput.buckets.filter(v => v > 0);
         const med = median(nonZero.length ? nonZero : throughput.buckets);
 
-        kanbanEpicCount.textContent = String(rows.length);
-        kanbanBacklogTotal.textContent = String(rows.reduce((sum, row) => sum + row.backlog, 0));
-        kanbanVelocity.textContent = med.toFixed(1);
-        kanbanEpicCards.innerHTML = '';
-        kanbanHistoricalBody.innerHTML = '';
-        throughput.weekStarts.forEach((weekStart, index) => {
-          const tr = document.createElement('tr');
-          tr.innerHTML = `<td>${formatWeekStart(weekStart)}</td><td>${throughput.buckets[index] ?? 0}</td>`;
-          kanbanHistoricalBody.appendChild(tr);
-        });
-        if (!throughput.weekStarts.length) {
-          const tr = document.createElement('tr');
-          tr.innerHTML = '<td colspan="2">No historical throughput data available.</td>';
-          kanbanHistoricalBody.appendChild(tr);
-        }
+      kanbanEpicCount.textContent = String(selectedRows.length);
+      kanbanBacklogTotal.textContent = String(selectedRows.reduce((sum, row) => sum + row.backlog, 0));
+      kanbanVelocity.textContent = med.toFixed(1);
+      kanbanEpicCards.innerHTML = '';
+      kanbanHistoricalBody.innerHTML = '';
+      throughput.weekStarts.forEach((weekStart, index) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${formatWeekStart(weekStart)}</td><td>${throughput.buckets[index] ?? 0}</td>`;
+        kanbanHistoricalBody.appendChild(tr);
+      });
+      if (!throughput.weekStarts.length) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td colspan="2">No historical throughput data available.</td>';
+        kanbanHistoricalBody.appendChild(tr);
+      }
 
-        rows.forEach(row => {
+      kanbanEpicRows.forEach(row => {
           const runs = monteCarloPeriods(row.backlog, throughput.buckets);
           const p50Weeks = percentile(runs, 0.50);
           const p75Weeks = percentile(runs, 0.75);
           const p95Weeks = percentile(runs, 0.95);
-          const targetWeeks = Number(kanbanTargetWeeksInput.value) || 8;
           const requiredIssuesPerWeek = calculateRequiredIssuesPerWeek(row.backlog, targetWeeks);
           const scopeDelta = row.newLastWeek - row.removedLastWeek;
           const scope = scopeDelta === 0 ? 'No change' : (scopeDelta > 0 ? `Increased (+${scopeDelta})` : `Reduced (${scopeDelta})`);
           const card = document.createElement('article');
-          const riskFlagClass = p95Weeks > targetWeeks ? 'flag-red' : (p95Weeks === targetWeeks ? 'flag-yellow' : 'flag-green');
-          card.className = `epic-card ${riskFlagClass}`;
+          const riskFlagClass = targetWeeks === null
+            ? ''
+            : (p95Weeks > targetWeeks ? 'flag-red' : (p95Weeks === targetWeeks ? 'flag-yellow' : 'flag-green'));
+          const isSelected = selectedKanbanEpics.has(row.epicKey);
+          card.className = `epic-card ${riskFlagClass} ${isSelected ? 'selected' : ''}`.trim();
           const detailsRows = row.issues
             .sort((a, b) => a.key.localeCompare(b.key))
             .map(issue => `<tr><td>${escapeHtml(issue.key)}</td><td>${escapeHtml(issue.status)}</td><td>${escapeHtml(issue.summary)}</td></tr>`)
             .join('');
           card.innerHTML = `
-            <h3>${row.epicKey}</h3>
+            <div class="epic-select-row">
+              <h3>${row.epicKey}</h3>
+              <label><input type="checkbox" class="epic-select-checkbox" data-epic="${escapeHtml(row.epicKey)}" ${isSelected ? 'checked' : ''}> Include in simulation</label>
+            </div>
             <div class="epic-pill-row">
               <span class="epic-pill done" title="Issues currently in a done status.">${row.done} Done</span>
               <span class="epic-pill progress" title="Issues currently in an in-progress status.">${row.inProgress} In progress</span>
@@ -1180,7 +1205,7 @@
               <div>
                 <b title="Estimated completion time from Monte Carlo simulation.">Forecast (weeks)</b><br>
                 <div class="forecast-highlight tooltip-value" title="95% certainty, this many weeks are needed to finish the backlog.">95% certainty: ${p95Weeks}</div>
-                <small title="Time horizon used to evaluate required weekly completions.">Target: ${targetWeeks} week(s)</small>
+                <small title="Time horizon used to evaluate required weekly completions.">${kanbanTargetDateInput.value && targetWeeks !== null ? `Target: ${targetWeeks} week(s) (to ${escapeHtml(kanbanTargetDateInput.value)})` : 'Select a target date to enable risk flag and target calculations.'}</small>
               </div>
               <div>
                 <b title="Scope and delivery movement during the last full week.">Changes since last week</b><br>
@@ -1213,14 +1238,39 @@
             detailsPanel.style.display = hidden ? 'block' : 'none';
             detailsButton.textContent = hidden ? 'Hide details' : 'Show details';
           });
+          const selectionCheckbox = card.querySelector('.epic-select-checkbox');
+          selectionCheckbox.addEventListener('change', event => {
+            const epicKey = event.target.getAttribute('data-epic') || '';
+            if (!epicKey) return;
+            if (event.target.checked) selectedKanbanEpics.add(epicKey);
+            else selectedKanbanEpics.delete(epicKey);
+            renderKanbanReportView();
+          });
           kanbanEpicCards.appendChild(card);
         });
-        if (!rows.length) {
+      if (!kanbanEpicRows.length) {
           const empty = document.createElement('p');
           empty.className = 'helper';
           empty.textContent = 'No epic data available for the selected quick filter.';
           kanbanEpicCards.appendChild(empty);
-        }
+      }
+      if (kanbanEpicRows.length && !selectedKanbanEpics.size) {
+        const emptySelection = document.createElement('p');
+        emptySelection.className = 'helper';
+        emptySelection.textContent = 'No epics selected. Select one or more epics to apply simulation.';
+        kanbanEpicCards.prepend(emptySelection);
+      }
+    }
+
+    async function runKanbanReport() {
+      setError('');
+      showLoading('Loading Kanban board issues…');
+      try {
+        const jql = getSelectedKanbanQuickFilterQuery();
+        kanbanIssues = await jiraSearchBoard(JIRA_DOMAIN, 15575, jql);
+        kanbanEpicRows = computeKanbanEpicRows();
+        selectedKanbanEpics = new Set(kanbanEpicRows.map(row => row.epicKey));
+        renderKanbanReportView();
       } catch (error) {
         console.error(error);
         setError('Failed to run Kanban report. Ensure Jira access is available.');
@@ -1404,6 +1454,20 @@
     toggleCycleTableBtn.addEventListener('click', toggleCycleTable);
     runPredictionBtn.addEventListener('click', renderPrediction);
     runKanbanBtn.addEventListener('click', runKanbanReport);
+    kanbanDateFromInput.addEventListener('change', () => {
+      if (toolSelect.value === 'kanban' && kanbanIssues.length) renderKanbanReportView();
+    });
+    kanbanTargetDateInput.addEventListener('change', () => {
+      if (toolSelect.value === 'kanban' && kanbanIssues.length) renderKanbanReportView();
+    });
+    selectAllKanbanEpicsBtn.addEventListener('click', () => {
+      selectedKanbanEpics = new Set(kanbanEpicRows.map(row => row.epicKey));
+      if (toolSelect.value === 'kanban' && kanbanIssues.length) renderKanbanReportView();
+    });
+    clearKanbanEpicsBtn.addEventListener('click', () => {
+      selectedKanbanEpics = new Set();
+      if (toolSelect.value === 'kanban' && kanbanIssues.length) renderKanbanReportView();
+    });
     toolSelect.addEventListener('change', event => switchTool(event.target.value));
     fromStatusSelect.addEventListener('change', updateReport);
     toStatusSelect.addEventListener('change', updateReport);
