@@ -1087,11 +1087,14 @@
       return Math.ceil(backlogItems / targetWeeks);
     }
 
-    function getTargetWeeksFromDates(startDateText, targetDateText) {
+    function getWeeksUntilTargetDate(targetDateText, referenceDate = new Date()) {
       if (!targetDateText) return 8;
-      const start = toTimeValue(`${startDateText || KANBAN_DEFAULT_START_DATE}T00:00:00.000Z`);
       const target = toTimeValue(`${targetDateText}T00:00:00.000Z`);
-      if (start === null || target === null || target <= start) return 1;
+      if (target === null) return 8;
+      const referenceStart = new Date(referenceDate);
+      referenceStart.setUTCHours(0, 0, 0, 0);
+      const start = referenceStart.getTime();
+      if (target <= start) return 1;
       const days = Math.ceil((target - start) / (1000 * 60 * 60 * 24));
       return Math.max(1, Math.ceil(days / 7));
     }
@@ -1150,7 +1153,7 @@
       const filteredIssues = kanbanIssues.filter(issue => selectedEpicSet.has(issue.fields?.parent?.key || 'UNASSIGNED'));
       const throughputStartDate = kanbanDateFromInput.value || KANBAN_DEFAULT_START_DATE;
       const throughput = calculateWeeklyThroughputFromIssues(filteredIssues, { startDate: throughputStartDate });
-      const targetWeeks = getTargetWeeksFromDates(throughputStartDate, kanbanTargetDateInput.value);
+      const targetWeeks = getWeeksUntilTargetDate(kanbanTargetDateInput.value);
 
         const nonZero = throughput.buckets.filter(v => v > 0);
         const med = median(nonZero.length ? nonZero : throughput.buckets);
