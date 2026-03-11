@@ -1088,10 +1088,10 @@
     }
 
     function getTargetWeeksFromDates(startDateText, targetDateText) {
-      if (!targetDateText) return null;
+      if (!targetDateText) return 8;
       const start = toTimeValue(`${startDateText || KANBAN_DEFAULT_START_DATE}T00:00:00.000Z`);
       const target = toTimeValue(`${targetDateText}T00:00:00.000Z`);
-      if (start === null || target === null || target <= start) return null;
+      if (start === null || target === null || target <= start) return 1;
       const days = Math.ceil((target - start) / (1000 * 60 * 60 * 24));
       return Math.max(1, Math.ceil(days / 7));
     }
@@ -1180,11 +1180,9 @@
           const scopeDelta = row.newLastWeek - row.removedLastWeek;
           const scope = scopeDelta === 0 ? 'No change' : (scopeDelta > 0 ? `Increased (+${scopeDelta})` : `Reduced (${scopeDelta})`);
           const card = document.createElement('article');
-          const riskFlagClass = targetWeeks === null
-            ? ''
-            : (p95Weeks > targetWeeks ? 'flag-red' : (p95Weeks === targetWeeks ? 'flag-yellow' : 'flag-green'));
+          const riskFlagClass = p95Weeks > targetWeeks ? 'flag-red' : (p95Weeks === targetWeeks ? 'flag-yellow' : 'flag-green');
           const isSelected = selectedKanbanEpics.has(row.epicKey);
-          card.className = `epic-card ${riskFlagClass} ${isSelected ? 'selected' : ''}`.trim();
+          card.className = `epic-card ${riskFlagClass} ${isSelected ? 'selected' : ''}`;
           const detailsRows = row.issues
             .sort((a, b) => a.key.localeCompare(b.key))
             .map(issue => `<tr><td>${escapeHtml(issue.key)}</td><td>${escapeHtml(issue.status)}</td><td>${escapeHtml(issue.summary)}</td></tr>`)
@@ -1205,7 +1203,7 @@
               <div>
                 <b title="Estimated completion time from Monte Carlo simulation.">Forecast (weeks)</b><br>
                 <div class="forecast-highlight tooltip-value" title="95% certainty, this many weeks are needed to finish the backlog.">95% certainty: ${p95Weeks}</div>
-                <small title="Time horizon used to evaluate required weekly completions.">${kanbanTargetDateInput.value && targetWeeks !== null ? `Target: ${targetWeeks} week(s) (to ${escapeHtml(kanbanTargetDateInput.value)})` : 'Select a target date to enable risk flag and target calculations.'}</small>
+                <small title="Time horizon used to evaluate required weekly completions.">Target: ${targetWeeks} week(s)${kanbanTargetDateInput.value ? ` (to ${escapeHtml(kanbanTargetDateInput.value)})` : ''}</small>
               </div>
               <div>
                 <b title="Scope and delivery movement during the last full week.">Changes since last week</b><br>
@@ -1447,6 +1445,9 @@
       dateFromInput.value = toDateValue(lastWeek);
       dateToInput.value = toDateValue(today);
       kanbanDateFromInput.value = KANBAN_DEFAULT_START_DATE;
+      const kanbanDefaultTarget = new Date(kanbanDateFromInput.value || today);
+      kanbanDefaultTarget.setDate(kanbanDefaultTarget.getDate() + 56);
+      kanbanTargetDateInput.value = toDateValue(kanbanDefaultTarget);
     }
 
     document.getElementById('refreshBtn').addEventListener('click', loadIssues);
