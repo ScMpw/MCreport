@@ -131,7 +131,7 @@
 </head>
 <body>
   <div class="main">
-    <h1>PI Status Report</h1>
+    <h1 title="Program Increment status with Monte Carlo simulation">PI Status Report</h1>
     <div style="margin-bottom:10px;" class="version-selector">
       <label>Version:
         <select id="versionSelect" onchange="switchVersion(this.value)">
@@ -158,10 +158,10 @@
     <div id="errorMsg" class="error-msg" role="alert"></div>
 
     <div id="configSection" style="display:none;">
-      <div class="section-title">Velocity History (editable, last 6 closed sprints):</div>
+      <div class="section-title" title="Story points completed in recent sprints">Velocity History (editable, last 6 closed sprints):</div>
       <div id="velocityWrap"></div>
       <div style="margin:0.9em 0 1.6em 0;">
-        <label>Target Sprints for Delivery:
+        <label title="Number of future sprints to simulate">Target Sprints for Delivery:
           <input id="targetSprintsInput" type="number" min="1" max="20" value="4" style="width:60px">
         </label>
         <button class="btn" onclick="renderEpicSummary()">Update Report</button>
