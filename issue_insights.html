@@ -2,27 +2,42 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8">
-    <title>Sprint Issue Insights Dashboard</title>
+    <title>MCreport — Issue Insights</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="public/tailwind.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    body { background: #f7f8fa; font-family: 'Inter', Arial, sans-serif; margin: 0; padding: 0; }
-    .main { max-width: 1100px; margin: 30px auto 40px auto; background: #fff; border-radius: 18px; box-shadow: 0 2px 12px #d1d5db70; padding: 36px 32px; }
-    h1 { font-size: 2.1em; margin:0 0 0.7em 0; font-weight: 600; }
-    h2 { font-size: 1.2em; margin-top:1.6em; font-weight:600; }
+    :root {
+      --gebit-blue: #00376a;
+      --gebit-green: #006c52;
+      --gebit-gray: #aeaeae;
+      --gebit-light-blue: #109fda;
+      --gebit-warm-gray: #efeae4;
+      --gebit-blue-light: #00376a1a;
+    }
+    body { background: var(--gebit-warm-gray); font-family: 'Inter', Arial, sans-serif; margin: 0; padding: 0; }
+    .main { max-width: 1100px; margin: 30px auto 40px auto; background: #fff; border-radius: 18px; box-shadow: 0 2px 12px rgba(0,55,106,0.10); padding: 36px 32px; }
+    body.embedded { background: #f9fafb; }
+    body.embedded .main { max-width: 100%; margin: 0; border-radius: 0; box-shadow: none; padding: 24px 28px; }
+    body.embedded .version-selector { display: none; }
+    h1 { font-size: 2.1em; margin:0 0 0.7em 0; font-weight: 600; color: var(--gebit-blue); }
+    h2 { font-size: 1.2em; margin-top:1.6em; font-weight:600; color: var(--gebit-blue); }
+    h3 { color: var(--gebit-blue); }
     .controls { display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:14px; margin: 10px 0 12px 0; }
-    label { font-weight:600; display:block; margin-bottom:4px; color:#374151; }
-    select, input, textarea { width:100%; padding:8px 10px; border-radius:8px; border:1px solid #d1d5db; font-size:0.98em; }
-    button { background: #6366f1; color:#fff; border:none; border-radius:8px; padding:10px 16px; font-size:1em; cursor:pointer; }
-    button.secondary { background:#e5e7eb; color:#111827; }
-    .card { background:#f9fafb; border:1px solid #e5e7eb; border-radius:12px; padding:16px; margin-top:10px; }
+    label { font-weight:600; display:block; margin-bottom:4px; color: var(--gebit-blue); }
+    select, input, textarea { width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--gebit-gray); font-size:0.98em; }
+    select:focus, input:focus, textarea:focus { outline: 2px solid var(--gebit-light-blue); border-color: var(--gebit-light-blue); }
+    button { background: var(--gebit-blue); color:#fff; border:none; border-radius:8px; padding:10px 16px; font-size:1em; cursor:pointer; transition: background 0.2s; }
+    button:hover { background: var(--gebit-green); }
+    button.secondary { background: var(--gebit-warm-gray); color: var(--gebit-blue); border: 1px solid var(--gebit-gray); }
+    button.secondary:hover { background: var(--gebit-gray); color: #fff; }
+    .card { background: #f9fafb; border:1px solid #e5e7eb; border-radius:12px; padding:16px; margin-top:10px; }
     .chart-wrap { position: relative; height: 280px; margin-top: 10px; }
     table { border-collapse: collapse; width: 100%; margin-top:10px; }
     th, td { border:1px solid #e5e7eb; padding:8px 10px; text-align:left; font-size:0.95em; }
-    th { background:#eef2ff; }
+    th { background: var(--gebit-blue); color: #fff; }
     .helper { color:#4b5563; font-size:0.93em; }
-    #loadingMessage { font-weight:700; color:#111827; margin: 12px 0; display:none; }
+    #loadingMessage { font-weight:700; color: var(--gebit-blue); margin: 12px 0; display:none; }
     @media (max-width: 700px) {
       .main { padding:16px; }
     }
@@ -30,7 +45,7 @@
 </head>
 <body>
   <div class="main">
-    <h1>Sprint Issue Insights Dashboard</h1>
+    <h1>Issue Insights</h1>
     <p class="helper">Drill into how issues flow through a sprint, compare completion rates by estimate, and explore status durations with optional JQL filters.</p>
     <div class="controls">
       <div>
@@ -57,10 +72,11 @@
       </div>
     </div>
     <div style="margin-bottom:12px; display:flex; gap:10px; flex-wrap:wrap;">
-      <button id="fetchSprintsBtn">Fetch sprints</button>
-      <button id="loadInsightsBtn">Load sprint insights</button>
+      <button id="fetchSprintsBtn">Fetch Sprints</button>
+      <button id="loadInsightsBtn">Load Data</button>
     </div>
     <div id="loadingMessage">Loading…</div>
+    <div id="errorMessage" role="alert" style="display:none; color:#b91c1c; background:#fef2f2; border:1px solid #fecaca; border-radius:8px; padding:10px 14px; margin:8px 0; font-weight:600;"></div>
     <div class="card">
       <h2>Sprint overview</h2>
       <div id="metaSummary" class="helper" aria-live="polite">No sprint selected.</div>
@@ -128,7 +144,9 @@
     </div>
   </div>
 
+  <script src="src/sanitize.js"></script>
   <script src="src/jira.js"></script>
   <script src="src/issue_insights.js"></script>
+  <script>if(new URLSearchParams(location.search).has('embedded'))document.body.classList.add('embedded');</script>
 </body>
 </html>

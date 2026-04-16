@@ -1,0 +1,985 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>MCreport — Flow Metrics</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css" />
+  <link rel="stylesheet" href="public/tailwind.css">
+  <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/date-fns@3.6.0/cdn.min.js"></script>
+  <style>
+    :root {
+      --gebit-blue: #00376a;
+      --gebit-green: #006c52;
+      --gebit-gray: #aeaeae;
+      --gebit-light-blue: #109fda;
+      --gebit-warm-gray: #efeae4;
+      --gebit-red: #b91c1c;
+      --gebit-yellow: #b45309;
+    }
+    html, body { background: var(--gebit-warm-gray); font-family: 'Inter', Arial, sans-serif; margin: 0; padding: 0; }
+    .main { max-width: 1100px; margin: 30px auto; background: #fff; border-radius: 18px; padding: 36px 32px; box-shadow: 0 2px 12px rgba(0,55,106,0.10); }
+    /* Embedded mode */
+    body.embedded { background: #f9fafb; }
+    body.embedded .main { max-width: 100%; margin: 0; border-radius: 0; box-shadow: none; padding: 24px 28px; }
+    h1 { font-size: 2em; color: var(--gebit-blue); margin: 0 0 0.3em 0; }
+    h2 { font-size: 1.3em; color: var(--gebit-blue); margin: 1.5em 0 0.5em 0; }
+    h3 { font-size: 1.05em; color: #374151; margin: 1em 0 0.4em 0; }
+    .subtitle { color: #6b7280; font-size: 0.95em; margin-bottom: 1.2em; }
+    .btn { background: var(--gebit-blue); color: #fff; border: none; border-radius: 6px; padding: 7px 18px; cursor: pointer; font-size: 1em; }
+    .btn:hover { opacity: 0.9; }
+    .btn:disabled { background: #aaa; cursor: default; }
+    .controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-bottom: 16px; }
+    .controls label { font-size: 0.93em; color: #374151; }
+    .controls input, .controls select { font-size: 0.95em; padding: 5px 8px; border: 1px solid #d1d5db; border-radius: 4px; }
+    .metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin: 16px 0; }
+    .metric-card { border: 2px solid #e5e7eb; border-radius: 10px; padding: 14px 18px; text-align: center; background: #f9fafb; }
+    .metric-card .mc-value { font-size: 1.8em; font-weight: 700; }
+    .metric-card .mc-label { font-size: 0.85em; color: #6b7280; margin-top: 4px; }
+    .metric-card .mc-sub { font-size: 0.78em; color: #9ca3af; margin-top: 2px; }
+    .chart-wrap { margin: 20px 0; position: relative; }
+    .chart-wrap canvas { background: #fff; }
+    table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+    th, td { border: 1px solid #e5e7eb; padding: 6px 10px; text-align: left; font-size: 0.93em; }
+    th { background: var(--gebit-blue); color: #fff; }
+    .forecast-inputs { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-end; margin: 12px 0; }
+    .forecast-inputs label { display: flex; flex-direction: column; gap: 4px; font-size: 0.9em; }
+    .forecast-result { margin: 16px 0; }
+    .percentile-legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 0.85em; margin: 8px 0; }
+    .percentile-legend span { display: flex; align-items: center; gap: 4px; }
+    .percentile-legend .swatch { width: 24px; height: 3px; display: inline-block; }
+    .loading { font-weight: 600; color: var(--gebit-blue); margin: 10px 0; }
+    .error-msg { color: var(--gebit-red); font-weight: 600; margin: 8px 0; }
+    .wip-bar { height: 22px; border-radius: 4px; display: inline-block; min-width: 2px; }
+    .wip-table td:first-child { white-space: nowrap; }
+    .section { border-top: 1px solid #e5e7eb; padding-top: 16px; margin-top: 24px; }
+    .tab-bar { display: flex; gap: 0; margin: 16px 0 0 0; }
+    .tab-btn { padding: 8px 20px; border: 1px solid #d1d5db; border-bottom: none; background: #f3f4f6; cursor: pointer; font-size: 0.93em; border-radius: 8px 8px 0 0; }
+    .tab-btn.active { background: #fff; font-weight: 600; color: var(--gebit-blue); border-bottom: 1px solid #fff; margin-bottom: -1px; }
+    .tab-content { border: 1px solid #d1d5db; padding: 20px; border-radius: 0 8px 8px 8px; background: #fff; }
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+    @media (max-width: 700px) {
+      .main { padding: 16px; }
+      .metric-grid { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+<div class="main">
+  <h1>Flow Metrics</h1>
+  <p class="subtitle">Predictability through cycle time, throughput, and Monte Carlo forecasting</p>
+
+  <div class="controls">
+    <label>Jira Domain:
+      <input id="jiraDomain" value="aldi-sued.atlassian.net" size="26">
+    </label>
+    <label>Board:
+      <select id="boardSelect"></select>
+    </label>
+    <label>Weeks of history:
+      <input id="weeksBack" type="number" min="4" max="104" value="12" style="width:60px">
+    </label>
+    <label>Workflow start statuses:
+      <input id="startStatus" value="In Development,In Progress" size="24" title="Comma-separated statuses that mark work started">
+    </label>
+    <label>Workflow end statuses:
+      <input id="endStatuses" value="Done,Implemented/Done" size="24" title="Comma-separated done statuses">
+    </label>
+    <button class="btn" id="loadBtn" onclick="loadFlowData()">Load Data</button>
+  </div>
+
+  <div id="loadingMsg" class="loading" style="display:none;"></div>
+  <div id="errorMsg" class="error-msg" style="display:none;"></div>
+
+  <!-- Summary Cards -->
+  <div id="summarySection" style="display:none;">
+    <div class="metric-grid" id="summaryCards"></div>
+
+    <!-- Tabs -->
+    <div class="tab-bar" id="tabBar">
+      <div class="tab-btn active" data-tab="cycletime">Cycle Time</div>
+      <div class="tab-btn" data-tab="throughput">Throughput</div>
+      <div class="tab-btn" data-tab="wip">WIP Aging</div>
+      <div class="tab-btn" data-tab="cfd">Flow Diagram</div>
+      <div class="tab-btn" data-tab="forecast">Forecasting</div>
+    </div>
+    <div class="tab-content">
+      <!-- Cycle Time Scatterplot -->
+      <div class="tab-pane active" id="tab-cycletime">
+        <h2>Cycle Time Scatterplot</h2>
+        <p class="subtitle">Each dot is a completed work item. Horizontal lines show percentiles — the higher a dot, the longer the item took.</p>
+        <div class="percentile-legend">
+          <span><span class="swatch" style="background:#006c52;"></span> 50th (median)</span>
+          <span><span class="swatch" style="background:#109fda;"></span> 70th</span>
+          <span><span class="swatch" style="background:#b45309;"></span> 85th</span>
+          <span><span class="swatch" style="background:#b91c1c;"></span> 95th</span>
+        </div>
+        <div class="chart-wrap"><canvas id="ctChart" height="350"></canvas></div>
+      </div>
+
+      <!-- Throughput Run Chart -->
+      <div class="tab-pane" id="tab-throughput">
+        <h2>Throughput Run Chart</h2>
+        <p class="subtitle">Number of items completed per week. The rolling average shows the trend.</p>
+        <div class="chart-wrap"><canvas id="tpChart" height="300"></canvas></div>
+      </div>
+
+      <!-- WIP Aging -->
+      <div class="tab-pane" id="tab-wip">
+        <h2>Work In Progress Aging</h2>
+        <p class="subtitle">Items currently in progress, sorted by age. Color indicates risk based on historical cycle time percentiles.</p>
+        <div id="wipContent"></div>
+      </div>
+
+      <!-- CFD -->
+      <div class="tab-pane" id="tab-cfd">
+        <h2>Cumulative Flow Diagram</h2>
+        <p class="subtitle">Cumulative count of items in each workflow state over time. Vertical distance = WIP, horizontal distance = approximate cycle time.</p>
+        <div class="chart-wrap"><canvas id="cfdChart" height="350"></canvas></div>
+      </div>
+
+      <!-- Monte Carlo Forecasting -->
+      <div class="tab-pane" id="tab-forecast">
+        <h2>Monte Carlo Forecasting</h2>
+        <p class="subtitle">Probabilistic forecasting using historical throughput data. Runs 10,000 simulations.</p>
+
+        <h3>🗓️ "When will N items be done?"</h3>
+        <div class="forecast-inputs">
+          <label>Items remaining:
+            <input id="mcItems" type="number" min="1" max="500" value="20" style="width:70px">
+          </label>
+          <button class="btn" onclick="runMonteCarloWhen()">Simulate</button>
+        </div>
+        <div id="mcWhenResult" class="forecast-result"></div>
+        <div class="chart-wrap"><canvas id="mcWhenChart" height="250"></canvas></div>
+
+        <h3>📦 "How many items by date X?"</h3>
+        <div class="forecast-inputs">
+          <label>Target date:
+            <input id="mcDate" type="date" style="width:150px">
+          </label>
+          <button class="btn" onclick="runMonteCarloHowMany()">Simulate</button>
+        </div>
+        <div id="mcManyResult" class="forecast-result"></div>
+        <div class="chart-wrap"><canvas id="mcManyChart" height="250"></canvas></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="src/logger.js"></script>
+<script src="src/jira.js"></script>
+<script src="src/sanitize.js"></script>
+<script src="src/kpis.js"></script>
+<script>
+'use strict';
+
+// ─── State ───
+let flowData = {
+  completedItems: [],   // { key, summary, startDate, endDate, cycleTime, type }
+  wipItems: [],         // { key, summary, startDate, age, status, type }
+  weeklyThroughput: [], // { week: 'YYYY-Wnn', count, items }
+  statusHistory: [],    // { date, statuses: { statusName: count } }
+  percentiles: {}       // { p50, p70, p85, p95 }
+};
+let chartInstances = [];
+const SIMULATION_RUNS = 10000;
+
+// ─── Board Setup ───
+const boardEl = document.getElementById('boardSelect');
+let boardChoices = new Choices(boardEl, { shouldSort: false, itemSelectText: '' });
+
+async function populateBoards() {
+  const domain = document.getElementById('jiraDomain').value.trim();
+  boardChoices.clearChoices();
+  boardChoices.setChoices([{ value: '', label: 'Loading...', disabled: true, selected: true }], 'value', 'label', true);
+  try {
+    const boards = await Jira.fetchBoardsByJql(domain);
+    boardChoices.clearChoices();
+    if (!boards.length) {
+      boardChoices.setChoices([{ value: '', label: 'No boards found', disabled: true, selected: true }], 'value', 'label', true);
+      return;
+    }
+    boardChoices.setChoices([
+      { value: '', label: 'Select a board…', disabled: true, selected: true },
+      ...boards.map(b => ({ value: String(b.id), label: b.name }))
+    ], 'value', 'label', true);
+  } catch (e) {
+    boardChoices.setChoices([{ value: '', label: 'Failed to load', disabled: true, selected: true }], 'value', 'label', true);
+  }
+}
+populateBoards();
+
+// ─── Tab Navigation ───
+document.getElementById('tabBar').addEventListener('click', e => {
+  const btn = e.target.closest('.tab-btn');
+  if (!btn) return;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+});
+
+// ─── Utility ───
+function showLoading(msg) {
+  const el = document.getElementById('loadingMsg');
+  el.textContent = msg;
+  el.style.display = '';
+  document.getElementById('errorMsg').style.display = 'none';
+}
+function hideLoading() { document.getElementById('loadingMsg').style.display = 'none'; }
+function showError(msg) {
+  const el = document.getElementById('errorMsg');
+  el.textContent = msg;
+  el.style.display = '';
+  hideLoading();
+}
+
+function percentile(sortedArr, p) {
+  if (!sortedArr.length) return 0;
+  const idx = Math.ceil(p / 100 * sortedArr.length) - 1;
+  return sortedArr[Math.max(0, idx)];
+}
+
+function weekLabel(date) {
+  const d = new Date(date);
+  const jan1 = new Date(d.getFullYear(), 0, 1);
+  const weekNum = Math.ceil(((d - jan1) / 86400000 + jan1.getDay() + 1) / 7);
+  return `${d.getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
+}
+
+function workDaysBetween(start, end) {
+  return Kpis.calculateWorkDays(new Date(start), new Date(end));
+}
+
+function formatDate(d) {
+  return new Date(d).toISOString().split('T')[0];
+}
+
+function addWeekdays(startDate, days) {
+  const d = new Date(startDate);
+  let added = 0;
+  while (added < days) {
+    d.setDate(d.getDate() + 1);
+    const dow = d.getDay();
+    if (dow !== 0 && dow !== 6) added++;
+  }
+  return d;
+}
+
+async function fetchWithRetry(url, opts = {}, retries = 3) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const resp = await fetch(url, opts);
+    if (resp.status === 429) {
+      const wait = Math.pow(2, attempt) * 1000 + Math.random() * 500;
+      Logger.warn(`Rate limited (429), retrying in ${Math.round(wait)}ms...`);
+      await new Promise(r => setTimeout(r, wait));
+      continue;
+    }
+    return resp;
+  }
+  return fetch(url, opts);
+}
+
+async function runBatches(items, batchSize, handler) {
+  for (let i = 0; i < items.length; i += batchSize) {
+    const batch = items.slice(i, i + batchSize);
+    await Promise.all(batch.map(handler));
+    if (i + batchSize < items.length) await new Promise(r => setTimeout(r, 200));
+  }
+}
+
+// ─── Data Fetching ───
+async function loadFlowData() {
+  const domain = document.getElementById('jiraDomain').value.trim();
+  const boardId = boardEl.value;
+  const weeksBack = Number(document.getElementById('weeksBack').value) || 12;
+  const startStatuses = document.getElementById('startStatus').value.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+  const endStatuses = document.getElementById('endStatuses').value.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+
+  if (!domain || !boardId) return showError('Select a board first.');
+
+  showLoading('Fetching sprints and issues...');
+  chartInstances.forEach(c => c.destroy());
+  chartInstances = [];
+
+  try {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - weeksBack * 7);
+    const cutoffStr = cutoffDate.toISOString().split('T')[0];
+
+    // Fetch board config to get the filter/JQL
+    const cfgResp = await fetchWithRetry(`https://${domain}/rest/agile/1.0/board/${boardId}/configuration`, { credentials: 'include' });
+    if (!cfgResp.ok) throw new Error('Failed to load board config');
+    const cfg = await cfgResp.json();
+    const filterId = cfg.filter?.id;
+    const columnStatuses = [];
+    (cfg.columnConfig?.columns || []).forEach(col => {
+      const statuses = (col.statuses || []).map(s => s.id);
+      columnStatuses.push({ name: col.name, statusIds: statuses });
+    });
+
+    // Get filter JQL
+    let baseJql = '';
+    if (filterId) {
+      const fResp = await fetchWithRetry(`https://${domain}/rest/api/3/filter/${filterId}`, { credentials: 'include' });
+      if (fResp.ok) {
+        const fd = await fResp.json();
+        baseJql = fd.jql || '';
+      }
+    }
+
+    // Strip ORDER BY from board filter JQL so it can be used as a sub-expression
+    const filterJql = baseJql.replace(/\s+ORDER\s+BY\s+.*/i, '').trim();
+
+    // Fetch completed items with changelog
+    showLoading('Fetching completed items...');
+    const completedJql = filterJql
+      ? `(${filterJql}) AND statusCategory = Done AND resolved >= "${cutoffStr}"`
+      : `project IN boardProjectsForBoard(${boardId}) AND statusCategory = Done AND resolved >= "${cutoffStr}"`;
+
+    const completedItems = [];
+    let startAt = 0;
+    const maxResults = 100;
+
+    while (true) {
+      const params = new URLSearchParams({
+        jql: completedJql,
+        startAt: String(startAt),
+        maxResults: String(maxResults),
+        fields: 'summary,status,issuetype,created,resolutiondate,statuscategorychangedate',
+        expand: 'changelog'
+      });
+      const resp = await fetchWithRetry(`https://${domain}/rest/api/3/search/jql?${params}`, {
+        credentials: 'include',
+        headers: { 'Accept': 'application/json' }
+      });
+      if (!resp.ok) {
+        if (resp.status === 400) {
+          Logger.warn('JQL search failed, trying simpler query');
+          break;
+        }
+        throw new Error(`Search failed: ${resp.status}`);
+      }
+      const data = await resp.json();
+      const issues = data.issues || [];
+      completedItems.push(...issues);
+      if (issues.length < maxResults || completedItems.length >= (data.total || 0)) break;
+      startAt += issues.length;
+    }
+
+    showLoading(`Processing ${completedItems.length} completed items...`);
+
+    // Process completed items — extract cycle time from changelog
+    const processed = [];
+    completedItems.forEach(issue => {
+      const histories = issue.changelog?.histories || [];
+      const sorted = histories.slice().sort((a, b) => new Date(a.created) - new Date(b.created));
+
+      let workStartDate = null;
+      let workEndDate = issue.fields?.resolutiondate ? new Date(issue.fields.resolutiondate) : null;
+
+      for (const h of sorted) {
+        const date = new Date(h.created);
+        for (const item of (h.items || [])) {
+          if (item.field !== 'status') continue;
+          const toName = (item.toString || '').toLowerCase();
+          const fromName = (item.fromString || '').toLowerCase();
+
+          // First transition to a start status (explicit match or any non-todo/non-done status)
+          if (!workStartDate) {
+            if (startStatuses.includes(toName) ||
+                (!endStatuses.includes(toName) && !['to do','open','backlog','new','created'].includes(toName))) {
+              workStartDate = date;
+            }
+          }
+
+          // Last transition to an end status
+          if (endStatuses.includes(toName)) {
+            workEndDate = date;
+          }
+        }
+      }
+
+      // Fallback: use statuscategorychangedate if no explicit start found
+      if (!workStartDate && issue.fields?.statuscategorychangedate) {
+        workStartDate = new Date(issue.fields.statuscategorychangedate);
+      }
+
+      if (!workStartDate || !workEndDate) return;
+      if (workEndDate < workStartDate) return;
+
+      const cycleTime = workDaysBetween(workStartDate, workEndDate);
+      if (cycleTime < 0) return;
+
+      processed.push({
+        key: issue.key,
+        summary: issue.fields?.summary || '',
+        type: issue.fields?.issuetype?.name || '',
+        startDate: workStartDate,
+        endDate: workEndDate,
+        cycleTime: Math.max(0.5, cycleTime) // minimum half day
+      });
+    });
+
+    processed.sort((a, b) => a.endDate - b.endDate);
+
+    // Calculate percentiles
+    const cycleTimes = processed.map(i => i.cycleTime).sort((a, b) => a - b);
+    const pcts = {
+      p50: percentile(cycleTimes, 50),
+      p70: percentile(cycleTimes, 70),
+      p85: percentile(cycleTimes, 85),
+      p95: percentile(cycleTimes, 95)
+    };
+
+    // Weekly throughput
+    const weekMap = {};
+    processed.forEach(item => {
+      const wk = weekLabel(item.endDate);
+      if (!weekMap[wk]) weekMap[wk] = { week: wk, count: 0, items: [] };
+      weekMap[wk].count++;
+      weekMap[wk].items.push(item.key);
+    });
+
+    // Fill gaps
+    const allWeeks = [];
+    const start = new Date(cutoffDate);
+    const now = new Date();
+    const cursor = new Date(start);
+    while (cursor <= now) {
+      const wk = weekLabel(cursor);
+      if (!allWeeks.includes(wk)) allWeeks.push(wk);
+      cursor.setDate(cursor.getDate() + 7);
+    }
+    const weeklyThroughput = allWeeks.map(wk => weekMap[wk] || { week: wk, count: 0, items: [] });
+
+    // Fetch WIP items (in progress)
+    showLoading('Fetching work in progress...');
+    const wipJql = filterJql
+      ? `(${filterJql}) AND statusCategory = "In Progress"`
+      : `project IN boardProjectsForBoard(${boardId}) AND statusCategory = "In Progress"`;
+
+    const wipParams = new URLSearchParams({
+      jql: wipJql,
+      maxResults: '200',
+      fields: 'summary,status,issuetype,created,statuscategorychangedate',
+      expand: 'changelog'
+    });
+    const wipResp = await fetchWithRetry(`https://${domain}/rest/api/3/search/jql?${wipParams}`, {
+      credentials: 'include',
+      headers: { 'Accept': 'application/json' }
+    });
+
+    const wipItems = [];
+    if (wipResp.ok) {
+      const wipData = await wipResp.json();
+      (wipData.issues || []).forEach(issue => {
+        const histories = issue.changelog?.histories || [];
+        const sorted = histories.slice().sort((a, b) => new Date(a.created) - new Date(b.created));
+
+        let inProgressSince = null;
+        for (const h of sorted) {
+          for (const item of (h.items || [])) {
+            if (item.field !== 'status') continue;
+            const toName = (item.toString || '').toLowerCase();
+            if (startStatuses.includes(toName) || toName.includes('progress') || toName.includes('development') || toName.includes('review')) {
+              inProgressSince = new Date(h.created);
+            }
+          }
+        }
+
+        if (!inProgressSince) {
+          inProgressSince = issue.fields?.statuscategorychangedate
+            ? new Date(issue.fields.statuscategorychangedate)
+            : new Date(issue.fields?.created);
+        }
+
+        const age = workDaysBetween(inProgressSince, new Date());
+        wipItems.push({
+          key: issue.key,
+          summary: issue.fields?.summary || '',
+          status: issue.fields?.status?.name || '',
+          type: issue.fields?.issuetype?.name || '',
+          startDate: inProgressSince,
+          age: Math.max(0.5, age)
+        });
+      });
+    }
+    wipItems.sort((a, b) => b.age - a.age);
+
+    // Build CFD data from completed + WIP
+    showLoading('Building cumulative flow data...');
+    const statusTimeline = buildCFD(processed, wipItems, cutoffDate, endStatuses, startStatuses);
+
+    // Store
+    flowData = { completedItems: processed, wipItems, weeklyThroughput, percentiles: pcts, statusHistory: statusTimeline };
+
+    // Set default MC date
+    const mcDateEl = document.getElementById('mcDate');
+    const defaultTarget = new Date();
+    defaultTarget.setDate(defaultTarget.getDate() + 42); // 6 weeks ahead
+    mcDateEl.value = formatDate(defaultTarget);
+
+    hideLoading();
+    document.getElementById('summarySection').style.display = '';
+    renderAll();
+
+  } catch (err) {
+    Logger.error('Flow data load failed', err);
+    showError('Failed to load data: ' + err.message);
+  }
+}
+
+// ─── CFD Builder ───
+function buildCFD(completed, wip, cutoffDate, endStatuses, startStatuses) {
+  const weekPoints = [];
+  const cursor = new Date(cutoffDate);
+  const now = new Date();
+  while (cursor <= now) {
+    weekPoints.push(new Date(cursor));
+    cursor.setDate(cursor.getDate() + 7);
+  }
+
+  return weekPoints.map(date => {
+    let todo = 0, inProgress = 0, done = 0;
+
+    completed.forEach(item => {
+      if (item.endDate <= date) done++;
+      else if (item.startDate <= date) inProgress++;
+      else todo++;
+    });
+
+    wip.forEach(item => {
+      if (item.startDate <= date) inProgress++;
+      else todo++;
+    });
+
+    return { date, todo, inProgress, done };
+  });
+}
+
+// ─── Render All ───
+function renderAll() {
+  renderSummaryCards();
+  renderCycleTimeChart();
+  renderThroughputChart();
+  renderWIPAging();
+  renderCFDChart();
+}
+
+// ─── Summary Cards ───
+function renderSummaryCards() {
+  const { completedItems, wipItems, weeklyThroughput, percentiles } = flowData;
+  const recentWeeks = weeklyThroughput.slice(-4);
+  const avgThroughput = recentWeeks.length ? (recentWeeks.reduce((s, w) => s + w.count, 0) / recentWeeks.length) : 0;
+
+  const html = `
+    <div class="metric-card">
+      <div class="mc-value" style="color:var(--gebit-blue)">${completedItems.length}</div>
+      <div class="mc-label">Items Completed</div>
+      <div class="mc-sub">in analysis window</div>
+    </div>
+    <div class="metric-card">
+      <div class="mc-value" style="color:var(--gebit-green)">${percentiles.p50.toFixed(1)}d</div>
+      <div class="mc-label">Median Cycle Time</div>
+      <div class="mc-sub">50th percentile</div>
+    </div>
+    <div class="metric-card">
+      <div class="mc-value" style="color:var(--gebit-yellow)">${percentiles.p85.toFixed(1)}d</div>
+      <div class="mc-label">85th %ile Cycle Time</div>
+      <div class="mc-sub">SLE target</div>
+    </div>
+    <div class="metric-card">
+      <div class="mc-value" style="color:var(--gebit-light-blue)">${avgThroughput.toFixed(1)}</div>
+      <div class="mc-label">Avg Weekly Throughput</div>
+      <div class="mc-sub">last 4 weeks</div>
+    </div>
+    <div class="metric-card">
+      <div class="mc-value" style="color:${wipItems.length > avgThroughput * 3 ? 'var(--gebit-red)' : 'var(--gebit-blue)'}">${wipItems.length}</div>
+      <div class="mc-label">Current WIP</div>
+      <div class="mc-sub">${wipItems.length > avgThroughput * 3 ? '⚠️ high' : 'items in progress'}</div>
+    </div>
+    <div class="metric-card">
+      <div class="mc-value" style="color:var(--gebit-green)">${percentiles.p95.toFixed(1)}d</div>
+      <div class="mc-label">95th %ile Cycle Time</div>
+      <div class="mc-sub">outlier threshold</div>
+    </div>
+  `;
+  document.getElementById('summaryCards').innerHTML = html;
+}
+
+// ─── Cycle Time Scatterplot ───
+function renderCycleTimeChart() {
+  const { completedItems, percentiles } = flowData;
+  const canvas = document.getElementById('ctChart');
+  const ctx = canvas.getContext('2d');
+
+  const data = completedItems.map(item => ({
+    x: item.endDate,
+    y: item.cycleTime,
+    key: item.key,
+    summary: item.summary,
+    type: item.type
+  }));
+
+  const chart = new Chart(ctx, {
+    type: 'scatter',
+    data: {
+      datasets: [{
+        label: 'Cycle Time',
+        data: data,
+        backgroundColor: 'rgba(0,55,106,0.5)',
+        borderColor: 'rgba(0,55,106,0.7)',
+        pointRadius: 4,
+        pointHoverRadius: 7
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: {
+          type: 'time',
+          time: { unit: 'week', displayFormats: { week: 'MMM d' } },
+          title: { display: true, text: 'Completion Date' }
+        },
+        y: {
+          beginAtZero: true,
+          title: { display: true, text: 'Cycle Time (work days)' }
+        }
+      },
+      plugins: {
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const p = ctx.raw;
+              return `${p.key}: ${p.y.toFixed(1)} days — ${p.summary.substring(0, 50)}`;
+            }
+          }
+        },
+        legend: { display: false },
+        datalabels: { display: false },
+        annotation: {
+          annotations: {
+            p50: { type: 'line', yMin: percentiles.p50, yMax: percentiles.p50, borderColor: '#006c52', borderWidth: 2, borderDash: [6, 3], label: { display: true, content: `50th: ${percentiles.p50.toFixed(1)}d`, position: 'start', backgroundColor: '#006c52', color: '#fff', font: { size: 11 } } },
+            p70: { type: 'line', yMin: percentiles.p70, yMax: percentiles.p70, borderColor: '#109fda', borderWidth: 2, borderDash: [6, 3], label: { display: true, content: `70th: ${percentiles.p70.toFixed(1)}d`, position: 'start', backgroundColor: '#109fda', color: '#fff', font: { size: 11 } } },
+            p85: { type: 'line', yMin: percentiles.p85, yMax: percentiles.p85, borderColor: '#b45309', borderWidth: 2, borderDash: [6, 3], label: { display: true, content: `85th: ${percentiles.p85.toFixed(1)}d`, position: 'start', backgroundColor: '#b45309', color: '#fff', font: { size: 11 } } },
+            p95: { type: 'line', yMin: percentiles.p95, yMax: percentiles.p95, borderColor: '#b91c1c', borderWidth: 2, borderDash: [6, 3], label: { display: true, content: `95th: ${percentiles.p95.toFixed(1)}d`, position: 'start', backgroundColor: '#b91c1c', color: '#fff', font: { size: 11 } } }
+          }
+        }
+      }
+    }
+  });
+  chartInstances.push(chart);
+}
+
+// ─── Throughput Run Chart ───
+function renderThroughputChart() {
+  const { weeklyThroughput } = flowData;
+  const canvas = document.getElementById('tpChart');
+  const ctx = canvas.getContext('2d');
+
+  const labels = weeklyThroughput.map(w => w.week);
+  const counts = weeklyThroughput.map(w => w.count);
+
+  // Rolling 4-week average
+  const rolling = counts.map((_, i) => {
+    const window = counts.slice(Math.max(0, i - 3), i + 1);
+    return window.reduce((a, b) => a + b, 0) / window.length;
+  });
+
+  const chart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Items Completed', data: counts, backgroundColor: 'rgba(0,55,106,0.7)', borderColor: '#00376a', order: 2 },
+        { label: '4-Week Rolling Avg', data: rolling, type: 'line', borderColor: '#006c52', backgroundColor: 'transparent', borderWidth: 2, pointRadius: 2, tension: 0.3, order: 1 }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        y: { beginAtZero: true, title: { display: true, text: 'Items' } }
+      },
+      plugins: {
+        legend: { position: 'bottom' },
+        datalabels: { display: false }
+      }
+    }
+  });
+  chartInstances.push(chart);
+}
+
+// ─── WIP Aging ───
+function renderWIPAging() {
+  const { wipItems, percentiles } = flowData;
+  const container = document.getElementById('wipContent');
+
+  if (!wipItems.length) {
+    container.innerHTML = '<p style="color:#6b7280;">No items currently in progress.</p>';
+    return;
+  }
+
+  function ageColor(age) {
+    if (age <= percentiles.p50) return '#006c52';
+    if (age <= percentiles.p70) return '#109fda';
+    if (age <= percentiles.p85) return '#b45309';
+    return '#b91c1c';
+  }
+
+  const maxAge = Math.max(...wipItems.map(i => i.age), percentiles.p95);
+
+  let html = `<table class="wip-table">
+    <thead><tr><th>Issue</th><th>Status</th><th>Age (days)</th><th style="min-width:200px;">Age vs Percentiles</th></tr></thead>
+    <tbody>`;
+
+  wipItems.forEach(item => {
+    const color = ageColor(item.age);
+    const barWidth = Math.max(4, (item.age / maxAge) * 100);
+    const safeKey = Sanitize.escapeHtml(item.key);
+    const safeSummary = Sanitize.escapeHtml(item.summary.substring(0, 60));
+    const safeStatus = Sanitize.escapeHtml(item.status);
+    html += `<tr>
+      <td title="${safeSummary}"><b>${safeKey}</b></td>
+      <td>${safeStatus}</td>
+      <td style="color:${color};font-weight:600;">${item.age.toFixed(1)}</td>
+      <td><div class="wip-bar" style="width:${barWidth}%;background:${color};" title="${item.age.toFixed(1)} days"></div></td>
+    </tr>`;
+  });
+
+  html += '</tbody></table>';
+  html += `<div class="percentile-legend" style="margin-top:8px;">
+    <span><span class="swatch" style="background:#006c52;height:10px;width:10px;border-radius:2px;"></span> ≤ 50th (${percentiles.p50.toFixed(1)}d)</span>
+    <span><span class="swatch" style="background:#109fda;height:10px;width:10px;border-radius:2px;"></span> ≤ 70th (${percentiles.p70.toFixed(1)}d)</span>
+    <span><span class="swatch" style="background:#b45309;height:10px;width:10px;border-radius:2px;"></span> ≤ 85th (${percentiles.p85.toFixed(1)}d)</span>
+    <span><span class="swatch" style="background:#b91c1c;height:10px;width:10px;border-radius:2px;"></span> > 85th</span>
+  </div>`;
+
+  container.innerHTML = html;
+}
+
+// ─── CFD ───
+function renderCFDChart() {
+  const { statusHistory } = flowData;
+  if (!statusHistory.length) return;
+
+  const canvas = document.getElementById('cfdChart');
+  const ctx = canvas.getContext('2d');
+
+  const labels = statusHistory.map(s => formatDate(s.date));
+  const done = statusHistory.map(s => s.done);
+  const inProgress = statusHistory.map(s => s.inProgress);
+  const todo = statusHistory.map(s => s.todo);
+
+  const chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Done', data: done, backgroundColor: 'rgba(0,108,82,0.4)', borderColor: '#006c52', fill: true, tension: 0.2 },
+        { label: 'In Progress', data: inProgress, backgroundColor: 'rgba(16,159,218,0.3)', borderColor: '#109fda', fill: true, tension: 0.2 },
+        { label: 'To Do', data: todo, backgroundColor: 'rgba(174,174,174,0.3)', borderColor: '#aeaeae', fill: true, tension: 0.2 }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: { title: { display: true, text: 'Date' } },
+        y: { stacked: true, beginAtZero: true, title: { display: true, text: 'Cumulative Items' } }
+      },
+      plugins: {
+        legend: { position: 'bottom' },
+        datalabels: { display: false }
+      }
+    }
+  });
+  chartInstances.push(chart);
+}
+
+// ─── Monte Carlo: When ───
+let mcWhenChartInstance = null;
+function runMonteCarloWhen() {
+  const itemCount = Number(document.getElementById('mcItems').value) || 20;
+  const { weeklyThroughput } = flowData;
+  const throughputs = weeklyThroughput.map(w => w.count).filter(v => v > 0);
+
+  if (throughputs.length < 3) {
+    document.getElementById('mcWhenResult').innerHTML = '<p class="error-msg">Need at least 3 weeks of throughput data.</p>';
+    return;
+  }
+
+  const results = [];
+  for (let i = 0; i < SIMULATION_RUNS; i++) {
+    let remaining = itemCount;
+    let weeks = 0;
+    while (remaining > 0 && weeks < 200) {
+      const tp = throughputs[Math.floor(Math.random() * throughputs.length)];
+      remaining -= tp;
+      weeks++;
+    }
+    results.push(weeks);
+  }
+  results.sort((a, b) => a - b);
+
+  const p50 = results[Math.floor(0.5 * results.length)];
+  const p70 = results[Math.floor(0.7 * results.length)];
+  const p85 = results[Math.floor(0.85 * results.length)];
+  const p95 = results[Math.floor(0.95 * results.length)];
+
+  const today = new Date();
+  const dateAt = weeks => {
+    const d = new Date(today);
+    d.setDate(d.getDate() + weeks * 7);
+    return formatDate(d);
+  };
+
+  document.getElementById('mcWhenResult').innerHTML = `
+    <div class="metric-grid" style="grid-template-columns:repeat(4,1fr);">
+      <div class="metric-card" style="border-color:#006c52"><div class="mc-value" style="color:#006c52">${p50}w</div><div class="mc-label">50% likely by ${dateAt(p50)}</div></div>
+      <div class="metric-card" style="border-color:#109fda"><div class="mc-value" style="color:#109fda">${p70}w</div><div class="mc-label">70% likely by ${dateAt(p70)}</div></div>
+      <div class="metric-card" style="border-color:#b45309"><div class="mc-value" style="color:#b45309">${p85}w</div><div class="mc-label">85% likely by ${dateAt(p85)}</div></div>
+      <div class="metric-card" style="border-color:#b91c1c"><div class="mc-value" style="color:#b91c1c">${p95}w</div><div class="mc-label">95% likely by ${dateAt(p95)}</div></div>
+    </div>`;
+
+  // Histogram
+  const maxWeeks = results[results.length - 1];
+  const bins = {};
+  results.forEach(w => { bins[w] = (bins[w] || 0) + 1; });
+  const binLabels = [];
+  const binCounts = [];
+  for (let w = results[0]; w <= maxWeeks; w++) {
+    binLabels.push(`${w}w`);
+    binCounts.push(bins[w] || 0);
+  }
+
+  const canvas = document.getElementById('mcWhenChart');
+  if (mcWhenChartInstance) mcWhenChartInstance.destroy();
+  mcWhenChartInstance = new Chart(canvas.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: binLabels,
+      datasets: [{
+        label: 'Simulation frequency',
+        data: binCounts,
+        backgroundColor: binLabels.map((_, i) => {
+          const w = results[0] + i;
+          if (w <= p50) return 'rgba(0,108,82,0.7)';
+          if (w <= p70) return 'rgba(16,159,218,0.7)';
+          if (w <= p85) return 'rgba(180,83,9,0.7)';
+          return 'rgba(185,28,28,0.5)';
+        })
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: { y: { beginAtZero: true, title: { display: true, text: 'Simulations' } } },
+      plugins: { legend: { display: false }, datalabels: { display: false } }
+    }
+  });
+}
+
+// ─── Monte Carlo: How Many ───
+let mcManyChartInstance = null;
+function runMonteCarloHowMany() {
+  const targetDate = new Date(document.getElementById('mcDate').value);
+  const today = new Date();
+  const diffMs = targetDate - today;
+  if (diffMs <= 0) {
+    document.getElementById('mcManyResult').innerHTML = '<p class="error-msg">Target date must be in the future.</p>';
+    return;
+  }
+  const weeksAvailable = Math.ceil(diffMs / (7 * 86400000));
+  const { weeklyThroughput } = flowData;
+  const throughputs = weeklyThroughput.map(w => w.count).filter(v => v > 0);
+
+  if (throughputs.length < 3) {
+    document.getElementById('mcManyResult').innerHTML = '<p class="error-msg">Need at least 3 weeks of throughput data.</p>';
+    return;
+  }
+
+  const results = [];
+  for (let i = 0; i < SIMULATION_RUNS; i++) {
+    let total = 0;
+    for (let w = 0; w < weeksAvailable; w++) {
+      total += throughputs[Math.floor(Math.random() * throughputs.length)];
+    }
+    results.push(total);
+  }
+  results.sort((a, b) => a - b);
+
+  const p50 = results[Math.floor(0.5 * results.length)];
+  const p70 = results[Math.floor(0.7 * results.length)];
+  const p85 = results[Math.floor(0.85 * results.length)];
+  const p95 = results[Math.floor(0.95 * results.length)];
+
+  // For "how many" we invert confidence: 85% confident = 15th percentile (conservative)
+  const c50 = results[Math.floor(0.5 * results.length)];
+  const c70 = results[Math.floor(0.3 * results.length)];
+  const c85 = results[Math.floor(0.15 * results.length)];
+  const c95 = results[Math.floor(0.05 * results.length)];
+
+  document.getElementById('mcManyResult').innerHTML = `
+    <div class="metric-grid" style="grid-template-columns:repeat(4,1fr);">
+      <div class="metric-card" style="border-color:#b91c1c"><div class="mc-value" style="color:#b91c1c">${c95}</div><div class="mc-label">95% confident (at least)</div></div>
+      <div class="metric-card" style="border-color:#b45309"><div class="mc-value" style="color:#b45309">${c85}</div><div class="mc-label">85% confident</div></div>
+      <div class="metric-card" style="border-color:#109fda"><div class="mc-value" style="color:#109fda">${c70}</div><div class="mc-label">70% confident</div></div>
+      <div class="metric-card" style="border-color:#006c52"><div class="mc-value" style="color:#006c52">${c50}</div><div class="mc-label">50% confident</div></div>
+    </div>
+    <p style="font-size:0.85em;color:#6b7280;">In ${weeksAvailable} weeks, with 85% confidence, at least <b>${c85}</b> items will be completed.</p>`;
+
+  // Histogram
+  const minItems = results[0];
+  const maxItems = results[results.length - 1];
+  const bins = {};
+  results.forEach(n => { bins[n] = (bins[n] || 0) + 1; });
+  const binLabels = [];
+  const binCounts = [];
+  for (let n = minItems; n <= maxItems; n++) {
+    binLabels.push(String(n));
+    binCounts.push(bins[n] || 0);
+  }
+
+  const canvas = document.getElementById('mcManyChart');
+  if (mcManyChartInstance) mcManyChartInstance.destroy();
+  mcManyChartInstance = new Chart(canvas.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: binLabels,
+      datasets: [{
+        label: 'Simulation frequency',
+        data: binCounts,
+        backgroundColor: binLabels.map((_, i) => {
+          const n = minItems + i;
+          if (n >= c50) return 'rgba(0,108,82,0.7)';
+          if (n >= c70) return 'rgba(16,159,218,0.7)';
+          if (n >= c85) return 'rgba(180,83,9,0.7)';
+          return 'rgba(185,28,28,0.5)';
+        })
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: { y: { beginAtZero: true, title: { display: true, text: 'Simulations' } } },
+      plugins: { legend: { display: false }, datalabels: { display: false } }
+    }
+  });
+}
+
+// ─── Chart.js time adapter (minimal) ───
+Chart.defaults.scales.time = Chart.defaults.scales.time || {};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
+<script>if(new URLSearchParams(location.search).has('embedded'))document.body.classList.add('embedded');</script>
+</body>
+</html>

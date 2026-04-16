@@ -2,22 +2,26 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Stakeholder PI Status Report – Topic Mix</title>
+  <title>MCreport — Topic Mix</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="public/tailwind.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    html { background:#f7f8fa; }
-    body { background:#f7f8fa; font-family:'Inter',Arial,sans-serif; margin:0;padding:0; }
-    .main { max-width:950px; margin:30px auto; background:#fff; border-radius:18px; padding:36px 32px; box-shadow:0 2px 12px #d1d5db70; }
-    .btn { background:#6366f1; color:#fff; border:none; border-radius:6px; padding:7px 18px; cursor:pointer; font-size:1em; }
+    html { background:#efeae4; }
+    body { background:#efeae4; font-family:'Inter',Arial,sans-serif; margin:0;padding:0; }
+    .main { max-width:950px; margin:30px auto; background:#fff; border-radius:18px; padding:36px 32px; box-shadow:0 2px 12px rgba(0,55,106,0.10); }
+    body.embedded { background: #f9fafb; }
+    body.embedded .main { max-width: 100%; margin: 0; border-radius: 0; box-shadow: none; padding: 24px 28px; }
+    body.embedded .version-selector { display: none; }
+    .btn { background:#00376a; color:#fff; border:none; border-radius:6px; padding:7px 18px; cursor:pointer; font-size:1em; }
     .chart-section { margin-top:30px; overflow-x:auto; }
+    .error-msg { color: #b91c1c; font-weight: 600; margin: 8px 0; padding: 10px 16px; background: #fde8e8; border: 1px solid #b91c1c; border-radius: 8px; display: none; }
   </style>
 </head>
 <body>
 <div class="main">
   <h1>Topic Mix Report</h1>
-  <div>
+  <div class="version-selector">
     <label>Version:
       <select id="versionSelect" onchange="switchVersion(this.value)">
         <option value="index.html">Velocity</option>
@@ -37,6 +41,7 @@
     </label>
   </div>
   <div id="loadingMessage" style="display:none; font-weight:bold; margin:10px 0;"></div>
+  <div id="errorMsg" class="error-msg" role="alert"></div>
   <div id="chartSection" class="chart-section" style="display:none;">
     <h2>Completed Story Points by Topic</h2>
     <canvas id="topicMixChart"></canvas>
@@ -46,6 +51,17 @@
 <script src="src/jira.js"></script>
 <script>
 function switchVersion(v){ window.location.href = v; }
+
+function showError(msg) {
+  const el = document.getElementById('errorMsg');
+  el.textContent = msg;
+  el.style.display = 'block';
+  setTimeout(() => { el.style.display = 'none'; }, 10000);
+}
+function clearError() {
+  const el = document.getElementById('errorMsg');
+  if (el) { el.textContent = ''; el.style.display = 'none'; }
+}
 
 const PI_LABEL_RE = /\b\d{4}_PI\d+_committed\b/i;
 const MAIN_DRIVER_RE = /^main[-_ ]?driver$/i;
@@ -221,8 +237,8 @@ function renderChart() {
       labels:sprintLabels,
       datasets:[
         { label:'Main Driver', data:md, backgroundColor:'#f59e0b', stack:'topics' },
-        { label:'PI Topics', data:pi, backgroundColor:'#3b82f6', stack:'topics' },
-        { label:'Other Topics', data:other, backgroundColor:'#10b981', stack:'topics' }
+        { label:'PI Topics', data:pi, backgroundColor:'#109fda', stack:'topics' },
+        { label:'Other Topics', data:other, backgroundColor:'#006c52', stack:'topics' }
       ]
     },
     options:{
@@ -236,9 +252,10 @@ function renderChart() {
 }
 
 async function loadTopicMix() {
+  clearError();
   const jiraDomain = document.getElementById('jiraDomain').value.trim();
   const boards = availableBoards.map(b => b.id);
-  if (!jiraDomain || !boards.length) { alert('Enter Jira domain'); return; }
+  if (!jiraDomain || !boards.length) { showError('Enter Jira domain'); return; }
   showLoading('Loading topic mix data...');
   try {
     const { sprints } = await fetchTopicMixData(jiraDomain, boards);
@@ -262,12 +279,13 @@ async function loadTopicMix() {
     renderChart();
   } catch (e) {
     console.error('Failed to load topic mix data', e);
-    alert('Failed to load topic mix data.');
+    showError('Failed to load topic mix data.');
   } finally {
     hideLoading();
   }
 }
 
 </script>
+<script>if(new URLSearchParams(location.search).has('embedded'))document.body.classList.add('embedded');</script>
 </body>
 </html>

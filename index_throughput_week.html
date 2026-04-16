@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Stakeholder PI Status Report – MCW with Allocation</title>
+  <title>MCreport — Weekly Throughput</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html-to-image/1.11.11/html-to-image.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet" data-pdf-ignore="true">
@@ -10,43 +10,46 @@
   <link rel="stylesheet" href="public/tailwind.css">
   <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
   <style>
-    html { background: #f7f8fa; }
-    body { background: #f7f8fa; font-family: 'Inter', Arial, sans-serif; margin: 0; padding: 0; }
-    .main { max-width: 950px; margin: 30px auto 40px auto; background: #fff; border-radius: 18px; box-shadow: 0 2px 12px #d1d5db70; padding: 36px 32px; }
-    h1 { font-size: 2.3em; margin:0 0 0.7em 0; font-weight: 600; }
+    html { background: #efeae4; }
+    body { background: #efeae4; font-family: 'Inter', Arial, sans-serif; margin: 0; padding: 0; }
+    .main { max-width: 950px; margin: 30px auto 40px auto; background: #fff; border-radius: 18px; box-shadow: 0 2px 12px rgba(0,55,106,0.10); padding: 36px 32px; }
+    body.embedded { background: #f9fafb; }
+    body.embedded .main { max-width: 100%; margin: 0; border-radius: 0; box-shadow: none; padding: 24px 28px; }
+    body.embedded .version-selector { display: none; }
+    h1 { font-size: 2.3em; margin:0 0 0.7em 0; font-weight: 600; color: #00376a; }
     h2 { font-size: 1.3em; margin-top:2em; }
-    .btn { background: #6366f1; color: #fff; border: none; border-radius: 6px; padding: 7px 18px; cursor: pointer; font-size:1em; margin: 0 10px 8px 0;}
+    .btn { background: #00376a; color: #fff; border: none; border-radius: 6px; padding: 7px 18px; cursor: pointer; font-size:1em; margin: 0 10px 8px 0;}
     .btn:disabled { background: #aaa; }
     .sprint-row label { margin-right: 1.2em; }
     .section-title { font-size: 1.1em; font-weight: 600; margin: 1.7em 0 0.5em 0; }
     .epic-summary-block { margin:2em 0 2.5em 0; border-radius:14px; background: #f3f4f6; box-shadow: 0 1px 6px #e0e7ef70; padding: 24px 24px 18px 24px; position:relative; }
-    .epic-risk { border:2px solid #e11d48; box-shadow:0 0 6px #e11d48; }
+    .epic-risk { border:2px solid #b91c1c; box-shadow:0 0 6px #b91c1c; }
     .epic-select-label { position:absolute; bottom:8px; right:8px; font-size:0.9em; }
     .epic-select-checkbox { margin-right:4px; }
     .epic-header { font-size: 1.15em; font-weight: 600; color: #374151; }
-    .allocation-bar { height: 18px; border-radius: 8px; background: #6366f1; display:inline-block; vertical-align:middle;}
+    .allocation-bar { height: 18px; border-radius: 8px; background: #00376a; display:inline-block; vertical-align:middle;}
     .prob-table { border-collapse:collapse; margin:12px 0 18px 0;}
     .prob-table th, .prob-table td { border:1px solid #e5e7eb; font-size:0.98em; padding:4px 11px;}
-    .prob-table th { background:#e0e7ef;}
+    .prob-table th { background:#00376a; color:#fff;}
     .info-grid { display:grid; grid-template-columns:1.7fr 1.3fr; gap:1.5em; }
     .change-block { font-size: 0.99em; }
     .status-pill { display:inline-block; min-width:64px; font-size:0.96em; border-radius:12px; padding:1.5px 13px; margin-right:6px; margin-bottom:3px;}
-    .pill-done { background:#10b981; color:#fff; }
+    .pill-done { background:#006c52; color:#fff; }
     .pill-prog { background:#f59e0b; color:#fff; }
-    .pill-blocked { background:#ef4444; color:#fff; }
-    .pill-open { background:#3b82f6; color:#fff; }
-    .warn { color:#e11d48; font-weight: 600;}
-    .success { color:#059669; font-weight:600;}
+    .pill-blocked { background:#b91c1c; color:#fff; }
+    .pill-open { background:#109fda; color:#fff; }
+    .warn { color:#b91c1c; font-weight: 600;}
+    .success { color:#006c52; font-weight:600;}
     .allocation-row {margin-bottom: 12px;}
     .alloc-label {display:inline-block; min-width: 80px;}
     .editarr { width: 50px;}
-    .pdf-cover { font-size:2.1em; text-align:center; margin-top:80px; color:#6366f1;}
+    .pdf-cover { font-size:2.1em; text-align:center; margin-top:80px; color:#00376a;}
     .pdf-sub { font-size:1.1em; color:#374151; text-align:center; margin-top:20px;}
     .pdf-section-title { font-size:1.15em; font-weight:600; margin-top:25px;}
     .details-toggle { margin: 10px 0 6px 0; }
     .story-table { border-collapse: collapse; width: 100%; margin: 6px 0 18px 0; }
     .story-table th, .story-table td { border: 1px solid #e5e7eb; padding: 4px 7px; font-size: 0.98em; text-align:left; }
-    .story-table th { background: #e0e7ef; }
+    .story-table th { background: #00376a; color: #fff; }
     .story-status-current { background: #b3e5fc; }
     .story-status-previous { background: none; }
     .story-status-new { background: #fff9c4; }
@@ -107,12 +110,13 @@
       .main {padding:14px;}
       .info-grid {grid-template-columns:1fr;}
     }
+    .error-msg { color: #b91c1c; font-weight: 600; margin: 8px 0; padding: 10px 16px; background: #fde8e8; border: 1px solid #b91c1c; border-radius: 8px; display: none; }
   </style>
 </head>
 <body>
   <div class="main">
-    <h1>Stakeholder PI Status Report (Monte Carlo, Resource Allocation)</h1>
-    <div style="margin-bottom:10px;">
+    <h1>Weekly Throughput Report</h1>
+    <div class="version-selector" style="margin-bottom:10px;">
       <label>Version:
         <select id="versionSelect" onchange="switchVersion(this.value)">
           <option value="index.html">Velocity</option>
@@ -135,6 +139,7 @@
       <button class="btn" onclick="fetchAll()">Load Data</button>
     </div>
     <div id="loadingMessage" style="display:none; font-weight:bold; margin:10px 0;"></div>
+    <div id="errorMsg" class="error-msg" role="alert"></div>
 
     <div id="configSection" style="display:none;">
       <div class="section-title">Throughput History (issues per week, last 12 weeks):</div>
@@ -153,6 +158,16 @@
   </div>
   <script src="src/jira.js"></script>
   <script>
+function showError(msg) {
+  const el = document.getElementById('errorMsg');
+  el.textContent = msg;
+  el.style.display = 'block';
+  setTimeout(() => { el.style.display = 'none'; }, 10000);
+}
+function clearError() {
+  const el = document.getElementById('errorMsg');
+  if (el) { el.textContent = ''; el.style.display = 'none'; }
+}
 const DEFAULT_JIRA_DOMAIN = 'aldi-sued.atlassian.net';
 let jiraDomain = DEFAULT_JIRA_DOMAIN, boardNum = '', sprints = [], closedSprintsSorted = [];
 const boardSelect = document.getElementById('boardNum');
@@ -726,7 +741,7 @@ function addTooltipListeners() {
         throughputWeekNums = [];
         throughputWeekLabels = [];
         throughputIssues = [];
-        alert('Failed to fetch throughput report. Are you logged in to Jira?');
+        showError('Failed to fetch throughput report. Are you logged in to Jira?');
         return [];
       }
     }
@@ -763,9 +778,10 @@ function addTooltipListeners() {
 
     // --- SPRINT FETCH & SELECTION (paginated, NO sorting after fetch) ---
     async function fetchAllSprints() {
+      clearError();
       jiraDomain = DEFAULT_JIRA_DOMAIN;
       boardNum = boardSelect.value.trim();
-      if (!boardNum) return alert("Select a board.");
+      if (!boardNum) { showError("Select a board."); return; }
 
       showLoading('Fetching sprints...');
       await fetchBoardTeam();
@@ -783,7 +799,7 @@ function addTooltipListeners() {
           if (!resp.ok) {
             const text = await resp.text();
             console.error("API Error Response:", resp.status, text);
-            alert("API returned an error. See console for details.");
+            showError("API returned an error. See console for details.");
             hideLoading();
             return;
           }
@@ -798,7 +814,7 @@ function addTooltipListeners() {
           }
         } catch (e) {
           console.error(e);
-          alert("Failed to fetch sprints. CORS? Are you logged into Jira?");
+          showError("Failed to fetch sprints. CORS? Are you logged into Jira?");
           hideLoading();
           return;
         }
@@ -855,9 +871,10 @@ function addTooltipListeners() {
 
     // --- MAIN DATA FETCH (Epics/Stories/Throughput) ---
     async function fetchAll() {
+      clearError();
       selectedSprintId = document.getElementById('sprintSelect').value;
       selectedSprintName = document.getElementById('sprintSelect').selectedOptions[0].textContent;
-      if (!selectedSprintId) return alert("Select a sprint.");
+      if (!selectedSprintId) { showError("Select a sprint."); return; }
       showLoading('Loading sprint data...');
       if (!boardTeams.length) await fetchBoardTeam();
       let currSprintObj = sprints.find(s => String(s.id) === String(selectedSprintId));
@@ -893,7 +910,7 @@ function addTooltipListeners() {
         });
       } catch (e) {
         console.error('Error fetching stories for selected sprint', e);
-        alert('Error fetching stories for selected sprint. See console for details.');
+        showError('Error fetching stories for selected sprint. See console for details.');
         hideLoading();
         return;
       }
@@ -1653,7 +1670,7 @@ function addTooltipListeners() {
       const pdf = new jsPDF({ unit:'pt', format:'a4' });
       const blocks = Array.from(document.querySelectorAll('.epic-summary-block'))
         .filter(b => b.querySelector('.epic-select-checkbox')?.checked);
-      if (!blocks.length) return alert('Select at least one epic for PDF');
+      if (!blocks.length) { showError('Select at least one epic for PDF'); return; }
 
       const restoreExternalStyles = temporarilyRemoveExternalStylesheets();
       const margin = 20;
@@ -1685,11 +1702,12 @@ function addTooltipListeners() {
         pdf.save(`Stakeholder_StatusReport_WeeklyThroughput_${dateStr}.pdf`);
       } catch (err) {
         console.error('PDF export failed', err);
-        alert('Unable to generate the PDF report. Please try again.');
+        showError('Unable to generate the PDF report. Please try again.');
       } finally {
         restoreExternalStyles();
       }
     }
   </script>
+  <script>if(new URLSearchParams(location.search).has('embedded'))document.body.classList.add('embedded');</script>
 </body>
 </html>
