@@ -18,7 +18,7 @@
     /* Embedded mode */
     body.embedded { background: #f9fafb; }
     body.embedded .main { max-width: 100%; margin: 0; border-radius: 0; box-shadow: none; padding: 24px 28px; }
-    body.embedded .version-selector { display: none; }
+
     .table-wrap { overflow-x: auto; }
     table { border-collapse: collapse; min-width: 100%; margin-top: 20px; }
     th, td { border: 1px solid #e5e7eb; padding: 6px 10px; text-align:left; font-size:0.95em; }
@@ -60,19 +60,7 @@
 <body>
 <div class="main">
   <h1>KPI Report</h1>
-  <div class="version-selector">
-    <label>Version:
-      <select id="versionSelect" onchange="switchVersion(this.value)">
-        <option value="index.html">Velocity</option>
-        <option value="index_throughput.html">Throughput</option>
-        <option value="index_throughput_week.html">Weekly Throughput</option>
-        <option value="index_disruption.html">Disruption</option>
-        <option value="KPI_Report.html">KPI Report</option>
-        <option value="target_release_dashboard.html">PI &amp; Target-Release Dashboard</option>
-        <option value="flow_metrics.html">Flow Metrics</option>
-      </select>
-    </label>
-  </div>
+
   <div style="margin-top:20px;">
     <label>Jira Domain: <input id="jiraDomain" value="aldi-sued.atlassian.net" size="28"></label>
     <label id="boardLabel" style="margin-left:10px; display:none;">Please select a Board:
@@ -165,7 +153,7 @@
     const el = document.getElementById('errorMsg');
     if (el) { el.textContent = ''; el.style.display = 'none'; }
   }
-  function switchVersion(v){ window.location.href = v; }
+
   function createRatingZoneInfo() {
     const tpl = document.getElementById('ratingZoneTemplate');
     if (!tpl) return null;
@@ -1633,7 +1621,6 @@ function renderCharts(displaySprints, allSprints) {
     }
   }
 
-   document.getElementById('versionSelect').value = 'KPI_Report.html';
 </script>
 <script>if(new URLSearchParams(location.search).has('embedded'))document.body.classList.add('embedded');</script>
 </body>

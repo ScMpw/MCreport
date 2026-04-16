@@ -15,7 +15,7 @@
     .main { max-width: 1200px; margin: 30px auto 40px auto; background: #fff; border-radius: 18px; box-shadow: 0 2px 12px rgba(0,55,106,0.10); padding: 36px 32px 48px 32px; }
     body.embedded { background: #f9fafb; }
     body.embedded .main { max-width: 100%; margin: 0; border-radius: 0; box-shadow: none; padding: 24px 28px; }
-    body.embedded .version-selector { display: none; }
+
     h1 { font-size: 2.2em; margin:0 0 0.7em 0; font-weight: 600; color: #00376a; }
     .controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-bottom: 20px; }
     .controls label { display:flex; flex-direction:column; font-size:0.95em; color: #00376a; }
@@ -101,18 +101,6 @@
 <body>
   <div class="main" id="pdfContent">
     <h1 title="Track items against target versions and PI milestones">Target Release Dashboard</h1>
-    <div class="version-selector" style="margin-bottom:14px;">
-      <label>Version:
-        <select id="versionSelect">
-          <option value="index.html">Velocity</option>
-          <option value="index_throughput.html">Throughput</option>
-          <option value="index_throughput_week.html">Weekly Throughput</option>
-          <option value="index_disruption.html">Disruption</option>
-          <option value="KPI_Report.html">KPI Report</option>
-          <option value="target_release_dashboard.html">PI &amp; Target Version Planning Dashboard</option>
-        </select>
-      </label>
-    </div>
     <div class="controls">
       <label>Jira Domain
         <input id="jiraDomain" value="aldi-sued.atlassian.net" placeholder="your-domain.atlassian.net">
@@ -2573,18 +2561,6 @@
       pdf.save('pi-target-version-dashboard.pdf');
     }
 
-    function switchVersion(page) {
-      if (!page) return;
-      window.location.href = page;
-    }
-
-    function initVersionSelect() {
-      const select = document.getElementById('versionSelect');
-      if (!select) return;
-      select.value = 'target_release_dashboard.html';
-      select.addEventListener('change', (event) => switchVersion(event.target.value));
-    }
-
     document.getElementById('loadDataBtn').addEventListener('click', loadData);
     document.getElementById('exportBtn').addEventListener('click', exportPDF);
     document.getElementById('jiraDomain').addEventListener('change', loadBoards);
@@ -2603,7 +2579,6 @@
       });
     }
 
-    initVersionSelect();
     initChoices();
     setupFilterReactivity();
     loadBoards();
