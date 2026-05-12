@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "build:css": "tailwindcss -o public/tailwind.css --minify"
+    "build:css": "tailwindcss -o public/tailwind.css --minify",
+    "test": "node --test test/"
   },
   "keywords": [],
   "author": "",

@@ -4,13 +4,21 @@ const Jira = require('../src/jira');
 (async () => {
   const calls = [];
   const originalFetch = global.fetch;
-  global.fetch = async (url) => {
-    calls.push(url);
-    const jql = decodeURIComponent(url.split('jql=')[1].split('&')[0]);
-    const keys = jql.match(/\((.*)\)/)[1].split(',');
+  global.fetch = async (url, opts) => {
+    calls.push({ url, opts });
+    // The updated jira.js uses POST for batch search — extract keys from the body
+    let keys;
+    if (opts && opts.body) {
+      const body = JSON.parse(opts.body);
+      const match = body.jql.match(/key in \(([^)]+)\)/);
+      keys = match ? match[1].split(',') : [];
+    } else {
+      const jql = decodeURIComponent(url.split('jql=')[1].split('&')[0]);
+      keys = jql.match(/\((.*)\)/)[1].split(',');
+    }
     return {
       ok: true,
-      json: async () => ({ issues: keys.map(k => ({ key: k })) })
+      json: async () => ({ issues: keys.map(k => ({ key: k.trim() })) })
     };
   };
 

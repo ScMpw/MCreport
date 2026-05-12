@@ -18,15 +18,15 @@
   <style>
     :root {
       /* Color System */
-      --color-background: #f7f8fa;
+      --color-background: #efeae4;
       --color-surface: #ffffff;
       --color-border: #e5e7eb;
-      --color-border-light: #d1d5db70;
+      --color-border-light: rgba(0,55,106,0.10);
       --color-text-primary: #1f2937;
       --color-text-secondary: #6b7280;
-      --color-table-header: #e0e7ef;
+      --color-table-header: #00376a;
       --color-table-row: #e5e7eb;
-      --color-primary: #6366f1;
+      --color-primary: #00376a;
       --color-log-background: #f3f4f6;
       
       /* Rating Zone Colors */
@@ -94,14 +94,12 @@
     h1 {
       margin: 0 0 var(--spacing-xl) 0;
       color: var(--color-text-primary);
-      font-weight: 600;
-    }
+      font-weight: 600; color: #00376a; }
 
     h2 {
       margin: var(--spacing-xl) 0 var(--spacing-md) 0;
       color: var(--color-text-primary);
-      font-weight: 600;
-    }
+      font-weight: 600; color: #00376a; }
 
     /* Form Controls */
     .form-group {
@@ -652,9 +650,9 @@
       const CONFIG = {
         BOARD_GROUPS: {
           'SCO': ['4133', '4132', '4131'],
-          'MCO': ['2796', '2526', '6346'],
+          'MCO': ['4629', '2526', '6346'],
           'Butterfly': ['6347', '6390'],
-          'ACOSS': ['2796', '2526', '6346', '4133', '4132', '4131', '6347', '6390', '4894']
+          'ACOSS': ['4629', '2526', '6346', '4133', '4132', '4131', '6347', '6390', '4894']
         },
         DISPLAY_SPRINT_COUNT: 6,
         RATING_WINDOW: 4,
@@ -863,7 +861,7 @@
             { value: '4133', label: 'SCO Board 4133', selected: false },
             { value: '4132', label: 'SCO Board 4132', selected: false },
             { value: '4131', label: 'SCO Board 4131', selected: false },
-            { value: '2796', label: 'MCO Board 2796', selected: false },
+            { value: '4629', label: 'MCO Board 4629', selected: false },
             { value: '2526', label: 'MCO Board 2526', selected: false },
             { value: '6346', label: 'MCO Board 6346', selected: false },
             { value: '6347', label: 'Butterfly Board 6347', selected: false },
@@ -890,7 +888,7 @@
           { id: '4133', name: 'SCO Board 4133' },
           { id: '4132', name: 'SCO Board 4132' },
           { id: '4131', name: 'SCO Board 4131' },
-          { id: '2796', name: 'MCO Board 2796' },
+          { id: '4629', name: 'MCO Board 4629' },
           { id: '2526', name: 'MCO Board 2526' },
           { id: '6346', name: 'MCO Board 6346' },
           { id: '6347', name: 'Butterfly Board 6347' },
@@ -1057,7 +1055,7 @@
           '4133': 'SCO Board 4133',
           '4132': 'SCO Board 4132', 
           '4131': 'SCO Board 4131',
-          '2796': 'MCO Board 2796',
+          '4629': 'MCO Board 4629',
           '2526': 'MCO Board 2526',
           '6346': 'MCO Board 6346',
           '6347': 'Butterfly Board 6347',
@@ -1171,7 +1169,7 @@
               </div>
               <div style="background: #f9fafb; padding: 1rem; border-radius: 6px; border: 1px solid #e5e7eb;">
                 <div style="color: #6b7280; font-size: 0.875rem; margin-bottom: 0.5rem;">Std Deviation</div>
-                <div style="font-size: 1.75rem; font-weight: 600; color: #6366f1;">${standardDeviation.toFixed(1)}</div>
+                <div style="font-size: 1.75rem; font-weight: 600; color: #00376a;">${standardDeviation.toFixed(1)}</div>
                 <div style="color: #6b7280; font-size: 0.75rem;">Story Points</div>
               </div>
             </div>
@@ -1241,12 +1239,12 @@
                     datasets: [{
                       label: 'Completed Story Points',
                       data: board.sprints.map(s => s.metrics.completed),
-                      borderColor: '#6366f1',
+                      borderColor: '#00376a',
                       backgroundColor: 'rgba(99, 102, 241, 0.1)',
                       borderWidth: 2,
                       tension: 0.3,
                       fill: true,
-                      pointBackgroundColor: '#6366f1',
+                      pointBackgroundColor: '#00376a',
                       pointBorderColor: '#ffffff',
                       pointBorderWidth: 2,
                       pointRadius: 4

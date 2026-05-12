@@ -15,6 +15,19 @@
     ? require('./logger')
     : (getGlobal().Logger || { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} });
 
+  /**
+   * Calculates sprint disruption metrics from an array of disruption events.
+   *
+   * Each event describes an issue's behaviour during a sprint (e.g. pulled in
+   * after start, blocked, moved out, completed). The function aggregates these
+   * into counts and story-point totals for each disruption category.
+   *
+   * @param {Array<Object>} [events=[]] - Disruption events, each with at least
+   *   a `key` (issue key) and optional flags: `addedAfterStart`, `blockedDays`,
+   *   `movedOut`, `removedBeforeStart`, `completed`, `points`.
+   * @returns {Object} Aggregated metrics with counts, point totals, and issue
+   *   key arrays for each category.
+   */
   function calculateDisruptionMetrics(events = []) {
     logger.debug('calculateDisruptionMetrics called with events', events);
 
@@ -40,7 +53,7 @@
     // counting a single category twice.
     const seen = new Map();
 
-    (events || []).forEach(ev => {
+    events.forEach(ev => {
       if (!ev || !ev.key) return;
 
       const pts = ev.points || 0;

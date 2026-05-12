@@ -7,15 +7,15 @@
   <link rel="stylesheet" href="public/tailwind.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    body { background: #f7f8fa; font-family: 'Inter', Arial, sans-serif; margin: 0; padding: 0; }
-    .main { max-width: 1100px; margin: 30px auto 40px auto; background: #fff; border-radius: 18px; box-shadow: 0 2px 12px #d1d5db70; padding: 36px 32px; }
-    h1 { font-size: 2.1em; margin:0 0 0.7em 0; font-weight: 600; }
-    h2 { font-size: 1.2em; margin-top:1.6em; font-weight:600; }
+    body { background: #efeae4; font-family: 'Inter', Arial, sans-serif; margin: 0; padding: 0; }
+    .main { max-width: 1100px; margin: 30px auto 40px auto; background: #fff; border-radius: 18px; box-shadow: 0 2px 12px rgba(0,55,106,0.10); padding: 36px 32px; }
+    h1 { font-size: 2.1em; margin:0 0 0.7em 0; font-weight: 600; color: #00376a; }
+    h2 { font-size: 1.2em; margin-top:1.6em; font-weight:600; color: #00376a; }
     .controls { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:14px; margin: 10px 0 12px 0; }
-    label { font-weight:600; display:block; margin-bottom:4px; color:#374151; }
+    label { font-weight:600; display:block; margin-bottom:4px; color: #00376a; }
     select, input { width:100%; padding:8px 10px; border-radius:8px; border:1px solid #d1d5db; font-size:0.98em; }
     select[multiple] { min-height: 130px; }
-    button { background: #6366f1; color:#fff; border:none; border-radius:8px; padding:10px 16px; font-size:1em; cursor:pointer; }
+    button { background: #00376a; color:#fff; border:none; border-radius:8px; padding:10px 16px; font-size:1em; cursor:pointer; }
     button.secondary { background:#e5e7eb; color:#111827; }
     .card { background:#f9fafb; border:1px solid #e5e7eb; border-radius:12px; padding:16px; margin-top:10px; }
     .summary-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:12px; margin-top:12px; }
@@ -25,7 +25,7 @@
     .chart-wrap { position: relative; height: 280px; margin-top: 10px; }
     table { border-collapse: collapse; width: 100%; margin-top:10px; }
     th, td { border:1px solid #e5e7eb; padding:8px 10px; text-align:left; font-size:0.95em; }
-    th { background:#eef2ff; }
+    th { background: #00376a; color: #fff; }
     .helper { color:#4b5563; font-size:0.93em; }
     .tag { display:inline-block; padding:2px 8px; border-radius:999px; font-size:0.78em; font-weight:600; }
     .tag-created { background:#e0f2fe; color:#0369a1; }
@@ -42,7 +42,6 @@
     .inline-control > div { min-width:180px; }
     .epic-card-grid { display:grid; gap:14px; margin-top:12px; }
     .epic-card { background:#f3f4f6; border-radius:14px; padding:16px; border:1px solid #e5e7eb; }
-    .epic-card.selected { box-shadow: 0 0 0 3px #c7d2fe; }
     .epic-card.flag-green { border:2px solid #16a34a; }
     .epic-card.flag-yellow { border:2px solid #eab308; }
     .epic-card.flag-red { border:2px solid #dc2626; }
@@ -60,8 +59,6 @@
     .epic-details-panel { display:none; margin-top:10px; background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:10px; }
     .epic-details-panel table { margin-top:8px; }
     .epic-details-header { display:flex; gap:12px; flex-wrap:wrap; color:#374151; font-size:0.9em; }
-    .epic-select-row { display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:8px; }
-    .epic-select-row label { margin:0; display:flex; gap:6px; align-items:center; font-weight:600; font-size:0.92em; }
     details.info-collapse { margin-top:14px; background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:10px 12px; }
     details.info-collapse summary { cursor:pointer; font-weight:600; }
     @media (max-width: 700px) {
@@ -73,6 +70,23 @@
   <div class="main">
     <h1>WARP Progression</h1>
     <p class="helper">Track stories for parent epics WARP-534, WARP-627, WARP-621 by date range and status transitions.</p>
+
+    <div class="card" style="margin-top:12px;">
+      <h2 style="margin-top:0;">Jira API authentication (session only)</h2>
+      <p class="helper">Paste your Jira email and API token to authorize requests. The token field is masked, stored in memory only for the current page session, and never written to local/session storage.</p>
+      <div class="inline-control">
+        <div>
+          <label for="jiraEmailInput">Jira email</label>
+          <input id="jiraEmailInput" type="email" autocomplete="off" spellcheck="false" placeholder="name@company.com">
+        </div>
+        <div>
+          <label for="jiraTokenInput">Jira API token</label>
+          <input id="jiraTokenInput" type="password" autocomplete="off" spellcheck="false" placeholder="Paste API token">
+        </div>
+        <button id="applyAuthBtn" type="button">Use token for this session</button>
+      </div>
+      <p id="authStatus" class="helper" style="margin-top:8px;">No API token loaded.</p>
+    </div>
 
     <div class="controls" style="margin-bottom:8px;">
       <div>
@@ -293,15 +307,10 @@
             <input id="kanbanDateFromInput" type="date">
           </div>
           <div>
-            <label for="kanbanTargetDateInput">Target date</label>
-            <input id="kanbanTargetDateInput" type="date">
+            <label for="kanbanTargetWeeksInput">Target weeks</label>
+            <input id="kanbanTargetWeeksInput" type="number" min="1" max="52" value="8">
           </div>
           <button id="runKanbanBtn" type="button">Run Kanban report</button>
-        </div>
-
-        <div class="inline-control">
-          <button id="selectAllKanbanEpicsBtn" class="secondary" type="button">Select all epics</button>
-          <button id="clearKanbanEpicsBtn" class="secondary" type="button">Clear epic selection</button>
         </div>
 
         <div class="summary-grid">
@@ -353,6 +362,7 @@
     const JIRA_DOMAIN = 'aldi-sued.atlassian.net';
     const EPIC_PARENTS = ['WARP-534', 'WARP-627', 'WARP-621'];
     const KANBAN_DEFAULT_START_DATE = '2026-01-27';
+    const AUTH_STORAGE_NOTICE = 'Token is held in memory for this tab only and is not persisted.';
 
     const statusFallback = ['Open', 'Ready', 'In Development', 'In Review', 'Closed'];
     const epicParentsSelect = document.getElementById('epicParents');
@@ -382,6 +392,10 @@
     const toggleCycleTableBtn = document.getElementById('toggleCycleTableBtn');
     const cycleTableSection = document.getElementById('cycleTableSection');
     const toolSelect = document.getElementById('toolSelect');
+    const jiraEmailInput = document.getElementById('jiraEmailInput');
+    const jiraTokenInput = document.getElementById('jiraTokenInput');
+    const applyAuthBtn = document.getElementById('applyAuthBtn');
+    const authStatus = document.getElementById('authStatus');
     const progressionTool = document.getElementById('progressionTool');
     const predictionTool = document.getElementById('predictionTool');
     const kanbanTool = document.getElementById('kanbanTool');
@@ -395,10 +409,8 @@
     const epicBacklogChartCanvas = document.getElementById('epicBacklogChart');
     const kanbanQuickFilterSelect = document.getElementById('kanbanQuickFilterSelect');
     const kanbanDateFromInput = document.getElementById('kanbanDateFromInput');
-    const kanbanTargetDateInput = document.getElementById('kanbanTargetDateInput');
+    const kanbanTargetWeeksInput = document.getElementById('kanbanTargetWeeksInput');
     const runKanbanBtn = document.getElementById('runKanbanBtn');
-    const selectAllKanbanEpicsBtn = document.getElementById('selectAllKanbanEpicsBtn');
-    const clearKanbanEpicsBtn = document.getElementById('clearKanbanEpicsBtn');
     const kanbanEpicCount = document.getElementById('kanbanEpicCount');
     const kanbanBacklogTotal = document.getElementById('kanbanBacklogTotal');
     const kanbanVelocity = document.getElementById('kanbanVelocity');
@@ -410,9 +422,49 @@
     let epicBacklogChart = null;
     let cachedIssues = [];
     let kanbanIssues = [];
-    let kanbanEpicRows = [];
-    let selectedKanbanEpics = new Set();
     let kanbanQuickFilters = [];
+    let jiraAuthHeader = '';
+
+    function applyJiraAuth() {
+      const email = String(jiraEmailInput.value || '').trim();
+      const token = String(jiraTokenInput.value || '').trim();
+      if (!email || !token) {
+        jiraAuthHeader = '';
+        authStatus.textContent = 'Enter both Jira email and API token.';
+        setError('Missing Jira credentials.');
+        return;
+      }
+      jiraAuthHeader = `Basic ${btoa(`${email}:${token}`)}`;
+      jiraTokenInput.value = '';
+      authStatus.textContent = `Token loaded for ${email}. ${AUTH_STORAGE_NOTICE}`;
+      setError('');
+      if (toolSelect.value === 'kanban') {
+        loadKanbanQuickFilters().catch(error => {
+          console.error(error);
+          setError('Failed to load Kanban quick filters.');
+        });
+      }
+    }
+
+    function getAuthHeaders(extraHeaders = {}) {
+      if (!jiraAuthHeader) {
+        throw new Error('Jira API token not configured.');
+      }
+      return {
+        'Accept': 'application/json',
+        'Authorization': jiraAuthHeader,
+        ...extraHeaders
+      };
+    }
+
+    async function jiraFetch(url, options = {}) {
+      const headers = getAuthHeaders(options.headers || {});
+      const resp = await fetch(url, {
+        ...options,
+        headers
+      });
+      return resp;
+    }
 
     function switchTool(tool) {
       const showProgression = tool === 'progression';
@@ -545,12 +597,7 @@
         fields.forEach(field => params.append('fields', field));
         expand.forEach(item => params.append('expand', item));
 
-        const resp = await fetch(`https://${jiraDomain}/rest/api/3/search/jql?${params.toString()}`, {
-          credentials: 'include',
-          headers: {
-            'Accept': 'application/json'
-          }
-        });
+        const resp = await jiraFetch(`https://${jiraDomain}/rest/api/3/search/jql?${params.toString()}`);
 
         if (!resp.ok) {
           const text = await resp.text();
@@ -570,9 +617,7 @@
     }
 
     async function fetchBoardFilterJql(jiraDomain, boardId) {
-      const resp = await fetch(`https://${jiraDomain}/rest/agile/1.0/board/${boardId}/configuration`, {
-        credentials: 'include'
-      });
+      const resp = await jiraFetch(`https://${jiraDomain}/rest/agile/1.0/board/${boardId}/configuration`);
       if (!resp.ok) {
         throw new Error(`Board configuration request failed (${resp.status})`);
       }
@@ -583,12 +628,7 @@
       const filterId = String(data?.filter?.id || '').trim();
       if (!filterId) return '';
 
-      const filterResp = await fetch(`https://${jiraDomain}/rest/api/3/filter/${encodeURIComponent(filterId)}`, {
-        credentials: 'include',
-        headers: {
-          'Accept': 'application/json'
-        }
-      });
+      const filterResp = await jiraFetch(`https://${jiraDomain}/rest/api/3/filter/${encodeURIComponent(filterId)}`);
       if (!filterResp.ok) {
         throw new Error(`Board filter request failed (${filterResp.status})`);
       }
@@ -608,9 +648,7 @@
     }
 
     async function loadKanbanQuickFilters() {
-      const resp = await fetch(`https://${JIRA_DOMAIN}/rest/agile/1.0/board/15575/quickfilter`, {
-        credentials: 'include'
-      });
+      const resp = await jiraFetch(`https://${JIRA_DOMAIN}/rest/agile/1.0/board/15575/quickfilter`);
       if (!resp.ok) {
         throw new Error(`Quick filter request failed (${resp.status})`);
       }
@@ -1087,18 +1125,6 @@
       return Math.ceil(backlogItems / targetWeeks);
     }
 
-    function getWeeksUntilTargetDate(targetDateText, referenceDate = new Date()) {
-      if (!targetDateText) return 8;
-      const target = toTimeValue(`${targetDateText}T00:00:00.000Z`);
-      if (target === null) return 8;
-      const referenceStart = new Date(referenceDate);
-      referenceStart.setUTCHours(0, 0, 0, 0);
-      const start = referenceStart.getTime();
-      if (target <= start) return 1;
-      const days = Math.ceil((target - start) / (1000 * 60 * 60 * 24));
-      return Math.max(1, Math.ceil(days / 7));
-    }
-
     function escapeHtml(value) {
       return String(value ?? '')
         .replaceAll('&', '&amp;')
@@ -1147,54 +1173,52 @@
       return Array.from(epicMap.values()).sort((a, b) => b.backlog - a.backlog);
     }
 
-    function renderKanbanReportView() {
-      const selectedRows = kanbanEpicRows.filter(row => selectedKanbanEpics.has(row.epicKey));
-      const selectedEpicSet = new Set(selectedRows.map(row => row.epicKey));
-      const filteredIssues = kanbanIssues.filter(issue => selectedEpicSet.has(issue.fields?.parent?.key || 'UNASSIGNED'));
-      const throughputStartDate = kanbanDateFromInput.value || KANBAN_DEFAULT_START_DATE;
-      const throughput = calculateWeeklyThroughputFromIssues(filteredIssues, { startDate: throughputStartDate });
-      const targetWeeks = getWeeksUntilTargetDate(kanbanTargetDateInput.value);
-
+    async function runKanbanReport() {
+      setError('');
+      showLoading('Loading Kanban board issues…');
+      try {
+        const jql = getSelectedKanbanQuickFilterQuery();
+        kanbanIssues = await jiraSearchBoard(JIRA_DOMAIN, 15575, jql);
+        const rows = computeKanbanEpicRows();
+        const throughputStartDate = kanbanDateFromInput.value || KANBAN_DEFAULT_START_DATE;
+        const throughput = calculateWeeklyThroughputFromIssues(kanbanIssues, { startDate: throughputStartDate });
         const nonZero = throughput.buckets.filter(v => v > 0);
         const med = median(nonZero.length ? nonZero : throughput.buckets);
 
-      kanbanEpicCount.textContent = String(selectedRows.length);
-      kanbanBacklogTotal.textContent = String(selectedRows.reduce((sum, row) => sum + row.backlog, 0));
-      kanbanVelocity.textContent = med.toFixed(1);
-      kanbanEpicCards.innerHTML = '';
-      kanbanHistoricalBody.innerHTML = '';
-      throughput.weekStarts.forEach((weekStart, index) => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${formatWeekStart(weekStart)}</td><td>${throughput.buckets[index] ?? 0}</td>`;
-        kanbanHistoricalBody.appendChild(tr);
-      });
-      if (!throughput.weekStarts.length) {
-        const tr = document.createElement('tr');
-        tr.innerHTML = '<td colspan="2">No historical throughput data available.</td>';
-        kanbanHistoricalBody.appendChild(tr);
-      }
+        kanbanEpicCount.textContent = String(rows.length);
+        kanbanBacklogTotal.textContent = String(rows.reduce((sum, row) => sum + row.backlog, 0));
+        kanbanVelocity.textContent = med.toFixed(1);
+        kanbanEpicCards.innerHTML = '';
+        kanbanHistoricalBody.innerHTML = '';
+        throughput.weekStarts.forEach((weekStart, index) => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td>${formatWeekStart(weekStart)}</td><td>${throughput.buckets[index] ?? 0}</td>`;
+          kanbanHistoricalBody.appendChild(tr);
+        });
+        if (!throughput.weekStarts.length) {
+          const tr = document.createElement('tr');
+          tr.innerHTML = '<td colspan="2">No historical throughput data available.</td>';
+          kanbanHistoricalBody.appendChild(tr);
+        }
 
-      kanbanEpicRows.forEach(row => {
+        rows.forEach(row => {
           const runs = monteCarloPeriods(row.backlog, throughput.buckets);
           const p50Weeks = percentile(runs, 0.50);
           const p75Weeks = percentile(runs, 0.75);
           const p95Weeks = percentile(runs, 0.95);
+          const targetWeeks = Number(kanbanTargetWeeksInput.value) || 8;
           const requiredIssuesPerWeek = calculateRequiredIssuesPerWeek(row.backlog, targetWeeks);
           const scopeDelta = row.newLastWeek - row.removedLastWeek;
           const scope = scopeDelta === 0 ? 'No change' : (scopeDelta > 0 ? `Increased (+${scopeDelta})` : `Reduced (${scopeDelta})`);
           const card = document.createElement('article');
           const riskFlagClass = p95Weeks > targetWeeks ? 'flag-red' : (p95Weeks === targetWeeks ? 'flag-yellow' : 'flag-green');
-          const isSelected = selectedKanbanEpics.has(row.epicKey);
-          card.className = `epic-card ${riskFlagClass} ${isSelected ? 'selected' : ''}`;
+          card.className = `epic-card ${riskFlagClass}`;
           const detailsRows = row.issues
             .sort((a, b) => a.key.localeCompare(b.key))
             .map(issue => `<tr><td>${escapeHtml(issue.key)}</td><td>${escapeHtml(issue.status)}</td><td>${escapeHtml(issue.summary)}</td></tr>`)
             .join('');
           card.innerHTML = `
-            <div class="epic-select-row">
-              <h3>${row.epicKey}</h3>
-              <label><input type="checkbox" class="epic-select-checkbox" data-epic="${escapeHtml(row.epicKey)}" ${isSelected ? 'checked' : ''}> Include in simulation</label>
-            </div>
+            <h3>${row.epicKey}</h3>
             <div class="epic-pill-row">
               <span class="epic-pill done" title="Issues currently in a done status.">${row.done} Done</span>
               <span class="epic-pill progress" title="Issues currently in an in-progress status.">${row.inProgress} In progress</span>
@@ -1206,7 +1230,7 @@
               <div>
                 <b title="Estimated completion time from Monte Carlo simulation.">Forecast (weeks)</b><br>
                 <div class="forecast-highlight tooltip-value" title="95% certainty, this many weeks are needed to finish the backlog.">95% certainty: ${p95Weeks}</div>
-                <small title="Time horizon used to evaluate required weekly completions.">Target: ${targetWeeks} week(s)${kanbanTargetDateInput.value ? ` (to ${escapeHtml(kanbanTargetDateInput.value)})` : ''}</small>
+                <small title="Time horizon used to evaluate required weekly completions.">Target: ${targetWeeks} week(s)</small>
               </div>
               <div>
                 <b title="Scope and delivery movement during the last full week.">Changes since last week</b><br>
@@ -1239,39 +1263,14 @@
             detailsPanel.style.display = hidden ? 'block' : 'none';
             detailsButton.textContent = hidden ? 'Hide details' : 'Show details';
           });
-          const selectionCheckbox = card.querySelector('.epic-select-checkbox');
-          selectionCheckbox.addEventListener('change', event => {
-            const epicKey = event.target.getAttribute('data-epic') || '';
-            if (!epicKey) return;
-            if (event.target.checked) selectedKanbanEpics.add(epicKey);
-            else selectedKanbanEpics.delete(epicKey);
-            renderKanbanReportView();
-          });
           kanbanEpicCards.appendChild(card);
         });
-      if (!kanbanEpicRows.length) {
+        if (!rows.length) {
           const empty = document.createElement('p');
           empty.className = 'helper';
           empty.textContent = 'No epic data available for the selected quick filter.';
           kanbanEpicCards.appendChild(empty);
-      }
-      if (kanbanEpicRows.length && !selectedKanbanEpics.size) {
-        const emptySelection = document.createElement('p');
-        emptySelection.className = 'helper';
-        emptySelection.textContent = 'No epics selected. Select one or more epics to apply simulation.';
-        kanbanEpicCards.prepend(emptySelection);
-      }
-    }
-
-    async function runKanbanReport() {
-      setError('');
-      showLoading('Loading Kanban board issues…');
-      try {
-        const jql = getSelectedKanbanQuickFilterQuery();
-        kanbanIssues = await jiraSearchBoard(JIRA_DOMAIN, 15575, jql);
-        kanbanEpicRows = computeKanbanEpicRows();
-        selectedKanbanEpics = new Set(kanbanEpicRows.map(row => row.epicKey));
-        renderKanbanReportView();
+        }
       } catch (error) {
         console.error(error);
         setError('Failed to run Kanban report. Ensure Jira access is available.');
@@ -1448,30 +1447,14 @@
       dateFromInput.value = toDateValue(lastWeek);
       dateToInput.value = toDateValue(today);
       kanbanDateFromInput.value = KANBAN_DEFAULT_START_DATE;
-      const kanbanDefaultTarget = new Date(kanbanDateFromInput.value || today);
-      kanbanDefaultTarget.setDate(kanbanDefaultTarget.getDate() + 56);
-      kanbanTargetDateInput.value = toDateValue(kanbanDefaultTarget);
     }
 
     document.getElementById('refreshBtn').addEventListener('click', loadIssues);
+    applyAuthBtn.addEventListener('click', applyJiraAuth);
     toggleDetailsBtn.addEventListener('click', toggleDetails);
     toggleCycleTableBtn.addEventListener('click', toggleCycleTable);
     runPredictionBtn.addEventListener('click', renderPrediction);
     runKanbanBtn.addEventListener('click', runKanbanReport);
-    kanbanDateFromInput.addEventListener('change', () => {
-      if (toolSelect.value === 'kanban' && kanbanIssues.length) renderKanbanReportView();
-    });
-    kanbanTargetDateInput.addEventListener('change', () => {
-      if (toolSelect.value === 'kanban' && kanbanIssues.length) renderKanbanReportView();
-    });
-    selectAllKanbanEpicsBtn.addEventListener('click', () => {
-      selectedKanbanEpics = new Set(kanbanEpicRows.map(row => row.epicKey));
-      if (toolSelect.value === 'kanban' && kanbanIssues.length) renderKanbanReportView();
-    });
-    clearKanbanEpicsBtn.addEventListener('click', () => {
-      selectedKanbanEpics = new Set();
-      if (toolSelect.value === 'kanban' && kanbanIssues.length) renderKanbanReportView();
-    });
     toolSelect.addEventListener('change', event => switchTool(event.target.value));
     fromStatusSelect.addEventListener('change', updateReport);
     toStatusSelect.addEventListener('change', updateReport);
@@ -1488,9 +1471,9 @@
     initializeDefaults();
     switchTool(toolSelect.value);
     renderPrediction();
-    loadKanbanQuickFilters().catch(error => {
-      console.error(error);
-      setError('Failed to load Kanban quick filters.');
+    window.addEventListener('beforeunload', () => {
+      jiraAuthHeader = '';
+      jiraTokenInput.value = '';
     });
     enableMultiSelectToggle(fromStatusSelect);
     enableMultiSelectToggle(toStatusSelect);

@@ -36,13 +36,18 @@ const assert = require('assert');
     { labelTop: 'S1', labelBottom: '', sprintIds: [1] }
   ];
 
+  // The updated code uses globalThis.Logger.debug instead of console.log.
+  // Inject a mock Logger to capture the debug output.
   const logs = [];
-  const orig = console.log;
-  console.log = (...args) => { logs.push(args.join(' ')); };
+  const origLogger = globalThis.Logger;
+  globalThis.Logger = {
+    debug: (...args) => { logs.push(args.join(' ')); },
+    info: () => {}, warn: () => {}, error: () => {}
+  };
 
   computeBucketSeries({ team: 'ALL', product: 'ALL', sprints, issues, piBuckets });
 
-  console.log = orig;
+  globalThis.Logger = origLogger;
 
   assert.strictEqual(logs.length, issues.length);
   assert(logs.some(l => l.includes('ST-1') && l.includes('EP-1') && l.includes('L1')));

@@ -19,7 +19,8 @@
     .main { max-width: 1100px; margin: 30px auto 40px auto; background: #fff; border-radius: 18px; box-shadow: 0 2px 12px rgba(0,55,106,0.10); padding: 36px 32px; }
     body.embedded { background: #f9fafb; }
     body.embedded .main { max-width: 100%; margin: 0; border-radius: 0; box-shadow: none; padding: 24px 28px; }
-    body.embedded .version-selector { display: none; }
+    body.embedded h1 { display: none; }
+
     h1 { font-size: 2.1em; margin:0 0 0.7em 0; font-weight: 600; color: var(--gebit-blue); }
     h2 { font-size: 1.2em; margin-top:1.6em; font-weight:600; color: var(--gebit-blue); }
     h3 { color: var(--gebit-blue); }
@@ -48,10 +49,7 @@
     <h1 title="Detailed sprint issue flow analysis">Issue Insights</h1>
     <p class="helper">Drill into how issues flow through a sprint, compare completion rates by estimate, and explore status durations with optional JQL filters.</p>
     <div class="controls">
-      <div>
-        <label for="jiraDomain">Jira Domain</label>
-        <input id="jiraDomain" type="text" placeholder="your-domain.atlassian.net">
-      </div>
+      <input type="hidden" id="jiraDomain" value="aldi-sued.atlassian.net">
       <div>
         <label for="boardSelect">Board</label>
         <select id="boardSelect"></select>

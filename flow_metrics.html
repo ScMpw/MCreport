@@ -22,11 +22,13 @@
       --gebit-yellow: #b45309;
     }
     html, body { background: var(--gebit-warm-gray); font-family: 'Inter', Arial, sans-serif; margin: 0; padding: 0; }
-    .main { max-width: 1100px; margin: 30px auto; background: #fff; border-radius: 18px; padding: 36px 32px; box-shadow: 0 2px 12px rgba(0,55,106,0.10); }
+    .main { max-width: 950px; margin: 30px auto; background: #fff; border-radius: 18px; padding: 36px 32px; box-shadow: 0 2px 12px rgba(0,55,106,0.10); }
     /* Embedded mode */
     body.embedded { background: #f9fafb; }
     body.embedded .main { max-width: 100%; margin: 0; border-radius: 0; box-shadow: none; padding: 24px 28px; }
-    h1 { font-size: 2em; color: var(--gebit-blue); margin: 0 0 0.3em 0; }
+    body.embedded h1 { display: none; }
+
+    h1 { font-size: 2em; margin: 0 0 0.5em 0; font-weight: 700; color: var(--gebit-blue); }
     h2 { font-size: 1.3em; color: var(--gebit-blue); margin: 1.5em 0 0.5em 0; }
     h3 { font-size: 1.05em; color: #374151; margin: 1em 0 0.4em 0; }
     .subtitle { color: #6b7280; font-size: 0.95em; margin-bottom: 1.2em; }
@@ -44,7 +46,7 @@
     .chart-wrap { margin: 20px 0; position: relative; }
     .chart-wrap canvas { background: #fff; }
     table { border-collapse: collapse; width: 100%; margin: 10px 0; }
-    th, td { border: 1px solid #e5e7eb; padding: 6px 10px; text-align: left; font-size: 0.93em; }
+    th, td { border: 1px solid #e5e7eb; padding: 6px 10px; text-align: left; font-size: 0.95em; }
     th { background: var(--gebit-blue); color: #fff; }
     .forecast-inputs { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-end; margin: 12px 0; }
     .forecast-inputs label { display: flex; flex-direction: column; gap: 4px; font-size: 0.9em; }
@@ -53,9 +55,22 @@
     .percentile-legend span { display: flex; align-items: center; gap: 4px; }
     .percentile-legend .swatch { width: 24px; height: 3px; display: inline-block; }
     .loading { font-weight: 600; color: var(--gebit-blue); margin: 10px 0; }
-    .error-msg { color: var(--gebit-red); font-weight: 600; margin: 8px 0; }
+    .error-msg { color: var(--gebit-red); font-weight: 600; margin: 8px 0; padding: 10px 16px; background: #fde8e8; border: 1px solid var(--gebit-red); border-radius: 8px; display: none; }
     .wip-bar { height: 22px; border-radius: 4px; display: inline-block; min-width: 2px; }
     .wip-table td:first-child { white-space: nowrap; }
+    .explain-btn { background: none; border: 1px solid var(--gebit-blue); color: var(--gebit-blue); border-radius: 6px; padding: 4px 12px; font-size: 0.82em; cursor: pointer; font-weight: 600; transition: all 0.15s; }
+    .explain-btn:hover { background: var(--gebit-blue); color: #fff; }
+    .explain-overlay { position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: opacity 0.2s; }
+    .explain-overlay.visible { opacity: 1; pointer-events: auto; }
+    .explain-modal { background: #fff; border-radius: 12px; max-width: 620px; width: 94%; max-height: 85vh; overflow-y: auto; padding: 28px 30px 24px; position: relative; box-shadow: 0 12px 40px rgba(0,0,0,0.2); }
+    .explain-modal h3 { font-size: 1.05em; font-weight: 700; color: var(--gebit-blue); margin: 0 0 16px 0; }
+    .explain-modal .ex-close { position: absolute; top: 12px; right: 14px; background: none; border: none; font-size: 1.3em; color: #9ca3af; cursor: pointer; padding: 4px 8px; border-radius: 4px; line-height: 1; }
+    .explain-modal .ex-close:hover { color: var(--gebit-blue); background: #f3f4f6; }
+    .explain-modal .ex-item { margin-bottom: 14px; }
+    .explain-modal .ex-term { font-weight: 700; color: var(--gebit-blue); font-size: 0.92em; }
+    .explain-modal .ex-def { font-size: 0.88em; color: #374151; margin-top: 2px; line-height: 1.5; }
+    .explain-modal .ex-tip { font-size: 0.82em; color: #6b7280; margin-top: 2px; font-style: italic; }
+    .explain-modal hr { border: none; border-top: 1px solid #e5e7eb; margin: 16px 0; }
     .section { border-top: 1px solid #e5e7eb; padding-top: 16px; margin-top: 24px; }
     .tab-bar { display: flex; gap: 0; margin: 16px 0 0 0; }
     .tab-btn { padding: 8px 20px; border: 1px solid #d1d5db; border-bottom: none; background: #f3f4f6; cursor: pointer; font-size: 0.93em; border-radius: 8px 8px 0 0; }
@@ -63,6 +78,11 @@
     .tab-content { border: 1px solid #d1d5db; padding: 20px; border-radius: 0 8px 8px 8px; background: #fff; }
     .tab-pane { display: none; }
     .tab-pane.active { display: block; }
+    @keyframes loading-slide {
+      0% { width: 20%; margin-left: 0; }
+      50% { width: 40%; margin-left: 30%; }
+      100% { width: 20%; margin-left: 80%; }
+    }
     @media (max-width: 700px) {
       .main { padding: 16px; }
       .metric-grid { grid-template-columns: 1fr 1fr; }
@@ -75,9 +95,7 @@
   <p class="subtitle">Predictability through cycle time, throughput, and Monte Carlo forecasting</p>
 
   <div class="controls">
-    <label>Jira Domain:
-      <input id="jiraDomain" value="aldi-sued.atlassian.net" size="26">
-    </label>
+    <input type="hidden" id="jiraDomain" value="aldi-sued.atlassian.net">
     <label>Board:
       <select id="boardSelect"></select>
     </label>
@@ -93,11 +111,25 @@
     <button class="btn" id="loadBtn" onclick="loadFlowData()">Load Data</button>
   </div>
 
-  <div id="loadingMsg" class="loading" style="display:none;"></div>
-  <div id="errorMsg" class="error-msg" style="display:none;"></div>
+  <div id="loadingBar" style="display:none; margin:16px 0;">
+    <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
+      <span id="loadingStatus" style="font-size:0.9em; color:var(--gebit-blue); font-weight:500;">Loading...</span>
+    </div>
+    <div style="width:100%; height:6px; background:#e5e7eb; border-radius:3px; overflow:hidden;">
+      <div style="height:100%; width:30%; background:linear-gradient(90deg, var(--gebit-blue), var(--gebit-light-blue)); border-radius:3px; animation:loading-slide 1.5s ease-in-out infinite;"></div>
+    </div>
+  </div>
+  <div id="errorMsg" class="error-msg" role="alert"></div>
 
   <!-- Summary Cards -->
   <div id="summarySection" style="display:none;">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
+      <span style="font-size:0.9em; color:#6b7280;">Dashboard Overview</span>
+      <button class="explain-btn" onclick="document.getElementById('explainOverlay').classList.add('visible')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        What do these metrics mean?
+      </button>
+    </div>
     <div class="metric-grid" id="summaryCards"></div>
 
     <!-- Tabs -->
@@ -172,7 +204,47 @@
   </div>
 </div>
 
-<script src="src/logger.js"></script>
+<div class="explain-overlay" id="explainOverlay">
+  <div class="explain-modal">
+    <button class="ex-close" onclick="document.getElementById('explainOverlay').classList.remove('visible')" title="Close">&times;</button>
+    <h3>Understanding the Dashboard Metrics</h3>
+
+    <div class="ex-item">
+      <div class="ex-term">Items Completed</div>
+      <div class="ex-def">Total work items (Stories, Bugs, Tasks) finished within the analysis window you selected. Sub-tasks and Epics are excluded. Items with cycle time over 150 days are filtered as stale.</div>
+    </div>
+    <div class="ex-item">
+      <div class="ex-term">Median Cycle Time (50th percentile)</div>
+      <div class="ex-def">Half of your items complete faster than this, half take longer. This is the single best measure of how long work typically takes.</div>
+      <div class="ex-tip">Healthy range: 3–15 days depending on team maturity and item size.</div>
+    </div>
+    <div class="ex-item">
+      <div class="ex-term">85th %ile Cycle Time (SLE target)</div>
+      <div class="ex-def">85% of items finish within this many days. This is your Service Level Expectation — the commitment you can confidently make: "We'll deliver most items within X days."</div>
+      <div class="ex-tip">Use this when stakeholders ask "how long will it take?" — it's realistic without being worst-case.</div>
+    </div>
+    <div class="ex-item">
+      <div class="ex-term">Avg Weekly Throughput</div>
+      <div class="ex-def">Average number of items completed per week over the last 4 weeks. This feeds directly into Monte Carlo forecasting.</div>
+      <div class="ex-tip">Track this trend — consistent throughput is more important than high throughput.</div>
+    </div>
+    <div class="ex-item">
+      <div class="ex-term">Current WIP</div>
+      <div class="ex-def">Items currently in progress. Shows ⚠️ when WIP exceeds 3× your weekly throughput — a signal that too much work is started but not finished.</div>
+      <div class="ex-tip">Little's Law: Cycle Time ≈ WIP ÷ Throughput. Reducing WIP is the fastest way to reduce cycle time.</div>
+    </div>
+    <div class="ex-item">
+      <div class="ex-term">95th %ile Cycle Time (outlier threshold)</div>
+      <div class="ex-def">Only 5% of items take longer than this. Items beyond this threshold are outliers worth investigating individually — they often reveal process bottlenecks or blockers.</div>
+    </div>
+
+    <hr>
+    <div class="ex-item">
+      <div class="ex-term">💡 Key Insight: Little's Law</div>
+      <div class="ex-def">Cycle Time = WIP ÷ Throughput. If your WIP is 35 and throughput is 2.5/week, average cycle time will be ~14 weeks. The #1 lever to improve cycle time is to limit WIP — finish work before starting new work.</div>
+    </div>
+  </div>
+</div>
 <script src="src/jira.js"></script>
 <script src="src/sanitize.js"></script>
 <script src="src/kpis.js"></script>
@@ -188,6 +260,13 @@ let flowData = {
   percentiles: {}       // { p50, p70, p85, p95 }
 };
 let chartInstances = [];
+
+// Explain modal close handlers
+(function() {
+  const ov = document.getElementById('explainOverlay');
+  ov.addEventListener('click', (e) => { if (e.target === ov) ov.classList.remove('visible'); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && ov.classList.contains('visible')) ov.classList.remove('visible'); });
+})();
 const SIMULATION_RUNS = 10000;
 
 // ─── Board Setup ───
@@ -227,12 +306,16 @@ document.getElementById('tabBar').addEventListener('click', e => {
 
 // ─── Utility ───
 function showLoading(msg) {
-  const el = document.getElementById('loadingMsg');
-  el.textContent = msg;
-  el.style.display = '';
+  const bar = document.getElementById('loadingBar');
+  const status = document.getElementById('loadingStatus');
+  if (bar) bar.style.display = '';
+  if (status) status.textContent = msg || 'Loading...';
   document.getElementById('errorMsg').style.display = 'none';
 }
-function hideLoading() { document.getElementById('loadingMsg').style.display = 'none'; }
+function hideLoading() {
+  const bar = document.getElementById('loadingBar');
+  if (bar) bar.style.display = 'none';
+}
 function showError(msg) {
   const el = document.getElementById('errorMsg');
   el.textContent = msg;
@@ -337,15 +420,17 @@ async function loadFlowData() {
     // Strip ORDER BY from board filter JQL so it can be used as a sub-expression
     const filterJql = baseJql.replace(/\s+ORDER\s+BY\s+.*/i, '').trim();
 
-    // Fetch completed items with changelog
+    // Fetch completed items with changelog (excluding sub-tasks and epics)
     showLoading('Fetching completed items...');
-    const completedJql = filterJql
-      ? `(${filterJql}) AND statusCategory = Done AND resolved >= "${cutoffStr}"`
-      : `project IN boardProjectsForBoard(${boardId}) AND statusCategory = Done AND resolved >= "${cutoffStr}"`;
+    const typeFilter = ' AND issuetype NOT IN subTaskIssueTypes() AND issuetype != Epic';
+    let completedJql = filterJql
+      ? `(${filterJql}) AND statusCategory = Done AND resolved >= "${cutoffStr}"${typeFilter}`
+      : `project IN boardProjectsForBoard(${boardId}) AND statusCategory = Done AND resolved >= "${cutoffStr}"${typeFilter}`;
 
     const completedItems = [];
     let startAt = 0;
     const maxResults = 100;
+    let useClientFilter = false;
 
     while (true) {
       const params = new URLSearchParams({
@@ -360,10 +445,13 @@ async function loadFlowData() {
         headers: { 'Accept': 'application/json' }
       });
       if (!resp.ok) {
-        if (resp.status === 400) {
-          Logger.warn('JQL search failed, trying simpler query');
-          break;
+        if (resp.status === 400 && completedItems.length === 0 && !useClientFilter) {
+          Logger.warn('subTaskIssueTypes() not supported, falling back to client-side filter');
+          completedJql = completedJql.replace(typeFilter, ' AND issuetype != Epic');
+          useClientFilter = true;
+          continue;
         }
+        if (resp.status === 400) break;
         throw new Error(`Search failed: ${resp.status}`);
       }
       const data = await resp.json();
@@ -373,11 +461,16 @@ async function loadFlowData() {
       startAt += issues.length;
     }
 
-    showLoading(`Processing ${completedItems.length} completed items...`);
+    // Client-side sub-task/epic filtering if JQL function wasn't available
+    const filteredCompleted = useClientFilter
+      ? completedItems.filter(i => !(i.fields?.issuetype?.subtask) && (i.fields?.issuetype?.name || '').toLowerCase() !== 'epic')
+      : completedItems;
+
+    showLoading(`Processing ${filteredCompleted.length} completed items...`);
 
     // Process completed items — extract cycle time from changelog
     const processed = [];
-    completedItems.forEach(issue => {
+    filteredCompleted.forEach(issue => {
       const histories = issue.changelog?.histories || [];
       const sorted = histories.slice().sort((a, b) => new Date(a.created) - new Date(b.created));
 
@@ -416,6 +509,7 @@ async function loadFlowData() {
 
       const cycleTime = workDaysBetween(workStartDate, workEndDate);
       if (cycleTime < 0) return;
+      if (cycleTime > 150) return; // exclude stale items (likely dead weight)
 
       processed.push({
         key: issue.key,
@@ -459,11 +553,11 @@ async function loadFlowData() {
     }
     const weeklyThroughput = allWeeks.map(wk => weekMap[wk] || { week: wk, count: 0, items: [] });
 
-    // Fetch WIP items (in progress)
+    // Fetch WIP items (in progress, excluding sub-tasks)
     showLoading('Fetching work in progress...');
-    const wipJql = filterJql
-      ? `(${filterJql}) AND statusCategory = "In Progress"`
-      : `project IN boardProjectsForBoard(${boardId}) AND statusCategory = "In Progress"`;
+    let wipJql = filterJql
+      ? `(${filterJql}) AND statusCategory = "In Progress"${useClientFilter ? ' AND issuetype != Epic' : typeFilter}`
+      : `project IN boardProjectsForBoard(${boardId}) AND statusCategory = "In Progress"${useClientFilter ? ' AND issuetype != Epic' : typeFilter}`;
 
     const wipParams = new URLSearchParams({
       jql: wipJql,
@@ -471,15 +565,24 @@ async function loadFlowData() {
       fields: 'summary,status,issuetype,created,statuscategorychangedate',
       expand: 'changelog'
     });
-    const wipResp = await fetchWithRetry(`https://${domain}/rest/api/3/search/jql?${wipParams}`, {
+    let wipResp = await fetchWithRetry(`https://${domain}/rest/api/3/search/jql?${wipParams}`, {
       credentials: 'include',
       headers: { 'Accept': 'application/json' }
     });
+    if (!wipResp.ok && wipResp.status === 400 && !useClientFilter) {
+      wipJql = wipJql.replace(typeFilter, ' AND issuetype != Epic');
+      useClientFilter = true;
+      const retryParams = new URLSearchParams({ jql: wipJql, maxResults: '200', fields: 'summary,status,issuetype,created,statuscategorychangedate', expand: 'changelog' });
+      wipResp = await fetchWithRetry(`https://${domain}/rest/api/3/search/jql?${retryParams}`, { credentials: 'include', headers: { 'Accept': 'application/json' } });
+    }
 
     const wipItems = [];
     if (wipResp.ok) {
       const wipData = await wipResp.json();
-      (wipData.issues || []).forEach(issue => {
+      const wipIssues = useClientFilter
+        ? (wipData.issues || []).filter(i => !(i.fields?.issuetype?.subtask) && (i.fields?.issuetype?.name || '').toLowerCase() !== 'epic')
+        : (wipData.issues || []);
+      wipIssues.forEach(issue => {
         const histories = issue.changelog?.histories || [];
         const sorted = histories.slice().sort((a, b) => new Date(a.created) - new Date(b.created));
 
@@ -501,6 +604,7 @@ async function loadFlowData() {
         }
 
         const age = workDaysBetween(inProgressSince, new Date());
+        if (age > 150) return; // exclude stale items (likely dead weight)
         wipItems.push({
           key: issue.key,
           summary: issue.fields?.summary || '',

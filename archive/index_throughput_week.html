@@ -15,6 +15,7 @@
     .main { max-width: 950px; margin: 30px auto 40px auto; background: #fff; border-radius: 18px; box-shadow: 0 2px 12px rgba(0,55,106,0.10); padding: 36px 32px; }
     body.embedded { background: #f9fafb; }
     body.embedded .main { max-width: 100%; margin: 0; border-radius: 0; box-shadow: none; padding: 24px 28px; }
+    body.embedded h1 { display: none; }
 
     h1 { font-size: 2.3em; margin:0 0 0.7em 0; font-weight: 600; color: #00376a; }
     h2 { font-size: 1.3em; margin-top:2em; }
@@ -114,6 +115,7 @@
   </style>
 </head>
 <body>
+  <input type="hidden" id="jiraDomain" value="aldi-sued.atlassian.net">
   <div class="main">
     <h1 title="Work items completed per week">Weekly Throughput Report</h1>
     <div>
@@ -768,7 +770,7 @@ function addTooltipListeners() {
     // --- SPRINT FETCH & SELECTION (paginated, NO sorting after fetch) ---
     async function fetchAllSprints() {
       clearError();
-      jiraDomain = DEFAULT_JIRA_DOMAIN;
+      jiraDomain = document.getElementById('jiraDomain')?.value || DEFAULT_JIRA_DOMAIN;
       boardNum = boardSelect.value.trim();
       if (!boardNum) { showError("Select a board."); return; }
 

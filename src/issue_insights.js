@@ -1,4 +1,6 @@
 (function () {
+  'use strict';
+
   const DEFAULT_JIRA_DOMAIN = 'aldi-sued.atlassian.net';
   let jiraDomain = DEFAULT_JIRA_DOMAIN;
   let boardId = '';
@@ -18,9 +20,12 @@
   const currentStatusChartEl = document.getElementById('currentStatusChart');
   const currentStatusTableBody = document.getElementById('currentStatusTable');
   const transitionCountsBody = document.getElementById('transitionCountsBody');
+  const errorEl = document.getElementById('errorMessage');
   let statusChart;
   let completionChart;
   let currentStatusChart;
+
+  const sanitize = (typeof Sanitize !== 'undefined') ? Sanitize : { escapeHtml: s => String(s ?? '') };
 
   initJiraDomain();
 
@@ -34,6 +39,27 @@
     if (!loadingEl) return;
     loadingEl.style.display = 'none';
     loadingEl.textContent = '';
+  }
+
+  /**
+   * Shows an inline error message. Falls back to console.error if the
+   * errorMessage element is not present in the DOM.
+   * @param {string} message - Error text to display.
+   */
+  function showError(message) {
+    if (errorEl) {
+      errorEl.textContent = message;
+      errorEl.style.display = 'block';
+    } else {
+      console.error('[MCReport]', message);
+    }
+  }
+
+  function clearError() {
+    if (errorEl) {
+      errorEl.textContent = '';
+      errorEl.style.display = 'none';
+    }
   }
 
   function formatDuration(ms) {
@@ -178,10 +204,11 @@
 
   function buildColorPalette(count) {
     if (count <= 0) return [];
-    return Array.from({ length: count }, (_, index) => {
-      const hue = Math.round((360 / count) * index);
-      return `hsl(${hue}, 70%, 60%)`;
-    });
+    const gebitBase = [
+      '#00376a', '#006c52', '#109fda', '#aeaeae',
+      '#00376acc', '#006c52cc', '#109fdacc', '#aeaeaecc'
+    ];
+    return Array.from({ length: count }, (_, i) => gebitBase[i % gebitBase.length]);
   }
 
   function renderStatusDurationTable(issues, sprintStart, sprintEnd) {
@@ -208,7 +235,7 @@
     rows.forEach(row => {
       const tr = document.createElement('tr');
       tr.innerHTML = `
-        <td>${row.status}</td>
+        <td>${sanitize.escapeHtml(row.status)}</td>
         <td>${formatDuration(row.avg)}</td>
         <td>${formatDuration(row.total)}</td>
       `;
@@ -230,7 +257,7 @@
           datasets: [{
             label: 'Average time (hours)',
             data: rows.map(r => (r.avg / (1000 * 60 * 60)).toFixed(1)),
-            backgroundColor: '#6366f1'
+            backgroundColor: '#00376a'
           }]
         },
         options: {
@@ -273,7 +300,7 @@
       statusRows.forEach(row => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
-          <td>${row.status}</td>
+          <td>${sanitize.escapeHtml(row.status)}</td>
           <td>${row.count}</td>
         `;
         currentStatusTableBody.appendChild(tr);
@@ -315,7 +342,7 @@
       transitionRows.forEach(row => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
-          <td>${row.transition}</td>
+          <td>${sanitize.escapeHtml(row.transition)}</td>
           <td>${row.count}</td>
         `;
         transitionCountsBody.appendChild(tr);
@@ -352,7 +379,7 @@
     rows.forEach(row => {
       const tr = document.createElement('tr');
       tr.innerHTML = `
-        <td>${row.bucket}</td>
+        <td>${sanitize.escapeHtml(row.bucket)}</td>
         <td>${row.done}/${row.total}</td>
         <td>${row.rate}%</td>
       `;
@@ -374,7 +401,7 @@
           datasets: [{
             label: 'Completion rate (%)',
             data: rows.map(r => r.rate),
-            backgroundColor: '#10b981'
+            backgroundColor: '#006c52'
           }]
         },
         options: {
@@ -415,8 +442,8 @@
       const pts = getStoryPoints(issue, sprintStart);
       const tr = document.createElement('tr');
       tr.innerHTML = `
-        <td>${issue.key}</td>
-        <td>${summary}</td>
+        <td>${sanitize.escapeHtml(issue.key)}</td>
+        <td>${sanitize.escapeHtml(summary)}</td>
         <td>${pts === null ? '—' : pts}</td>
         <td>${formatDuration(totalStatusTime)}</td>
         <td>${focusStatuses.length ? formatDuration(focusDuration) : '—'}</td>
@@ -445,8 +472,12 @@
     const host = window.location.hostname || '';
 
     if (urlDomain) {
-      syncDomainInput(urlDomain);
-      return;
+      if (typeof Sanitize !== 'undefined' && !Sanitize.isValidJiraDomain(urlDomain)) {
+        console.warn('[MCReport] Ignoring invalid jiraDomain URL parameter:', urlDomain);
+      } else {
+        syncDomainInput(urlDomain);
+        return;
+      }
     }
 
     if (host.includes('atlassian.net')) {
@@ -585,7 +616,7 @@
 
   async function fetchSprints() {
     boardId = boardSelect.value.trim();
-    if (!boardId) return alert('Select a board first.');
+    if (!boardId) return showError('Select a board first.');
     showLoading('Fetching sprints…');
     let all = [];
     let startAt = 0;
@@ -649,7 +680,7 @@
 
   async function loadSprintInsights() {
     const sprintId = sprintSelect.value.trim();
-    if (!sprintId) return alert('Select a sprint to analyze.');
+    if (!sprintId) return showError('Select a sprint to analyze.');
     const sprint = await Jira.fetchSprint(jiraDomain, sprintId);
     const sprintStart = new Date(sprint.startDate || sprint.start || Date.now());
     const sprintEnd = new Date(sprint.endDate || sprint.end || Date.now());
@@ -676,17 +707,20 @@
   }
 
   document.getElementById('fetchSprintsBtn').addEventListener('click', () => {
+    clearError();
     fetchSprints().catch(err => {
       console.error(err);
-      alert('Could not fetch sprints. See console for details.');
+      hideLoading();
+      showError('Could not fetch sprints. Check the browser console for details.');
     });
   });
 
   document.getElementById('loadInsightsBtn').addEventListener('click', () => {
+    clearError();
     loadSprintInsights().catch(err => {
       console.error(err);
-      alert('Failed to load sprint insights. See console for details.');
       hideLoading();
+      showError('Failed to load sprint insights. Check the browser console for details.');
     });
   });
 
@@ -694,9 +728,10 @@
     domainInput.addEventListener('change', () => {
       const domain = domainInput.value.trim() || DEFAULT_JIRA_DOMAIN;
       syncDomainInput(domain);
+      clearError();
       populateBoards().catch(err => {
         console.error(err);
-        alert('Could not refresh boards. See console for details.');
+        showError('Could not refresh boards. Check the browser console for details.');
       });
     });
   }

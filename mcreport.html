@@ -295,7 +295,6 @@
   </button>
 
   <div class="nav-section">
-    <div class="nav-group">Analytics</div>
 
     <div class="nav-item" data-page="index.html" data-label="PI Status Report" data-tooltip="PI Status" onclick="navigateTo(this)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="12" width="4" height="9" rx="1"/><rect x="10" y="7" width="4" height="14" rx="1"/><rect x="17" y="3" width="4" height="18" rx="1"/></svg>
@@ -312,34 +311,13 @@
       <span class="nav-label">Flow Metrics</span>
       <span class="kbd">3</span>
     </div>
+    <div class="nav-item" data-page="warp_reporting.html" data-label="WARP Reporting" data-tooltip="WARP Reporting" onclick="navigateTo(this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+      <span class="nav-label">WARP Reporting</span>
+      <span class="kbd">4</span>
+    </div>
 
-    <div class="nav-divider"></div>
-    <div class="nav-group">More Tools</div>
 
-    <div class="nav-item" data-page="target_release_dashboard.html" data-label="Target Release" data-tooltip="Target Release" onclick="navigateTo(this)">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
-      <span class="nav-label">Target Release</span>
-    </div>
-    <div class="nav-item" data-page="issue_insights.html" data-label="Issue Insights" data-tooltip="Issue Insights" onclick="navigateTo(this)">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-      <span class="nav-label">Issue Insights</span>
-    </div>
-    <div class="nav-item" data-page="index_throughput.html" data-label="Throughput" data-tooltip="Throughput" onclick="navigateTo(this)">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-      <span class="nav-label">Throughput</span>
-    </div>
-    <div class="nav-item" data-page="index_throughput_week.html" data-label="Weekly Throughput" data-tooltip="Weekly Throughput" onclick="navigateTo(this)">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-      <span class="nav-label">Weekly Throughput</span>
-    </div>
-    <div class="nav-item" data-page="index_disruption.html" data-label="Disruption" data-tooltip="Disruption" onclick="navigateTo(this)">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-      <span class="nav-label">Disruption</span>
-    </div>
-    <div class="nav-item" data-page="index_topicmix.html" data-label="Topic Mix" data-tooltip="Topic Mix" onclick="navigateTo(this)">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-      <span class="nav-label">Topic Mix</span>
-    </div>
   </div>
 
   <div class="sidebar-footer">
@@ -359,7 +337,7 @@
       <span class="current" id="bcPage">Home</span>
     </div>
     <div class="topbar-right">
-      <span class="topbar-help" id="helpBtn" title="Help">? Help</span>
+      <span class="topbar-help" id="helpBtn" title="Help"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Help</span>
       <span class="topbar-badge">v2.0</span>
     </div>
   </div>
@@ -397,6 +375,14 @@
           <p>Cycle time scatterplot, throughput run chart, WIP aging, CFD, and Monte Carlo forecasting</p>
           <span class="wcard-arrow">→</span>
         </div>
+        <div class="wcard" onclick="navigateByPage('warp_reporting.html')">
+          <div class="wcard-icon green">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+          </div>
+          <h3>WARP Reporting</h3>
+          <p>Epic progression tracking, Monte Carlo prediction, and Kanban stakeholder reports</p>
+          <span class="wcard-arrow">→</span>
+        </div>
       </div>
 
       <div class="getting-started" id="gettingStarted">
@@ -411,7 +397,7 @@
       </div>
 
       <div class="welcome-footer">
-        Press <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> for quick access · <kbd>B</kbd> to toggle sidebar
+        Press <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> <kbd>4</kbd> for quick access · <kbd>B</kbd> to toggle sidebar
       </div>
     </div>
 
@@ -427,12 +413,12 @@
 <div class="help-overlay" id="helpOverlay">
   <div class="help-modal">
     <button class="help-modal-close" id="helpModalClose" title="Close">&times;</button>
-    <h3>? Help</h3>
+    <h3>Help</h3>
 
     <h4>Keyboard Shortcuts</h4>
     <table>
       <tr><th>Key</th><th>Action</th></tr>
-      <tr><td><kbd>1</kbd>–<kbd>5</kbd></td><td>Open tools</td></tr>
+      <tr><td><kbd>1</kbd>–<kbd>4</kbd></td><td>Open tools</td></tr>
       <tr><td><kbd>0</kbd> / <kbd>Esc</kbd></td><td>Return home</td></tr>
       <tr><td><kbd>B</kbd></td><td>Toggle sidebar</td></tr>
     </table>
@@ -566,8 +552,7 @@
     if (e.key === '1') navigateByPage('index.html');
     else if (e.key === '2') navigateByPage('KPI_Report.html');
     else if (e.key === '3') navigateByPage('flow_metrics.html');
-    else if (e.key === '4') navigateByPage('target_release_dashboard.html');
-    else if (e.key === '5') navigateByPage('issue_insights.html');
+    else if (e.key === '4') navigateByPage('warp_reporting.html');
     else if (e.key.toLowerCase() === 'b') {
       sidebar.classList.toggle('collapsed');
       localStorage.setItem(STORE.sidebar, sidebar.classList.contains('collapsed') ? '1' : '0');

@@ -1,19 +1,43 @@
-export function isPiCommitted(epicLabels = [], template = 'YEAR_PIX_committed') {
-  if (!Array.isArray(epicLabels) || epicLabels.length === 0) return false;
+/**
+ * Builds a regex from a label template for matching PI-committed labels.
+ * The template uses placeholders `YEAR` and `PIX` which are replaced with
+ * capture groups for the four-digit year and PI number respectively.
+ * @param {string} template - Label template (e.g. 'YEAR_PIX_committed').
+ * @returns {RegExp} Compiled regular expression.
+ */
+function buildPiLabelRegex(template) {
   const escaped = template.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const regex = new RegExp('^' + escaped
-    .replace('YEAR', '(\\\d{4})')
-    .replace('PIX', 'PI(\\\d+)') + '$', 'i');
-  const mainDriverRegex = /^main[-_ ]?driver$/i;
-  return epicLabels.some(l => regex.test(l) || mainDriverRegex.test(l));
+  return new RegExp('^' + escaped
+    .replace('YEAR', '(\\d{4})')
+    .replace('PIX', 'PI(\\d+)') + '$', 'i');
 }
 
+const MAIN_DRIVER_RE = /^main[-_ ]?driver$/i;
+
+/**
+ * Checks whether any of the given epic labels indicate PI commitment.
+ * A label is considered PI-committed if it matches the configured template
+ * pattern (e.g. "2024_PI3_committed") or the "main driver" convention.
+ * @param {string[]} [epicLabels=[]] - Labels from the parent epic.
+ * @param {string} [template='YEAR_PIX_committed'] - Label template with
+ *   YEAR and PIX placeholders.
+ * @returns {boolean} True if at least one label matches.
+ */
+export function isPiCommitted(epicLabels = [], template = 'YEAR_PIX_committed') {
+  if (!Array.isArray(epicLabels) || epicLabels.length === 0) return false;
+  const regex = buildPiLabelRegex(template);
+  return epicLabels.some(l => regex.test(l) || MAIN_DRIVER_RE.test(l));
+}
+
+/**
+ * Extracts a PI identifier (e.g. "2024-PI3") from epic labels.
+ * @param {string[]} [epicLabels=[]] - Labels from the parent epic.
+ * @param {string} [template='YEAR_PIX_committed'] - Label template.
+ * @returns {string|null} The extracted PI identifier, or null if none matched.
+ */
 function extractPiId(epicLabels = [], template = 'YEAR_PIX_committed') {
   if (!Array.isArray(epicLabels) || epicLabels.length === 0) return null;
-  const escaped = template.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const regex = new RegExp('^' + escaped
-    .replace('YEAR', '(\\\d{4})')
-    .replace('PIX', 'PI(\\\d+)') + '$', 'i');
+  const regex = buildPiLabelRegex(template);
   for (const l of epicLabels) {
     const m = l.match(regex);
     if (m) {
@@ -65,19 +89,19 @@ export function computeBucketSeries({ team, product, sprints = [], issues = [], 
 
   const filtered = (issues || []).filter(i => i.team === team && i.product === product);
 
-  // For each issue print its key, its parent (typically an epic) and all
-  // labels retrieved for that parent. This mirrors the behaviour in other
-  // MCreport variants and helps verify which labels were associated with each
-  // story's parent.
+  // Log each issue's key, parent, and labels for traceability. Uses the
+  // global Logger when available so output respects the configured log level.
+  const log = (typeof globalThis !== 'undefined' && globalThis.Logger)
+    ? globalThis.Logger
+    : { debug: () => {} };
+
   filtered.forEach(issue => {
     const issueKey = issue.key || '';
     const parentKey = issue.parentKey || issue.epicKey || (issue.parent && issue.parent.key) || '';
     const labels = Array.isArray(issue.parentLabels)
       ? issue.parentLabels
       : (Array.isArray(issue.epicLabels) ? issue.epicLabels : []);
-    if (typeof console !== 'undefined' && typeof console.log === 'function') {
-      console.log(`${issueKey} - ${parentKey} - [${labels.join(', ')}]`);
-    }
+    log.debug(`${issueKey} - ${parentKey} - [${labels.join(', ')}]`);
   });
 
   const checkFn = typeof piCheck === 'function' ? piCheck : isPiCommitted;

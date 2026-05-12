@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>MCreport — Disruption</title>
+  <title>Stakeholder PI Status Report – Disruption KPI</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css" />
   <link rel="stylesheet" href="public/tailwind.css">
@@ -14,46 +14,59 @@
     html { background: #efeae4; }
     body { background: #efeae4; font-family: 'Inter', Arial, sans-serif; margin:0; padding:0; }
     .main { max-width: 950px; margin: 30px auto; background:#fff; border-radius:18px; padding:36px 32px; box-shadow:0 2px 12px rgba(0,55,106,0.10); }
-    body.embedded { background: #f9fafb; }
-    body.embedded .main { max-width: 100%; margin: 0; border-radius: 0; box-shadow: none; padding: 24px 28px; }
-
     .table-wrap { overflow-x: auto; }
     table { border-collapse: collapse; min-width: 100%; margin-top: 20px; }
     th, td { border: 1px solid #e5e7eb; padding: 6px 10px; text-align:left; font-size:0.95em; }
-    th { background:#00376a; color:#fff; }
+    th { background:#e0e7ef; }
     .btn { background:#00376a; color:#fff; border:none; border-radius:6px; padding:7px 18px; cursor:pointer; font-size:1em; }
     .details-toggle { margin:10px 0 6px 0; }
     .story-table { border-collapse: collapse; width: 100%; margin: 6px 0 18px 0; }
     .story-table th, .story-table td { border: 1px solid #e5e7eb; padding: 4px 7px; font-size: 0.95em; text-align:left; }
-    .story-table th { background:#00376a; color:#fff; }
+    .story-table th { background:#e0e7ef; }
     .chart-section { margin-top: 30px; overflow-x: auto; }
     .chart-section canvas { margin-top: 20px; }
-    .chart-section h2 { margin-top: 20px; }
     .rating-zone-description { margin-top: 10px; font-size: 0.9em; }
     .rating-zone-description div { margin-top: 4px; }
     .rating-zone-description span { display:inline-block; width:12px; height:12px; margin-right:6px; vertical-align:middle; }
     .sprint-item { background:#e5e7eb; border-radius:4px; padding:2px 6px; margin-right:6px; display:inline-block; }
     .table-description { margin-top:6px; font-size:0.9em; }
-    .error-msg { color: #b91c1c; font-weight: 600; margin: 8px 0; padding: 10px 16px; background: #fde8e8; border: 1px solid #b91c1c; border-radius: 8px; display: none; }
   </style>
 </head>
 <body>
 <div class="main">
-  <h1 title="Tracks unplanned work pulled into sprints">Disruption Report</h1>
+  <h1>Disruption KPI Report</h1>
+  <div>
+    <label>Version:
+      <select id="versionSelect" onchange="switchVersion(this.value)">
+        <option value="index.html">Velocity</option>
+        <option value="index_throughput.html">Throughput</option>
+        <option value="index_throughput_week.html">Weekly Throughput</option>
+        <option value="index_disruption.html">Disruption</option>
+        <option value="target_release_dashboard.html">PI &amp; Target-Release Dashboard</option>
+      </select>
+    </label>
+  </div>
   <div style="margin-top:20px;">
     <label>Jira Domain: <input id="jiraDomain" value="aldi-sued.atlassian.net" size="28"></label>
-    <label style="margin-left:10px;">Please select a Board:
+    <label id="boardLabel" style="margin-left:10px; display:none;">Please select a Board:
       <select id="boardNum" multiple></select>
     </label>
-    <button class="btn" onclick="loadDisruption()">Load Data</button>
+    <button id="loadBtn" class="btn" style="display:none;" onclick="loadDisruption()">Load Data</button>
     <button class="btn" onclick="exportPDF()">Download PDF</button>
+  </div>
+  <div id="pdfOptions" style="margin-top:10px;">
+    <span>Include in PDF:</span>
+    <label style="margin-left:5px;"><input type="checkbox" id="includePi" checked> PI Mix Chart</label>
+    <label style="margin-left:5px;"><input type="checkbox" id="includeRating" checked> Rating Zone Chart</label>
+    <label style="margin-left:5px;"><input type="checkbox" id="includeThroughput" checked> Throughput Chart</label>
+    <label style="margin-left:5px;"><input type="checkbox" id="includeCycle" checked> Cycle Time Chart</label>
+    <label style="margin-left:5px;"><input type="checkbox" id="includeDisruption" checked> Disruption Chart</label>
   </div>
   <div id="sprintRow" style="margin-top:10px; display:none;">
     <span>Sprints:</span>
     <div id="sprintList" style="display:inline-block;"></div>
   </div>
   <div id="logPanel" style="display:none; white-space:pre-wrap; font-size:0.85em; background:#f3f4f6; border:1px solid #e5e7eb; padding:6px; margin:10px 0; max-height:150px; overflow:auto;"></div>
-  <div id="errorMsg" class="error-msg" role="alert"></div>
   <div id="pdfContent">
     <div class="table-wrap">
       <table>
@@ -72,24 +85,17 @@
       </table>
     </div>
     <div id="velocityStats"></div>
-    <div id="chartSection" class="chart-section">
-      <h2>Initially planned &amp; completed</h2>
-      <canvas id="piMixChart"></canvas>
-      <h2>Rating Zone Chart</h2>
-      <canvas id="completedChart"></canvas>
-      <div class="rating-zone-description">
-        <div id="ratingZoneToggle" style="cursor:pointer;"><strong>Rating zones (show)</strong></div>
-        <div id="ratingZoneDetails" style="display:none;">
-          <div><span style="background:rgba(254,249,195,0.5);"></span><strong>Bloated: AV+2SD…∞.</strong> A significant share of this exceedingly high output probably comes from other effects than team performance alone. Analysis is advised because possibly there's something to be learned.</div>
-          <div><span style="background:rgba(34,197,94,0.5);"></span><strong>Lively: AV+1SD…AV+2SD.</strong> The team's performance was outstanding, pushing the envelope on the brink of an unsustainable pace.</div>
-          <div><span style="background:rgba(21,128,61,0.5);"></span><strong>Spot-on: AV…AV+1SD.</strong> The team performed very well while also managing to increase the stability of their long-term output.</div>
-          <div><span style="background:rgba(34,197,94,0.5);"></span><strong>Healthy: AV-1SD…AV.</strong> Things cannot always go up, so going down within the team's usual range of performance is perfectly normal.</div>
-          <div><span style="background:rgba(254,249,195,0.5);"></span><strong>Concerning: AV-2SD…AV-1SD.</strong> Something went considerably wrong, but we're still seeing a robust core performance. Analysis is needed and also some learning that may result in adjustments.</div>
-          <div><span style="background:rgba(254,202,202,0.5);"></span><strong>Alarming: 0…AV-2SD.</strong> The major share of this plummeting output was probably caused by factors beyond the team‘s influence. Thorough analysis is needed which will lead to profound learning and change.</div>
-        </div>
+    <div id="chartSection" class="chart-section"></div>
+    <div class="rating-zone-description">
+      <div id="ratingZoneToggle" style="cursor:pointer;"><strong>Rating zones (show)</strong></div>
+      <div id="ratingZoneDetails" style="display:none;">
+        <div><span style="background:rgba(254,249,195,0.5);"></span><strong>Bloated: AV+2SD…∞.</strong> A significant share of this exceedingly high output probably comes from other effects than team performance alone. Analysis is advised because possibly there's something to be learned.</div>
+        <div><span style="background:rgba(34,197,94,0.5);"></span><strong>Lively: AV+1SD…AV+2SD.</strong> The team's performance was outstanding, pushing the envelope on the brink of an unsustainable pace.</div>
+        <div><span style="background:rgba(21,128,61,0.5);"></span><strong>Spot-on: AV…AV+1SD.</strong> The team performed very well while also managing to increase the stability of their long-term output.</div>
+        <div><span style="background:rgba(34,197,94,0.5);"></span><strong>Healthy: AV-1SD…AV.</strong> Things cannot always go up, so going down within the team's usual range of performance is perfectly normal.</div>
+        <div><span style="background:rgba(254,249,195,0.5);"></span><strong>Concerning: AV-2SD…AV-1SD.</strong> Something went considerably wrong, but we're still seeing a robust core performance. Analysis is needed and also some learning that may result in adjustments.</div>
+        <div><span style="background:rgba(254,202,202,0.5);"></span><strong>Alarming: 0…AV-2SD.</strong> The major share of this plummeting output was probably caused by factors beyond the team‘s influence. Thorough analysis is needed which will lead to profound learning and change.</div>
       </div>
-      <h2>Disruption Metrics</h2>
-      <canvas id="disruptionChart"></canvas>
     </div>
   </div>
 </div>
@@ -111,17 +117,7 @@
 <script src="src/kpis.js"></script>
 <script>
   Chart.register(ChartDataLabels);
-  function showError(msg) {
-    const el = document.getElementById('errorMsg');
-    el.textContent = msg;
-    el.style.display = 'block';
-    setTimeout(() => { el.style.display = 'none'; }, 10000);
-  }
-  function clearError() {
-    const el = document.getElementById('errorMsg');
-    if (el) { el.textContent = ''; el.style.display = 'none'; }
-  }
-
+  function switchVersion(v){ window.location.href = v; }
   const ratingToggle = document.getElementById('ratingZoneToggle');
   const ratingDetails = document.getElementById('ratingZoneDetails');
   if (ratingToggle && ratingDetails) {
@@ -137,11 +133,17 @@
   // Keep references to existing Chart.js instances so they can be destroyed
   // when rendering charts multiple times. Without this, Chart.js will throw
   // an error about reusing a canvas that is already in use.
-  let completedChartInstance;
-  let disruptionChartInstance;
-  let piMixChartInstance;
-  const DISPLAY_SPRINT_COUNT = 6;
+  let chartInstances = [];
+  let boardLabels = {};
+  const BOARD_GROUPS = {
+    'SCO': ['4133', '4132', '4131'],
+    'MCO': ['4629', '2526', '6346'],
+    'Butterfly': ['6347', '6390'],
+    'ACOSS': ['4629', '2526', '6346', '4133', '4132', '4131', '6347', '6390', '4894']
+  };
+  const DISPLAY_SPRINT_COUNT = 10;
   const RATING_WINDOW = 4;
+  const CYCLE_TIME_START = new Date('2025-06-09');
   let sprints = [];
   let allSprints = [];
   let epicCache = new Map();
@@ -163,7 +165,7 @@
     const wrap = document.getElementById('sprintList');
     if (!wrap) return;
     wrap.innerHTML = sprints.map(s =>
-      `<span class="sprint-item">${s.name}</span>`
+      `<span class="sprint-item">[${s.board}] ${s.name}</span>`
     ).join('');
   }
 
@@ -173,7 +175,15 @@
     try {
       const boards = await Jira.fetchBoardsByJql(domain);
       boardChoices.clearChoices();
-      boardChoices.setChoices(boards.map(b => ({ value: b.id, label: b.name })), 'value', 'label', true);
+      const groupChoices = Object.keys(BOARD_GROUPS).map(g => ({ value: g, label: g }));
+      boardChoices.setChoices([
+        ...boards.map(b => ({ value: String(b.id), label: b.name })),
+        ...groupChoices
+      ], 'value', 'label', true);
+      boardChoices.removeActiveItems();
+      const show = boards.length ? '' : 'none';
+      document.getElementById('boardLabel').style.display = show;
+      document.getElementById('loadBtn').style.display = show;
     } catch (e) {
       Logger.error('Failed to load boards', e);
     }
@@ -201,7 +211,16 @@
       const combined = {};
       const issueCache = new Map();
       try {
-        await Promise.all(boardNums.map(async boardNum => {
+        const expandedBoards = [];
+        boardNums.forEach(b => {
+          if (BOARD_GROUPS[b]) {
+            BOARD_GROUPS[b].forEach(id => expandedBoards.push({ id, group: b }));
+          } else {
+            expandedBoards.push({ id: b, group: null });
+          }
+        });
+        await Promise.all(expandedBoards.map(async ({ id: boardNum, group }) => {
+          const boardKey = group || boardNum;
           const url = `https://${jiraDomain}/rest/greenhopper/1.0/rapid/charts/velocity?rapidViewId=${boardNum}`;
           const isBfBoard = ['6347', '6390'].includes(String(boardNum));
           const resp = await fetch(url, { credentials: 'include' });
@@ -270,34 +289,34 @@
                   events.push({ key: k, points: 0, addedAfterStart: false, blocked: false, movedOut: true, completed: false });
                 }
               });
+
               if (isBfBoard) {
                 events = events.filter(ev => ev.key && ev.key.startsWith('BF-'));
               }
 
               const entry = data.velocityStatEntries?.[s.id] || {};
-                let completed = entry.completed?.value || 0;
-                let completedSource = 'velocityStatEntries.completed';
-                if (!completed) {
-                  completed = d.contents?.completedIssuesEstimateSum?.value || 0;
-                  completedSource = 'completedIssuesEstimateSum';
-                }
-                let initiallyPlanned;
-                let initiallyPlannedSource;
-                const sprintStart = s.startDate ? new Date(s.startDate) : null;
-                const sprintEnd = s.completeDate ? new Date(s.completeDate) : (s.endDate ? new Date(s.endDate) : null);
+              let completed = entry.completed?.value || 0;
+              let completedSource = 'velocityStatEntries.completed';
+              if (!completed) {
+                completed = d.contents?.completedIssuesEstimateSum?.value || 0;
+                completedSource = 'completedIssuesEstimateSum';
+              }
+              const sprintStart = s.startDate ? new Date(s.startDate) : null;
+              const sprintEnd = s.completeDate ? new Date(s.completeDate) : (s.endDate ? new Date(s.endDate) : null);
 
               await Promise.all(events.map(async ev => {
                 try {
                   let cached = issueCache.get(ev.key);
-                  let histories, currentStatus, created, resolutionDate, piRelevant, parentKey;
+                  let histories, initialType, currentType, currentStatus, created, resolutionDate, piRelevant, parentKey;
                   if (cached) {
-                    ({ histories, currentStatus, created, resolutionDate, piRelevant, parentKey } = cached);
+                    ({ histories, initialType, currentType, currentStatus, created, resolutionDate, piRelevant, parentKey } = cached);
                   } else {
-                    const u = `https://${jiraDomain}/rest/api/3/issue/${ev.key}?expand=changelog&fields=flagged,status,created,resolutiondate,labels,parent,customfield_10002`;
+                    const u = `https://${jiraDomain}/rest/api/3/issue/${ev.key}?expand=changelog&fields=issuetype,flagged,status,created,resolutiondate,labels,parent,customfield_10002`;
                     const ir = await fetch(u, { credentials: 'include' });
                     if (!ir.ok) return;
                     const id = await ir.json();
                     histories = id.changelog?.histories || [];
+                    currentType = id.fields?.issuetype?.name || '';
                     currentStatus = id.fields?.status?.name || '';
                     created = id.fields?.created;
                     resolutionDate = id.fields?.resolutiondate;
@@ -305,6 +324,28 @@
                     ev.points = ev.points || Number(id.fields?.customfield_10002) || 0;
                     ev.blocked = ev.blocked || !!(id.fields?.flagged && id.fields.flagged.length);
                     ev.blocked = ev.blocked || currentStatus.toLowerCase().includes('block');
+                    // Determine story points at sprint start
+                    let initialPoints = ev.points || 0;
+                    if (histories && sprintStart) {
+                      const sortedHist = histories.slice().sort((a, b) => new Date(a.created) - new Date(b.created));
+                      outer: for (const h of sortedHist) {
+                        const chDate = new Date(h.created);
+                        for (const item of h.items || []) {
+                          const fieldName = (item.field || '').toLowerCase();
+                          if (fieldName === 'story points' || fieldName === 'customfield_10002') {
+                            const toVal = Number(item.toString || item.to);
+                            const fromVal = Number(item.fromString || item.from);
+                            if (chDate <= sprintStart) {
+                              if (!isNaN(toVal)) initialPoints = toVal;
+                            } else {
+                              initialPoints = !isNaN(fromVal) ? fromVal : 0;
+                              break outer;
+                            }
+                          }
+                        }
+                      }
+                    }
+                    ev.initialPoints = initialPoints;
                     piRelevant = false;
                     if (parentKey) {
                       const epic = await getEpicInfo(jiraDomain, parentKey);
@@ -312,7 +353,7 @@
                         piRelevant = true;
                       }
                     }
-                    issueCache.set(ev.key, { histories, currentStatus, created, resolutionDate, piRelevant, parentKey });
+                    issueCache.set(ev.key, { histories, initialType, currentType, currentStatus, created, resolutionDate, piRelevant, parentKey });
                   }
                   ev.piRelevant = piRelevant || false;
 
@@ -362,68 +403,93 @@
                   if (!blockedPeriods.length && ev.blocked) {
                     blockedPeriods.push([sprintStart, sprintEnd || new Date()]);
                   }
-                  ev.blockedDays = blockedPeriods.reduce((sum, [start, end]) => {
+                  ev.blockedDays = Number(blockedPeriods.reduce((sum, [start, end]) => {
                     const sClamped = sprintStart && start < sprintStart ? sprintStart : start;
                     const eClamped = sprintEnd && end > sprintEnd ? sprintEnd : end;
                     return eClamped > sClamped
                       ? sum + Kpis.calculateWorkDays(sClamped, eClamped)
                       : sum;
-                  }, 0);
+                  }, 0).toFixed(1));
                   ev.blocked = ev.blocked || blockedPeriods.length > 0;
                   ev.completedDate = resolutionDate;
-                  if (devStart && resolutionDate) {
+                  if (devStart && resolutionDate && new Date(resolutionDate) >= CYCLE_TIME_START) {
                     ev.cycleTime = Kpis.calculateWorkDays(devStart, new Date(resolutionDate));
                   }
 
+                  let pointsAtClose = ev.points || 0;
                   for (const h of histories) {
                     const chDate = new Date(h.created);
-                    if (sprintStart && chDate >= sprintStart) {
-                      for (const item of h.items || []) {
-                        if (item.field === 'Sprint') {
-                          const from = (item.fromString || item.from || '').toString();
-                          const to = (item.toString || item.to || '').toString();
-                          const sprintIdStr = String(s.id);
-                          const sprintName = s.name || '';
-                          const fromHas = from.includes(sprintIdStr) || from.includes(sprintName);
-                          const toHas = to.includes(sprintIdStr) || to.includes(sprintName);
-                          if (!fromHas && toHas) ev.addedAfterStart = true;
-                          if (fromHas && !toHas) ev.movedOut = true;
+                    for (const item of (h.items || [])) {
+                      const fieldName = (item.field || '').toLowerCase();
+                      if ((fieldName === 'story points' || fieldName === 'customfield_10002')) {
+                        const val = Number(item.toString || item.to);
+                        if (!isNaN(val)) pointsAtClose = val;
+                      }
+                    }
+                  }
+                  ev.completedPoints = pointsAtClose;
+
+                  let addedDate = null;
+                  let inSprint = false;
+                  let wasInSprintAtStart = false;
+                  const sprintHist = histories.slice().sort((a, b) => new Date(a.created) - new Date(b.created));
+                  for (const h of sprintHist) {
+                    const chDate = new Date(h.created);
+                    for (const item of (h.items || [])) {
+                      if (item.field === 'Sprint') {
+                        const from = (item.fromString || item.from || '').toString();
+                        const to = (item.toString || item.to || '').toString();
+                        const sprintIdStr = String(s.id);
+                        const sprintName = s.name || '';
+                        const fromHas = from.includes(sprintIdStr) || from.includes(sprintName);
+                        const toHas = to.includes(sprintIdStr) || to.includes(sprintName);
+                        if (fromHas && !toHas) {
+                          ev.movedOut = true;
+                          if (sprintStart && chDate < sprintStart) ev.removedBeforeStart = true;
+                          inSprint = false;
+                        }
+                        if (!fromHas && toHas) {
+                          if (sprintStart && chDate < sprintStart) {
+                            ev.removedBeforeStart = false;
+                            inSprint = true;
+                          } else if (!inSprint) {
+                            inSprint = true;
+                            addedDate = chDate;
+                          }
                         }
                       }
                     }
-                    // Continue scanning in case sprint membership changes occur later
+                    if (sprintStart && chDate <= sprintStart) {
+                      wasInSprintAtStart = inSprint;
+                    }
                   }
 
-                  // Some issues may be created after the sprint starts and assigned
-                  // to the sprint during creation. These won't have an explicit
-                  // sprint change entry in the history, so detect this case using
-                  // the issue's creation date.
-                  if (!ev.addedAfterStart && sprintStart && created && new Date(created) > sprintStart) {
+                  if (!addedDate && sprintStart && created) {
+                    const createdDate = new Date(created);
+                    if (!inSprint && createdDate >= sprintStart) {
+                      addedDate = createdDate;
+                    }
+                  }
+
+                  if (addedDate && sprintStart && addedDate >= sprintStart && !wasInSprintAtStart) {
                     ev.addedAfterStart = true;
                   }
-
                 } catch (e) {}
               }));
 
-                if (isBfBoard) {
-                  completed = events.filter(ev => ev.completed)
-                                     .reduce((sum, ev) => sum + ev.points, 0);
-                  initiallyPlanned = events.filter(ev => !ev.addedAfterStart)
-                                           .reduce((sum, ev) => sum + ev.points, 0);
-                  completedSource = 'filtered events';
-                  initiallyPlannedSource = 'filtered events';
-                } else {
-                  initiallyPlanned = events.filter(ev => !ev.addedAfterStart)
-                                           .reduce((sum, ev) => sum + ev.points, 0);
-                  initiallyPlannedSource = 'sum of events not added after start';
-                }
-              const existing = combined[s.name] || { id: s.id, name: s.name, startDate: s.startDate, events: [], initiallyPlanned: 0, completed: 0, initiallyPlannedSource, completedSource };
+              const initiallyPlanned = events
+                .filter(ev => !ev.addedAfterStart && !ev.removedBeforeStart)
+                .reduce((sum, ev) => sum + (ev.initialPoints ?? ev.points ?? 0), 0);
+              const initiallyPlannedSource = 'sum of events not added after start';
+              const key = `${boardKey}-${boardNum}-${s.id}`;
+              const existing = combined[key] || { board: boardKey, id: s.id, name: s.name, startDate: s.startDate, events: [], initiallyPlanned: 0, completed: 0, initiallyPlannedSource, completedSource };
               existing.id = existing.id || s.id;
+              existing.board = boardKey;
               existing.startDate = existing.startDate || s.startDate;
               existing.events = existing.events.concat(events);
               existing.initiallyPlanned += initiallyPlanned || 0;
               existing.completed += completed || 0;
-              combined[s.name] = existing;
+              combined[key] = existing;
             } catch (e) {
               Logger.error('sprint fetch failed', e);
             }
@@ -434,7 +500,7 @@
         return { sprints: sprintsArr };
       } catch (e) {
         Logger.error('Failed to fetch disruption data', e);
-        showError('Failed to fetch disruption data.');
+        alert('Failed to fetch disruption data.');
         return { sprints: [] };
       }
     }
@@ -446,12 +512,19 @@
     sorted.forEach((sprint, idx) => {
       const metrics = Disruption.calculateDisruptionMetrics(sprint.events);
       const detailsId = `details-${idx}`;
+      const events = sprint.events || [];
+      const initiallyPlannedIssues = Array.from(new Set(
+        events.filter(ev => !ev.addedAfterStart && !ev.removedBeforeStart).map(ev => ev.key)
+      ));
+      const completedIssues = Array.from(new Set(
+        events.filter(ev => ev.completed && !ev.movedOut).map(ev => ev.key)
+      ));
       html += `<tr>
-        <td>${sprint.name}</td>
+        <td>[${sprint.board}] ${sprint.name}</td>
         <td title="${sprint.initiallyPlannedSource}">${sprint.initiallyPlanned || 0}</td>
         <td title="${sprint.completedSource}">${sprint.completed || 0}</td>
         <td title="${metrics.pulledInIssues.join(', ')}">${metrics.pulledIn || 0} (${metrics.pulledInCount || 0})</td>
-        <td title="${metrics.blockedIssues.join(', ')}">${(Math.ceil((metrics.blockedDays || 0) * 10) / 10).toFixed(1)} (${metrics.blockedCount || 0})</td>
+        <td title="${metrics.blockedIssues.join(', ')}">${Number(metrics.blockedDays || 0).toFixed(1)} (${metrics.blockedCount || 0})</td>
         <td title="${metrics.movedOutIssues.join(', ')}">${metrics.movedOut || 0} (${metrics.movedOutCount || 0})</td>
         <td><button class="btn details-toggle" onclick="toggleDetails('${detailsId}', this)">Show Details</button></td>
       </tr>`;
@@ -459,6 +532,8 @@
         <table class="story-table">
           <thead><tr><th>Metric</th><th>Stories</th></tr></thead>
           <tbody>
+            <tr><td>Initially Planned</td><td>${initiallyPlannedIssues.join(', ') || '-'}</td></tr>
+            <tr><td>Completed</td><td>${completedIssues.join(', ') || '-'}</td></tr>
             <tr><td>Pulled In</td><td>${metrics.pulledInIssues.join(', ') || '-'}</td></tr>
             <tr><td>Blocked</td><td>${metrics.blockedIssues.join(', ') || '-'}</td></tr>
             <tr><td>Moved Out</td><td>${metrics.movedOutIssues.join(', ') || '-'}</td></tr>
@@ -482,7 +557,8 @@ function renderVelocityStats(allSprints) {
       (s.events || []).forEach(ev => {
         if (ev.completedDate) {
           totalCompleted++;
-          if (typeof ev.cycleTime === 'number') {
+          const sprintStart = s.startDate ? new Date(s.startDate) : null;
+          if (sprintStart && sprintStart > CYCLE_TIME_START && typeof ev.cycleTime === 'number') {
             totalCycle += ev.cycleTime;
             cycleCount++;
           }
@@ -499,7 +575,7 @@ function renderVelocityStats(allSprints) {
     wrap.innerHTML = html;
   }
 
-function renderCharts(displaySprints, allSprints) {
+function renderBoardCharts(displaySprints, allSprints, container) {
   const sprintLabels = displaySprints.map(s => s.name);
   const completedSPAll = (allSprints || displaySprints).map(s => s.completed || 0);
   const completedSP = completedSPAll.slice(-displaySprints.length);
@@ -507,21 +583,28 @@ function renderCharts(displaySprints, allSprints) {
   const plannedSP = plannedSPAll.slice(-displaySprints.length);
   const metricsArr = displaySprints.map(s => Disruption.calculateDisruptionMetrics(s.events));
   const pulledInCount = metricsArr.map(m => m.pulledInCount || 0);
-  const blockedDays = metricsArr.map(m => Math.ceil((m.blockedDays || 0) * 10) / 10);
+  const blockedDays = metricsArr.map(m => Number((m.blockedDays || 0).toFixed(1)));
   const blockedCount = metricsArr.map(m => m.blockedCount || 0);
   const movedOutCount = metricsArr.map(m => m.movedOutCount || 0);
 
-  function sumSP(events, pred) {
-    return (events || []).reduce((sum, ev) => sum + (pred(ev) ? (ev.points || 0) : 0), 0);
+  function sumSP(events, pred, field = 'points') {
+    return (events || []).reduce((sum, ev) => {
+      if (!pred(ev)) return sum;
+      let val = ev[field];
+      if ((field === 'initialPoints' || field === 'completedPoints') && (val === undefined || val === null)) {
+        val = ev.points;
+      }
+      return sum + (val || 0);
+    }, 0);
   }
   const plannedPI = displaySprints.map(s =>
-    sumSP(s.events, ev => !ev.addedAfterStart && !ev.movedOut && ev.piRelevant)
+    sumSP(s.events, ev => !ev.addedAfterStart && !ev.removedBeforeStart && ev.piRelevant, 'initialPoints')
   );
   const plannedOther = displaySprints.map((s, i) =>
     Math.max(0, (s.initiallyPlanned || 0) - plannedPI[i])
   );
   const completedPI = displaySprints.map(s =>
-    sumSP(s.events, ev => ev.completed && ev.piRelevant)
+    sumSP(s.events, ev => ev.completed && ev.piRelevant, 'completedPoints')
   );
   const completedOther = displaySprints.map((s, i) =>
     Math.max(0, (s.completed || 0) - completedPI[i])
@@ -529,20 +612,78 @@ function renderCharts(displaySprints, allSprints) {
 
   const initialCompleted = displaySprints.map(s =>
     (s.events || [])
-      .filter(ev => !ev.addedAfterStart && !ev.movedOut && ev.completed)
-      .reduce((sum, ev) => sum + (ev.points || 0), 0)
+      .filter(ev => !ev.addedAfterStart && !ev.removedBeforeStart && !ev.movedOut && ev.completed)
+      .reduce((sum, ev) => sum + ((ev.completedPoints ?? ev.points) || 0), 0)
   );
 
   const throughputPerSprint = displaySprints.map(s =>
     (s.events || []).filter(ev => ev.completedDate).length
   );
 
-  const chartWidth = Math.max(sprintLabels.length * 120, 600);
-  ['piMixChart','completedChart','disruptionChart'].forEach(id => {
-    const canvas = document.getElementById(id);
-    canvas.width = chartWidth;
-    canvas.height = 300;
+  const cycleTimePerSprint = displaySprints.map((s, idx) => {
+    const sprintStart = s.startDate ? new Date(s.startDate) : null;
+    if (!sprintStart || sprintStart <= CYCLE_TIME_START) return null;
+    const windowSprints = displaySprints
+      .slice(Math.max(0, idx - 4), idx + 1)
+      .filter(ws => ws.startDate && new Date(ws.startDate) > CYCLE_TIME_START);
+    const times = [];
+    windowSprints.forEach(ws => {
+      (ws.events || []).forEach(ev => {
+        if (typeof ev.cycleTime === 'number') times.push(ev.cycleTime);
+      });
+    });
+    if (!times.length) return null;
+    times.sort((a, b) => a - b);
+    const mid = Math.floor(times.length / 2);
+    const median = times.length % 2 ? times[mid] : (times[mid - 1] + times[mid]) / 2;
+    return Number(median.toFixed(1));
   });
+
+  const chartWidth = Math.max(sprintLabels.length * 120, 600);
+  const piTitle = document.createElement('h2');
+  piTitle.textContent = 'Initially planned & completed';
+  container.appendChild(piTitle);
+  const piCanvas = document.createElement('canvas');
+  piCanvas.width = chartWidth;
+  piCanvas.height = 300;
+  piCanvas.dataset.type = 'pi';
+  container.appendChild(piCanvas);
+
+  const completedTitle = document.createElement('h2');
+  completedTitle.textContent = 'Rating Zone Chart';
+  container.appendChild(completedTitle);
+  const completedCanvas = document.createElement('canvas');
+  completedCanvas.width = chartWidth;
+  completedCanvas.height = 300;
+  completedCanvas.dataset.type = 'rating';
+  container.appendChild(completedCanvas);
+
+  const throughputTitle = document.createElement('h2');
+  throughputTitle.textContent = 'Throughput per Sprint';
+  container.appendChild(throughputTitle);
+  const throughputCanvas = document.createElement('canvas');
+  throughputCanvas.width = chartWidth;
+  throughputCanvas.height = 300;
+  throughputCanvas.dataset.type = 'throughput';
+  container.appendChild(throughputCanvas);
+
+  const cycleTitle = document.createElement('h2');
+  cycleTitle.textContent = 'Cycle Time (5-sprint median)';
+  container.appendChild(cycleTitle);
+  const cycleCanvas = document.createElement('canvas');
+  cycleCanvas.width = chartWidth;
+  cycleCanvas.height = 300;
+  cycleCanvas.dataset.type = 'cycle';
+  container.appendChild(cycleCanvas);
+
+  const disruptionTitle = document.createElement('h2');
+  disruptionTitle.textContent = 'Disruption Metrics';
+  container.appendChild(disruptionTitle);
+  const disruptionCanvas = document.createElement('canvas');
+  disruptionCanvas.width = chartWidth;
+  disruptionCanvas.height = 300;
+  disruptionCanvas.dataset.type = 'disruption';
+  container.appendChild(disruptionCanvas);
 
   const zonesBySprintAll = [];
   const avgBySprintAll = [];
@@ -595,18 +736,7 @@ function renderCharts(displaySprints, allSprints) {
     }
   };
 
-  // Destroy existing charts if they exist to allow re-rendering without errors
-  if (piMixChartInstance) {
-    piMixChartInstance.destroy();
-  }
-  if (completedChartInstance) {
-    completedChartInstance.destroy();
-  }
-  if (disruptionChartInstance) {
-    disruptionChartInstance.destroy();
-  }
-
-  const pctx = document.getElementById('piMixChart').getContext('2d');
+  const pctx = piCanvas.getContext('2d');
 
   function makeDiagonalPattern(ctx, color) {
     const size = 8;
@@ -632,16 +762,54 @@ function renderCharts(displaySprints, allSprints) {
   const plannedPIFill = makeDiagonalPattern(pctx, plannedPIColor);
   const plannedOtherFill = makeDiagonalPattern(pctx, plannedOtherColor);
 
-  piMixChartInstance = new Chart(pctx, {
+  const piMixChart = new Chart(pctx, {
     type: 'bar',
     data: {
       labels: sprintLabels,
       datasets: [
-        { label: 'Initially Planned PI contributions', data: plannedPI, backgroundColor: plannedPIFill, borderColor: plannedPIColor, stack: 'planned' },
-        { label: 'Initially Planned other', data: plannedOther, backgroundColor: plannedOtherFill, borderColor: plannedOtherColor, stack: 'planned' },
-        { label: 'Initial Plan completed', data: initialCompleted, backgroundColor: initialCompletedColor, borderColor: initialCompletedColor, stack: 'initialCompleted' },
-        { label: 'Completed PI contributions', data: completedPI, backgroundColor: completedPIColor, borderColor: completedPIColor, stack: 'completed' },
-        { label: 'Completed other', data: completedOther, backgroundColor: completedOtherColor, borderColor: completedOtherColor, stack: 'completed' },
+        { label: 'Initially Planned PI contributions', data: plannedPI, backgroundColor: plannedPIFill, borderColor: plannedPIColor, stack: 'planned', datalabels: { display: false } },
+        {
+          label: 'Initially Planned other',
+          data: plannedOther,
+          backgroundColor: plannedOtherFill,
+          borderColor: plannedOtherColor,
+          stack: 'planned',
+          datalabels: {
+            display: true,
+            anchor: 'end',
+            align: 'top',
+            offset: -4,
+            color: '#000',
+            font: { weight: 'bold' },
+            formatter: (v, ctx) => {
+              const i = ctx.dataIndex;
+              const plannedTotal = (plannedPI[i] || 0) + (plannedOther[i] || 0);
+              return plannedTotal;
+            }
+          }
+        },
+        { label: 'Initial Plan completed', data: initialCompleted, backgroundColor: initialCompletedColor, borderColor: initialCompletedColor, stack: 'initialCompleted', datalabels: { display: true, anchor: 'end', align: 'top', offset: -4, color: '#000', font: { weight: 'bold' } } },
+        { label: 'Completed PI contributions', data: completedPI, backgroundColor: completedPIColor, borderColor: completedPIColor, stack: 'completed', datalabels: { display: false } },
+        {
+          label: 'Completed other',
+          data: completedOther,
+          backgroundColor: completedOtherColor,
+          borderColor: completedOtherColor,
+          stack: 'completed',
+          datalabels: {
+            display: true,
+            anchor: 'end',
+            align: 'top',
+            offset: -4,
+            color: '#000',
+            font: { weight: 'bold' },
+            formatter: (v, ctx) => {
+              const i = ctx.dataIndex;
+              const completedTotal = (completedPI[i] || 0) + (completedOther[i] || 0);
+              return completedTotal;
+            }
+          }
+        }
       ]
     },
     options: {
@@ -660,27 +828,23 @@ function renderCharts(displaySprints, allSprints) {
               const plannedTotal = (plannedPI[i] || 0) + (plannedOther[i] || 0);
               const initCompleted = initialCompleted[i] || 0;
               const completedTotal = (completedPI[i] || 0) + (completedOther[i] || 0);
-              return `Initially Planned total: ${plannedTotal}\nInitial Plan completed: ${initCompleted}\nCompleted total: ${completedTotal}`;
+              return `Initially Planned total: ${plannedTotal}
+Initial Plan completed: ${initCompleted}
+Completed total: ${completedTotal}`;
             }
           }
         },
-        datalabels: {
-          display: false,
-          color: '#000',
-          anchor: 'end',
-          align: 'top'
-        }
+        datalabels: { display: false }
       }
     }
   });
 
-  const vctx = document.getElementById('completedChart').getContext('2d');
-  completedChartInstance = new Chart(vctx, {
+  const vctx = completedCanvas.getContext('2d');
+  const completedChart = new Chart(vctx, {
     type: 'line',
     data: {
       labels: sprintLabels,
       datasets: [
-        { label: 'Initially Planned SP', data: plannedSP, borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,0.3)', fill: false, tension: 0.1 },
         { label: 'Completed SP', data: completedSP, borderColor: '#00376a', backgroundColor: 'rgba(99,102,241,0.3)', fill: false, tension: 0.1 },
         { label: 'Average Velocity', data: avgBySprint, borderColor: '#000000', borderDash: [5,5], fill: false, tension: 0 }
       ]
@@ -695,26 +859,18 @@ function renderCharts(displaySprints, allSprints) {
       plugins: {
         legend: { position: 'bottom' },
         ratingZones: { zonesBySprint },
-        datalabels: {
-          display: false,
-          color: '#000',
-          anchor: 'end',
-          align: 'top'
-        }
+        datalabels: { display: false }
       }
     },
     plugins: [ratingZonesPlugin]
   });
 
-  const dctx = document.getElementById('disruptionChart').getContext('2d');
-  disruptionChartInstance = new Chart(dctx, {
+  const tctx = throughputCanvas.getContext('2d');
+  const throughputChart = new Chart(tctx, {
     type: 'bar',
     data: {
       labels: sprintLabels,
       datasets: [
-        { label: 'Pulled In Issues', data: pulledInCount, backgroundColor: '#109fda', borderColor: '#109fda' },
-        { label: 'Blocked Days', data: blockedDays, backgroundColor: '#b91c1c', borderColor: '#b91c1c' },
-        { label: 'Moved Out Issues', data: movedOutCount, backgroundColor: '#006c52', borderColor: '#006c52' },
         { label: 'Throughput per Sprint', data: throughputPerSprint, backgroundColor: '#f97316', borderColor: '#f97316' }
       ]
     },
@@ -723,12 +879,12 @@ function renderCharts(displaySprints, allSprints) {
       maintainAspectRatio: false,
       scales: {
         x: { offset: true },
-        y: { beginAtZero: true, title: { display: true, text: 'Issue Count / Blocked Days' } }
+        y: { beginAtZero: true, title: { display: true, text: 'Issues' } }
       },
       plugins: {
         legend: { position: 'bottom' },
         datalabels: {
-          display: false,
+          display: true,
           color: '#000',
           anchor: 'end',
           align: 'top'
@@ -737,6 +893,95 @@ function renderCharts(displaySprints, allSprints) {
     }
   });
 
+  const cctx = cycleCanvas.getContext('2d');
+  const cycleTimeChart = new Chart(cctx, {
+    type: 'bar',
+    data: {
+      labels: sprintLabels,
+      datasets: [
+        { label: 'Cycle Time (5-sprint median)', data: cycleTimePerSprint, backgroundColor: '#8b5cf6', borderColor: '#8b5cf6' }
+      ]
+    },
+    options: {
+      responsive: false,
+      maintainAspectRatio: false,
+      scales: {
+        x: { offset: true },
+        y: { beginAtZero: true, title: { display: true, text: 'Days' } }
+      },
+      plugins: {
+        legend: { position: 'bottom' },
+        datalabels: {
+          display: true,
+          color: '#000',
+          anchor: 'end',
+          align: 'top'
+        }
+      }
+    }
+  });
+
+  const dctx = disruptionCanvas.getContext('2d');
+  const disruptionChart = new Chart(dctx, {
+    type: 'bar',
+    data: {
+      labels: sprintLabels,
+      datasets: [
+        { label: 'Pulled In Issues', data: pulledInCount, backgroundColor: '#3b82f6', borderColor: '#3b82f6' },
+        { label: 'Blocked Days', data: blockedDays, backgroundColor: '#ef4444', borderColor: '#ef4444' },
+        { label: 'Moved Out Issues', data: movedOutCount, backgroundColor: '#10b981', borderColor: '#10b981' }
+      ]
+    },
+    options: {
+      responsive: false,
+      maintainAspectRatio: false,
+      scales: {
+        x: { offset: true },
+        y: { beginAtZero: true, title: { display: true, text: 'Issue Count / Days' } }
+      },
+      plugins: {
+        legend: { position: 'bottom' },
+        datalabels: {
+          display: true,
+          color: '#000',
+          anchor: 'end',
+          align: 'top'
+        }
+      }
+    }
+  });
+
+  return [piMixChart, completedChart, throughputChart, cycleTimeChart, disruptionChart];
+}
+
+function renderCharts(displaySprints, allSprints) {
+  const section = document.getElementById('chartSection');
+  if (!section) return;
+  section.innerHTML = '';
+  chartInstances.forEach(ch => ch.destroy());
+  chartInstances = [];
+  const byBoardDisplay = {};
+  (displaySprints || []).forEach(s => {
+    const board = s.board;
+    if (!byBoardDisplay[board]) byBoardDisplay[board] = [];
+    byBoardDisplay[board].push(s);
+  });
+  const byBoardAll = {};
+  (allSprints || []).forEach(s => {
+    const board = s.board;
+    if (!byBoardAll[board]) byBoardAll[board] = [];
+    byBoardAll[board].push(s);
+  });
+  Object.keys(byBoardDisplay).forEach(boardId => {
+    const title = document.createElement('h2');
+    title.textContent = boardLabels[boardId] || `Board ${boardId}`;
+    section.appendChild(title);
+    const wrap = document.createElement('div');
+    wrap.className = 'board-chart-wrapper';
+    section.appendChild(wrap);
+    const charts = renderBoardCharts(byBoardDisplay[boardId], byBoardAll[boardId] || [], wrap);
+    chartInstances.push(...charts);
+  });
 }
 
   function toggleDetails(id, btn) {
@@ -749,18 +994,25 @@ function renderCharts(displaySprints, allSprints) {
   }
 
   async function loadDisruption() {
-    clearError();
     const jiraDomain = document.getElementById('jiraDomain').value.trim();
     const selected = boardChoices ? boardChoices.getValue() : [];
     const boards = selected.map(b => b.value);
+    boardLabels = {};
+    selected.forEach(b => { boardLabels[b.value] = b.label; });
     if (!jiraDomain || !boards.length) {
-      showError('Enter Jira domain and select boards.');
+      alert('Enter Jira domain and select boards.');
       return;
     }
     Logger.info('Loading disruption report for boards', boards.join(','));
     const { sprints: fetchedSprints } = await fetchDisruptionData(jiraDomain, boards);
     allSprints = fetchedSprints;
-    sprints = fetchedSprints.slice(-DISPLAY_SPRINT_COUNT);
+    const byBoard = {};
+    fetchedSprints.forEach(s => {
+      if (!byBoard[s.board]) byBoard[s.board] = [];
+      byBoard[s.board].push(s);
+    });
+    Object.values(byBoard).forEach(arr => arr.sort((a, b) => new Date(a.startDate) - new Date(b.startDate)));
+    sprints = Object.values(byBoard).flatMap(arr => arr.slice(-DISPLAY_SPRINT_COUNT));
     renderTable(sprints);
     renderSprintList();
     document.getElementById('sprintRow').style.display = sprints.length ? '' : 'none';
@@ -786,7 +1038,7 @@ function renderCharts(displaySprints, allSprints) {
   function exportPDF() {
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
-    const charts = [piMixChartInstance, completedChartInstance, disruptionChartInstance];
+    const charts = [...chartInstances];
     charts.forEach(ch => {
       if (!ch) return;
       const legend = ch.options.plugins?.legend || (ch.options.plugins.legend = {});
@@ -798,22 +1050,42 @@ function renderCharts(displaySprints, allSprints) {
       }
       ch.update();
     });
-    const canvases = document.querySelectorAll('#chartSection canvas');
+    const includePi = document.getElementById('includePi')?.checked;
+    const includeRating = document.getElementById('includeRating')?.checked;
+    const includeThroughput = document.getElementById('includeThroughput')?.checked;
+    const includeCycle = document.getElementById('includeCycle')?.checked;
+    const includeDisruption = document.getElementById('includeDisruption')?.checked;
     const pageWidth = pdf.internal.pageSize.getWidth();
     const pageHeight = pdf.internal.pageSize.getHeight();
     const margin = 20;
     let y = margin;
-    canvases.forEach(cv => {
-      const img = canvasToHighResDataURL(cv);
-      const width = pageWidth - margin * 2;
-      const height = cv.height * width / cv.width;
-      if (y + height > pageHeight - margin) {
-        pdf.addPage();
-        y = margin;
+    const section = document.getElementById('chartSection');
+    const children = section ? Array.from(section.children) : [];
+    for (let i = 0; i < children.length; i += 2) {
+      const boardTitleEl = children[i];
+      const wrapper = children[i + 1];
+      const boardTitle = boardTitleEl?.textContent?.trim() || '';
+      const elems = Array.from(wrapper.children);
+      for (let j = 0; j < elems.length; j += 2) {
+        const chartTitleEl = elems[j];
+        const canvas = elems[j + 1];
+        const type = canvas.dataset.type;
+        if ((type === 'pi' && !includePi) || (type === 'rating' && !includeRating) || (type === 'throughput' && !includeThroughput) || (type === 'cycle' && !includeCycle) || (type === 'disruption' && !includeDisruption)) {
+          continue;
+        }
+        const width = pageWidth - margin * 2;
+        const height = canvas.height * width / canvas.width;
+        if (y + 14 + height > pageHeight - margin) {
+          pdf.addPage();
+          y = margin;
+        }
+        pdf.setFontSize(12);
+        pdf.text(`${boardTitle} - ${chartTitleEl.textContent.trim()}`, margin, y);
+        y += 14;
+        pdf.addImage(canvasToHighResDataURL(canvas), 'PNG', margin, y, width, height);
+        y += height + 10;
       }
-      pdf.addImage(img, 'PNG', margin, y, width, height);
-      y += height + 10;
-    });
+    }
     const dateStr = new Date().toISOString().split('T')[0];
     pdf.save(`Disruption_Report_${dateStr}.pdf`);
     charts.forEach(ch => {
@@ -830,7 +1102,7 @@ function renderCharts(displaySprints, allSprints) {
     });
   }
 
+  document.getElementById('versionSelect').value = 'index_disruption.html';
 </script>
-<script>if(new URLSearchParams(location.search).has('embedded'))document.body.classList.add('embedded');</script>
 </body>
 </html>

@@ -15,6 +15,8 @@
     .main { max-width: 1200px; margin: 30px auto 40px auto; background: #fff; border-radius: 18px; box-shadow: 0 2px 12px rgba(0,55,106,0.10); padding: 36px 32px 48px 32px; }
     body.embedded { background: #f9fafb; }
     body.embedded .main { max-width: 100%; margin: 0; border-radius: 0; box-shadow: none; padding: 24px 28px; }
+    body.embedded h1 { display: none; }
+
 
     h1 { font-size: 2.2em; margin:0 0 0.7em 0; font-weight: 600; color: #00376a; }
     .controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-bottom: 20px; }
@@ -102,9 +104,7 @@
   <div class="main" id="pdfContent">
     <h1 title="Track items against target versions and PI milestones">Target Release Dashboard</h1>
     <div class="controls">
-      <label>Jira Domain
-        <input id="jiraDomain" value="aldi-sued.atlassian.net" placeholder="your-domain.atlassian.net">
-      </label>
+      <input type="hidden" id="jiraDomain" value="aldi-sued.atlassian.net">
       <label style="flex:1; min-width:220px;">Boards
         <select id="boardSelect" multiple></select>
       </label>
@@ -112,7 +112,7 @@
       <button class="btn secondary" id="exportBtn">Export as PDF</button>
     </div>
     <div id="loadingMessage" class="loading" style="display:none;"></div>
-    <div id="errorMessage" class="error" style="display:none;"></div>
+    <div id="errorMessage" class="error" role="alert" style="display:none;"></div>
 
     <div id="filtersSection" style="display:none;">
       <div class="section-title">Filters</div>
