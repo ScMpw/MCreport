@@ -627,7 +627,8 @@
     }
 
     function stripOrderBy(jql) {
-      return jql.replace(/\s+ORDER\s+BY\s+.+$/i, '').trim();
+      const idx = jql.search(/\bORDER\s+BY\b/i);
+      return idx >= 0 ? jql.substring(0, idx).trim() : jql;
     }
 
     async function jiraSearchBoard(jiraDomain, boardId, jql = '') {
