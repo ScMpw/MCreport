@@ -626,11 +626,15 @@
       return String(filterData?.jql || '').trim();
     }
 
+    function stripOrderBy(jql) {
+      return jql.replace(/\s+ORDER\s+BY\s+.+$/i, '').trim();
+    }
+
     async function jiraSearchBoard(jiraDomain, boardId, jql = '') {
       const boardFilterJql = await fetchBoardFilterJql(jiraDomain, boardId);
       const clauses = [];
-      if (boardFilterJql) clauses.push(`(${boardFilterJql})`);
-      if (jql) clauses.push(`(${jql})`);
+      if (boardFilterJql) clauses.push(`(${stripOrderBy(boardFilterJql)})`);
+      if (jql) clauses.push(`(${stripOrderBy(jql)})`);
       const fullJql = clauses.length
         ? `${clauses.join(' AND ')} ORDER BY created DESC`
         : 'ORDER BY created DESC';
