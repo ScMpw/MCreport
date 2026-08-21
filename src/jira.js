@@ -29,7 +29,10 @@
    * Board IDs fetched when looking up boards. Only these boards are returned
    * by {@link fetchBoards}, preventing a broad scan of the Jira instance.
    */
-  const DEFAULT_BOARD_IDS = [4629, 2526, 6346, 4133, 4132, 4131, 6347, 6390, 4894];
+  const DEFAULT_BOARD_IDS = [
+    4629, 2526, 6346, 4133, 4132, 4131, 6347, 6390, 4894,
+    34476, 34475, 34474, 34477, 34478
+  ];
 
   /** Tracks in-flight requests so duplicate calls share the same Promise. */
   const pendingRequests = new Map();
